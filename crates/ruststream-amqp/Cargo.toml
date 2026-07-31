@@ -1,0 +1,17 @@
+[package]
+name = "ruststream-amqp"
+description = "AMQP 1.0 broker implementation for the RustStream messaging framework (ActiveMQ Artemis, Azure Service Bus, RabbitMQ 4.x, and other AMQP 1.0 brokers)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "../../README.md"
+keywords = ["amqp", "amqp10", "messaging", "broker", "faststream"]
+categories = ["asynchronous", "network-programming"]
+
+[lints]
+workspace = true
+
+[dependencies]
