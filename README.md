@@ -30,7 +30,7 @@ AMQP 1.0 is an ISO-standard protocol spoken by ActiveMQ Artemis and Classic, Rab
 
 ## Status
 
-Implemented and verified against ActiveMQ Artemis (the framework's conformance lifecycle, request/reply, and transactions suites run in CI against a live broker). Not yet published to crates.io: the release rides the `ruststream` 0.6 line. Design and scope are tracked in [powersemmi/ruststream#187](https://github.com/powersemmi/ruststream/issues/187).
+Implemented and verified against ActiveMQ Artemis (the framework's conformance lifecycle, request/reply, and transactions suites run in CI against a live broker). Built on `ruststream` 0.6 from crates.io; the crate itself is not published yet. Design and scope are tracked in [powersemmi/ruststream#187](https://github.com/powersemmi/ruststream/issues/187).
 
 ## Write a service
 
