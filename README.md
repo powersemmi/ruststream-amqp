@@ -67,15 +67,39 @@ async fn handle(order: &Order) -> HandlerResult { /* ... */ }
 
 ## Request/reply
 
-```rust
-use std::time::Duration;
-use ruststream::{IncomingMessage, OutgoingMessage, RequestReply};
+The requester side is a first publish, so it belongs in the scope's `after_startup` hook: the
+publisher arrives live, already paired with the connected broker.
 
-let reply = publisher
-    .request(OutgoingMessage::new("greeter", b"hello".as_slice()), Duration::from_secs(5))
-    .await?;
-println!("{}", String::from_utf8_lossy(reply.payload()));
+```rust
+use std::io;
+use std::time::Duration;
+
+use ruststream::runtime::{App, AppInfo, RustStream};
+use ruststream::{IncomingMessage, OutgoingMessage, RequestReply};
+use ruststream_amqp::{AmqpBroker, AmqpPublish};
+
+#[ruststream::app]
+fn app() -> impl App {
+    RustStream::new(AppInfo::new("greeter-client", "0.1.0"))
+        .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| {
+            b.after_startup(AmqpPublish, async move |publisher| -> io::Result<()> {
+                let reply = publisher
+                    .request(
+                        OutgoingMessage::new("greeter", b"hello".as_slice()),
+                        Duration::from_secs(5),
+                    )
+                    .await
+                    .map_err(io::Error::other)?;
+                println!("{}", String::from_utf8_lossy(reply.payload()));
+                Ok(())
+            });
+        })
+}
 ```
+
+The responder answers on the requester's dynamic `reply-to` address, so it publishes through an
+injected publisher rather than the fixed-destination `publish(..)` reply form; see
+`examples/amqp_request_reply.rs` for both sides in one app.
 
 ## Test it
 

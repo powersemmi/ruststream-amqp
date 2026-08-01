@@ -1,7 +1,7 @@
 //! A minimal AMQP service: consume orders from a queue address.
 //!
 //! Run a broker first (`just brokers-up`), then:
-//! `cargo run --example amqp_service`
+//! `cargo run --example amqp_service -- run`
 
 use ruststream::runtime::{App, AppInfo, HandlerResult, RustStream};
 use ruststream::subscriber;
