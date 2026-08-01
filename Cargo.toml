@@ -13,7 +13,7 @@ authors = ["RustStream contributors"]
 [workspace.dependencies]
 ruststream-amqp = { path = "crates/ruststream-amqp" }
 
-ruststream = { version = "0.6.0", default-features = false }
+ruststream = { version = ">=0.6.0, <0.7.0", default-features = false }
 
 fe2o3-amqp = "0.16"
 fe2o3-amqp-types = "0.16"
