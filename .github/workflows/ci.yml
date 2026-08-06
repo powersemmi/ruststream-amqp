@@ -61,8 +61,49 @@ jobs:
       - name: cargo check (all features)
         run: cargo check --workspace --all-targets --all-features
 
-      - name: cargo test
+      - name: cargo test (handler-stub only, no live broker)
         run: cargo test --workspace --all-features
+
+  broker-integration:
+    name: Broker integration (Artemis)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Start ActiveMQ Artemis
+        run: |
+          docker run -d --name artemis \
+            -p 127.0.0.1:5672:5672 \
+            -e ARTEMIS_USER=artemis \
+            -e ARTEMIS_PASSWORD=artemis \
+            apache/activemq-artemis:latest-alpine
+
+      - name: Wait for Artemis
+        timeout-minutes: 2
+        run: |
+          timeout 90 bash -c 'until docker logs artemis 2>&1 | grep -q "AMQ221007"; do sleep 1; done'
+          docker logs artemis | tail -5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run integration + conformance against Artemis
+        env:
+          AMQP_TEST_URL: amqp://artemis:artemis@127.0.0.1:5672
+        run: >-
+          cargo test -p ruststream-amqp --all-features
+          --test integration_amqp
+          --test conformance_amqp
+          -- --test-threads=1
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f artemis
 
   security:
     name: Security scans

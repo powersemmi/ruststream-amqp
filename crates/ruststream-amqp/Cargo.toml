@@ -14,4 +14,30 @@ categories = ["asynchronous", "network-programming"]
 [lints]
 workspace = true
 
+[features]
+default = []
+# TLS for amqps:// endpoints, forwarded to the client.
+rustls = ["fe2o3-amqp/rustls"]
+native-tls = ["fe2o3-amqp/native-tls"]
+# AMQP 1.0 transactions (transactional posting) behind the client's own gate.
+transaction = ["fe2o3-amqp/transaction"]
+# The in-process test broker (TestableBroker + TestApp support). The conformance harness is a
+# broker-author tool and stays in this repo's dev-dependencies, not in the user-facing feature.
+testing = ["ruststream/testing"]
+
 [dependencies]
+ruststream = { workspace = true, default-features = false }
+fe2o3-amqp.workspace = true
+fe2o3-amqp-types.workspace = true
+bytes.workspace = true
+futures.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+# The conformance harness drives the testing-feature broker; macros + json power the runnable
+# amqp_* examples, and serde decodes their message types.
+ruststream = { workspace = true, features = ["conformance", "testing", "macros", "json"] }
+serde = { version = "1", features = ["derive"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }

@@ -14,6 +14,19 @@ check:
 test:
     cargo test --workspace --all-features
 
+brokers-up:
+    docker compose -f docker-compose.test.yml up -d --wait
+
+brokers-down:
+    docker compose -f docker-compose.test.yml down -v
+
+test-brokers: brokers-up
+    #!/usr/bin/env bash
+    set -euo pipefail
+    trap 'just brokers-down' EXIT
+    AMQP_TEST_URL=amqp://artemis:artemis@127.0.0.1:5672 \
+        cargo test --workspace --all-features -- --test-threads=1
+
 fmt:
     cargo fmt --all
 
