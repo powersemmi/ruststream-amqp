@@ -8,7 +8,7 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 readme = "../../README.md"
-keywords = ["amqp", "amqp10", "messaging", "broker", "faststream"]
+keywords = ["amqp", "amqp10", "messaging", "broker", "ruststream"]
 categories = ["asynchronous", "network-programming"]
 
 [lints]
