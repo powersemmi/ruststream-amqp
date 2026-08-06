@@ -21,7 +21,7 @@ AMQP 1.0 is an ISO-standard protocol spoken by ActiveMQ Artemis and Classic, Rab
 ## Features
 
 - **Lazy startup contract.** `AmqpBroker::new(url)` is synchronous and does no I/O; the runtime connects once at startup, so the broker composes with `#[ruststream::app]`. SASL (ANONYMOUS, PLAIN, EXTERNAL) and the container id are builder options.
-- **Acknowledgement as dispositions.** `ack` maps to `accept`, `nack(requeue = true)` to `release`, `nack(requeue = false)` to `reject` - the broker's own dead-letter policy applies. At-most-once subscriptions report `AckError::Unsupported` instead of pretending.
+- **Acknowledgement as dispositions.** `ack` maps to `accept`, `nack(requeue = true)` to `release`, `nack(requeue = false)` to `reject` - the broker's own dead-letter policy applies. At-most-once subscriptions report `AckError::Unsupported` instead of a settlement that never reaches the wire.
 - **Explicit addressing.** The protocol standardises the wire, not the meaning of an address: `AmqpAddress::queue` (anycast), `AmqpAddress::topic` (multicast), `AmqpAddress::raw` (verbatim, for deployments with their own convention), plus `credit` (prefetch as protocol-level flow control) and the `settle` guarantee.
 - **Native request/reply.** `AmqpPublisher` implements the `RequestReply` capability over `reply-to`, `correlation-id`, and a dynamic receiver link.
 - **Transactions** (feature `transaction`). A distinct `AmqpTransactionalPublish` policy pairs into a `TransactionalPublisher` built on the protocol's transactional posting; the plain publisher carries no transactional surface.
@@ -30,7 +30,16 @@ AMQP 1.0 is an ISO-standard protocol spoken by ActiveMQ Artemis and Classic, Rab
 
 ## Status
 
-Implemented and verified against ActiveMQ Artemis (the framework's conformance lifecycle, request/reply, and transactions suites run in CI against a live broker). Built on `ruststream` 0.6 from crates.io; the crate itself is not published yet. Design and scope are tracked in [powersemmi/ruststream#187](https://github.com/powersemmi/ruststream/issues/187).
+Implemented and verified against ActiveMQ Artemis (the framework's conformance lifecycle, request/reply, and transactions suites run in CI against a live broker). Published on crates.io, tracking the `ruststream` 0.6 line. Design and scope are tracked in [powersemmi/ruststream#187](https://github.com/powersemmi/ruststream/issues/187).
+
+## Install
+
+```toml
+[dependencies]
+ruststream = { version = "0.6", features = ["macros", "json"] }
+ruststream-amqp = "0.6"
+serde = { version = "1", features = ["derive"] }
+```
 
 ## Write a service
 
