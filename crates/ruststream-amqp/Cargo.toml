@@ -41,3 +41,8 @@ tracing.workspace = true
 ruststream = { workspace = true, features = ["conformance", "testing", "macros", "json"] }
 serde = { version = "1", features = ["derive"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
+
+# The transactional publisher only exists under the `transaction` feature.
+[[example]]
+name = "amqp_transaction"
+required-features = ["transaction"]
