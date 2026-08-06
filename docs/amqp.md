@@ -12,6 +12,21 @@ ruststream-amqp = "0.6"
 serde = { version = "1", features = ["derive"] }
 ```
 
+## Capabilities
+
+The framework's optional capability traits, and what this broker implements natively:
+
+| Capability | Native | Notes |
+| --- | --- | --- |
+| `Subscribe` | yes | subscribe by name; the name is sent verbatim, as `AmqpAddress::raw` does |
+| `BatchSubscriber` | no | the protocol delivers one message per transfer, and batching is credit, not a batch pull |
+| `TransactionalPublisher` | yes, with the `transaction` feature | [transactional posting](#transactions), one broker-side transaction per handle |
+| `OwnedTransactions` | no | only the borrowed form is implemented; the client's transactional path covers posting |
+| `RequestReply` | yes | [`reply-to`, `correlation-id`, and a dynamic reply link](#requestreply) |
+| `Partitioned` | yes | [the partition key rides the `group-id` property](#headers-and-the-partition-key) |
+| `Seekable` and `Positioned` | no | the queue position belongs to the broker; the protocol exposes no client-addressable offset to seek to |
+| `DescribeServer` | yes | reports the connection host and the `amqp` protocol for the framework's server description |
+
 ## The lifecycle
 
 The broker is a ladder of consuming transitions, so each state is a distinct type:
@@ -113,6 +128,9 @@ capability. `request(msg, timeout)` attaches a dynamic receiver link (the broker
 reply address), sends the message with `reply-to` and `correlation-id` set, and resolves with the
 first reply carrying the matching correlation id. Nothing answering within the timeout is an
 `AmqpError::RequestTimeout`, and the reply link is detached either way.
+
+The requester side is a first publish, so it belongs in the scope's `after_startup` hook, where the
+publisher arrives live, already paired with the connected broker:
 
 ```rust
 --8<-- "crates/ruststream-amqp/examples/amqp_request_reply.rs:request"
