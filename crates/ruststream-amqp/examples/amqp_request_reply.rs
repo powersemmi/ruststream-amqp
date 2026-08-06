@@ -13,6 +13,7 @@ use ruststream::runtime::{App, AppInfo, HandlerResult, Out, RustStream};
 use ruststream::{Headers, IncomingMessage, OutgoingMessage, Publisher, RequestReply, subscriber};
 use ruststream_amqp::{AmqpAddress, AmqpBroker, AmqpPublish, AmqpPublisher};
 
+// --8<-- [start:responder]
 /// The responder. A reply goes to the address the requester named in `reply-to`, which the broker
 /// mints per request, so the fixed-destination `publish(..)` form does not fit: the reply rides an
 /// injected publisher and echoes `correlation-id` so a late reply cannot resolve a later request.
@@ -33,6 +34,7 @@ async fn greet(name: &[u8], ctx: &mut Context<'_>, Out(out): Out<AmqpPublisher>)
     }
     HandlerResult::Ack
 }
+// --8<-- [end:responder]
 
 #[ruststream::app]
 fn app() -> impl App {
@@ -41,6 +43,7 @@ fn app() -> impl App {
             .container_id("request-reply-example"),
         |b| {
             b.include(greet).publisher(AmqpPublish);
+            // --8<-- [start:request]
             b.after_startup(AmqpPublish, async move |publisher| -> io::Result<()> {
                 let reply = publisher
                     .request(
@@ -52,6 +55,7 @@ fn app() -> impl App {
                 println!("reply: {}", String::from_utf8_lossy(reply.payload()));
                 Ok(())
             });
+            // --8<-- [end:request]
         },
     )
 }
