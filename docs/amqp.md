@@ -7,8 +7,8 @@ subscribers, routing, codecs, middleware), see the
 [RustStream documentation](https://powersemmi.github.io/ruststream/).
 
 ```toml
-ruststream = { version = "0.6", features = ["macros", "json"] }
-ruststream-amqp = "0.6"
+ruststream = { version = "0.7", features = ["macros", "json"] }
+ruststream-amqp = "0.7"
 serde = { version = "1", features = ["derive"] }
 ```
 
@@ -121,6 +121,20 @@ Sender links are attached on first use and cached per address. A message the pee
 anything other than `accept` (rejected, released, modified) is reported as
 `AmqpError::PublishNotAccepted`, so a broker-side refusal cannot pass as a successful publish.
 
+Core 0.7 unified publishing behind one builder: every publish surface is entered with
+`message(&value)` for a value or `raw(&bytes)` for a payload the service already holds encoded, and
+a bare `AmqpPublisher` reaches those entry points through the core's blanket `PublishExt`, so a
+handler slot, application state, and a lifecycle hook all publish with the same call shape.
+
+A broker crate that needs a per-message argument of its own puts it on the publisher, ahead of the
+builder entry point: a step like `publisher.with_x(v)` returns a small adapter that implements
+`Publisher`, captures the argument, and stamps it onto the `OutgoingMessage` inside its own
+`publish` before delegating, so the argument rides the ordinary chain
+(`publisher.with_x(v).message(&order).publish()`). This crate ships no such step. Its per-message
+vocabulary is the AMQP properties section, and the core's well-known headers (`content-type`,
+`correlation-id`, `reply-to`, `message-id`, and the partition key as `group-id`) already name every
+field the mapping carries.
+
 ## Request/reply
 
 AMQP 1.0 carries request/reply natively, so `AmqpPublisher` implements the `RequestReply`
@@ -139,7 +153,9 @@ publisher arrives live, already paired with the connected broker:
 The responder end reads the reply address the requester named and publishes the answer there. The
 address is minted per request, so the fixed-destination `publish(..)` reply form does not fit: the
 reply rides an injected publisher, and echoes `correlation-id` so a late reply cannot resolve a
-later request.
+later request. The slot names the capability it needs (`Out<impl Publisher>`), never a broker
+publisher type: `AmqpPublisher` is inferred from the `AmqpPublish` policy attached at the include
+site, so the same handler mounts unchanged on the in-process test broker.
 
 ```rust
 --8<-- "crates/ruststream-amqp/examples/amqp_request_reply.rs:responder"

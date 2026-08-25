@@ -39,12 +39,12 @@ AMQP 1.0 is an ISO-standard protocol spoken by ActiveMQ Artemis and Classic, Rab
 
 ```toml
 [dependencies]
-ruststream = { version = "0.6", features = ["macros", "json"] }
-ruststream-amqp = "0.6"
+ruststream = { version = "0.7", features = ["macros", "json"] }
+ruststream-amqp = "0.7"
 serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
-ruststream-amqp = { version = "0.6", features = ["testing"] }
+ruststream-amqp = { version = "0.7", features = ["testing"] }
 ```
 
 ## Write a service
