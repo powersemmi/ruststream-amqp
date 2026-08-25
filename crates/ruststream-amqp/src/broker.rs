@@ -5,6 +5,7 @@
 //! cell remains so publishers can be handed out while the application is still being assembled,
 //! before `connect` runs.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
@@ -32,6 +33,10 @@ pub(crate) struct AmqpCore {
     /// The shared session publishers attach their links on. Subscriptions get their own session
     /// each, so one slow consumer cannot exhaust the shared flow window.
     pub(crate) session: Mutex<SessionHandle<()>>,
+    /// The sender links attached on that session, one per address, owned here rather than by the
+    /// publisher handle that attached them. See [`SenderLink`] for why the connection has to own
+    /// them.
+    senders: Mutex<HashMap<String, Arc<SenderLink>>>,
     pub(crate) closed: AtomicBool,
     pub(crate) container_id: String,
     link_seq: AtomicU64,
@@ -45,6 +50,37 @@ impl AmqpCore {
         Ok(())
     }
 
+    /// The sender link for `address`, attached on first use and shared by every publisher on this
+    /// connection.
+    // The map guard intentionally spans the attach so two callers cannot race a double-attach
+    // for the same address.
+    #[allow(clippy::significant_drop_tightening)]
+    pub(crate) async fn sender_for(&self, address: &str) -> Result<Arc<SenderLink>, AmqpError> {
+        let mut senders = self.senders.lock().await;
+        if let Some(link) = senders.get(address) {
+            return Ok(Arc::clone(link));
+        }
+        let sender = ConnectedAmqpBroker::attach_sender(self, address).await?;
+        let link = Arc::new(SenderLink(Mutex::new(Some(sender))));
+        senders.insert(address.to_owned(), Arc::clone(&link));
+        Ok(link)
+    }
+
+    /// Closes every attached sender link, reporting the first failure once all of them have been
+    /// attempted. Runs before the session ends, because the peer answers each close with a detach
+    /// the session still has to route.
+    async fn close_senders(&self) -> Result<(), AmqpError> {
+        let links: Vec<(String, Arc<SenderLink>)> =
+            self.senders.lock().await.drain().collect::<Vec<_>>();
+        let mut first_error = None;
+        for (address, link) in links {
+            if let Err(err) = link.close(&address).await {
+                first_error.get_or_insert(err);
+            }
+        }
+        first_error.map_or(Ok(()), Err)
+    }
+
     /// A process-unique link name; `AMQP` link names must be unique per connection.
     pub(crate) fn link_name(&self, role: &str) -> String {
         let seq = self.link_seq.fetch_add(1, Ordering::Relaxed);
@@ -54,6 +90,54 @@ impl AmqpCore {
     pub(crate) fn correlation_id(&self) -> String {
         let seq = self.link_seq.fetch_add(1, Ordering::Relaxed);
         format!("{}-corr-{seq}", self.container_id)
+    }
+}
+
+/// One sender link on the shared publisher session, held in a slot the connection can empty.
+///
+/// Why the slot, and why the connection owns the link at all: the client detaches a link from
+/// its `Drop`, which cannot await, so it fires a closing detach and destroys the link's relay in
+/// the same breath. The peer's echoing detach then has nowhere to go, and the session answers an
+/// unroutable handle by ending itself with an error - taking down every other publisher's links
+/// with it. Emptying the slot instead hands the link to `close`, which awaits that echo while
+/// the relay is still alive, and leaves a publish that raced the teardown with an empty slot to
+/// report `NotConnected` against rather than a link the peer has already forgotten.
+pub(crate) struct SenderLink(Mutex<Option<Sender>>);
+
+impl SenderLink {
+    /// Runs `f` against the live link, or reports [`AmqpError::NotConnected`] once it is closed.
+    // The guard intentionally spans the call: one link cannot carry two transfers at once, so
+    // serialising publishers on the slot is the point rather than an oversight.
+    #[allow(clippy::significant_drop_tightening)]
+    pub(crate) async fn with<F, T>(&self, f: F) -> Result<T, AmqpError>
+    where
+        F: AsyncFnOnce(&mut Sender) -> Result<T, AmqpError>,
+    {
+        let mut slot = self.0.lock().await;
+        let sender = slot.as_mut().ok_or(AmqpError::NotConnected)?;
+        f(sender).await
+    }
+
+    async fn close(&self, address: &str) -> Result<(), AmqpError> {
+        // Take the link out under the lock and close it outside: a publish that races the
+        // teardown then finds an empty slot instead of waiting on the close.
+        let taken = {
+            let mut slot = self.0.lock().await;
+            slot.take()
+        };
+        let Some(sender) = taken else {
+            return Ok(());
+        };
+        sender.close().await.map_err(|e| AmqpError::Detach {
+            address: address.to_owned(),
+            source: box_err(e),
+        })
+    }
+}
+
+impl std::fmt::Debug for SenderLink {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SenderLink").finish_non_exhaustive()
     }
 }
 
@@ -152,6 +236,7 @@ impl Broker for AmqpBroker {
                 Ok::<_, AmqpError>(Arc::new(AmqpCore {
                     conn: Mutex::new(conn),
                     session: Mutex::new(session),
+                    senders: Mutex::new(HashMap::new()),
                     closed: AtomicBool::new(false),
                     container_id,
                     link_seq: AtomicU64::new(0),
@@ -263,6 +348,12 @@ impl ConnectedBroker for ConnectedAmqpBroker {
 
     async fn shutdown(self) -> Result<(), Self::Error> {
         self.core.closed.store(true, Ordering::Release);
+        // Teardown runs inwards - links, then the session carrying them, then the connection -
+        // because each layer has to still be able to route the peer's answer to the one inside
+        // it. Every step runs even after an earlier one fails, so a stuck link cannot leave the
+        // connection open, and the report is the innermost failure: the outer ones after it are
+        // its consequences, not independent faults.
+        let senders_result = self.core.close_senders().await;
         let session_result = {
             let mut session = self.core.session.lock().await;
             session.end().await
@@ -271,8 +362,9 @@ impl ConnectedBroker for ConnectedAmqpBroker {
             let mut conn = self.core.conn.lock().await;
             conn.close().await
         };
-        conn_result.map_err(|e| AmqpError::Connect(box_err(e)))?;
+        senders_result?;
         session_result.map_err(|e| AmqpError::Session(box_err(e)))?;
+        conn_result.map_err(|e| AmqpError::Connect(box_err(e)))?;
         Ok(())
     }
 }
