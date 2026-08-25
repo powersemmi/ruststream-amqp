@@ -7,6 +7,7 @@
 //! transactional retirement (acks) and acquisition out.
 
 use std::collections::HashMap;
+use std::future::{Future, ready};
 use std::sync::Arc;
 
 use fe2o3_amqp::Sender;
@@ -39,8 +40,11 @@ pub struct AmqpTransactionalPublish;
 impl PublishPolicy<ConnectedAmqpBroker> for AmqpTransactionalPublish {
     type Live = AmqpTxnPublisher;
 
-    async fn pair(self, connected: &ConnectedAmqpBroker) -> Result<Self::Live, PairError> {
-        Ok(connected.transactional_publisher())
+    fn pair(
+        self,
+        connected: &ConnectedAmqpBroker,
+    ) -> impl Future<Output = Result<Self::Live, PairError>> {
+        ready(Ok(connected.transactional_publisher()))
     }
 }
 
