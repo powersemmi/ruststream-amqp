@@ -35,11 +35,16 @@
 
 pub use ruststream::prelude::*;
 
-// The capability manifest: `AmqpPublisher` implements `RequestReply` natively, over `reply-to`,
-// `correlation-id` and a dynamic receiver link. `Partitioned` is implemented too but is not here -
-// a handler reads a delivery's partition key through `IncomingMessage`, and never names that
-// trait in a bound; the same holds for `DescribeServer`, which the `asyncapi` feature consumes
-// rather than a service.
+// The capability manifest: the framework traits this broker's live forms implement, so the glob
+// names a capability exactly when the broker has it - both the traits a service writes in a bound
+// and the traits whose methods it calls on a value the runtime handed it. `AmqpPublisher` carries
+// `RequestReply` natively, over `reply-to`, `correlation-id` and a dynamic receiver link.
+//
+// `Partitioned` is the one exception, though `AmqpMessage` implements it: the core also surfaces
+// `partition_key` as a defaulted method on `IncomingMessage`, which this glob already carries, so
+// re-exporting the capability trait would make the natural `msg.partition_key()` ambiguous (E0034)
+// rather than reachable. `DescribeServer` is out for the ordinary reason - contract machinery the
+// `asyncapi` feature reads off the broker, never a name a service writes.
 pub use ruststream::RequestReply;
 
 pub use crate::{AmqpAddress, AmqpBroker, AmqpPublish};
