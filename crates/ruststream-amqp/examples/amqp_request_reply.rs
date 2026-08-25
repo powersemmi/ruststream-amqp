@@ -9,19 +9,12 @@
 use std::io;
 use std::time::Duration;
 
-// `OutgoingMessage` stays explicit: a service publishes through the builder, so naming the
-// message type says this code works a layer below it.
 use ruststream::OutgoingMessage;
 use ruststream_amqp::prelude::*;
 
 // --8<-- [start:responder]
-/// The responder. A reply goes to the address the requester named in `reply-to`, which the broker
-/// mints per request, so the fixed-destination `publish(..)` form does not fit: the reply rides an
-/// injected publisher and echoes `correlation-id` so a late reply cannot resolve a later request.
-///
-/// The slot names the capability it needs, not a publisher type: the concrete `AmqpPublisher`
-/// comes from the policy attached at the include site, so the same handler mounts unchanged on
-/// the in-process test broker.
+/// The responder. The reply goes to the address the requester named in `reply-to`, which the
+/// broker mints per request, and echoes `correlation-id` back.
 #[subscriber(AmqpAddress::queue("greeter"), raw)]
 async fn greet(name: &[u8], ctx: &mut Context<'_>, Out(out): Out<impl Publisher>) -> HandlerResult {
     let Some(reply_to) = ctx.headers().reply_to().map(str::to_owned) else {

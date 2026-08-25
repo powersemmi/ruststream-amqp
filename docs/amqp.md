@@ -15,14 +15,8 @@ serde = { version = "1", features = ["derive"] }
 ## The prelude
 
 `use ruststream_amqp::prelude::*;` is the one import a service file writes. It carries the broker,
-the address descriptor, the publish policies, and the framework's own prelude, which it re-exports:
-choosing this crate's prelude already says which broker the service runs on, so nothing is lost by
-letting the framework glob ride along.
-
-It also carries the framework capability traits this broker's live forms implement, which makes the
-glob a manifest of what the broker can do. A handler bounding `Out<impl RequestReply>` against a
-broker without native request/reply never receives the name at all, so the mistake surfaces as an
-unresolved import rather than as a bound that fails somewhere deeper.
+the address descriptor, the publish policies, the framework capability traits this broker
+implements, and the framework's own prelude.
 
 The policies arrive under their concept name, with the broker prefix stripped:
 
@@ -31,12 +25,9 @@ The policies arrive under their concept name, with the broker prefix stripped:
 | `AmqpPublish` | `Publish` |
 | `AmqpTransactionalPublish` (feature `transaction`) | `TransactionalPublish` |
 
-So a mount site reads `b.include(handler).publisher(Publish)` on every broker, and moving a service
-between brokers changes one import instead of every include site. A name being absent means this
-broker lacks the concept, not that it spells it differently. `Publish` here is the publish *policy*,
+A mount site then reads `b.include(handler).publisher(Publish)`. `Publish` is the publish policy,
 not the framework's publish builder of the same name that a handler enters with `message(..)` or
-`raw(..)`; the two never meet in a signature. The rule across the framework is that a policy ends in
-`Publish` and the capability trait of its live form ends in `Publisher`.
+`raw(..)`; a policy ends in `Publish` and the capability trait of its live form ends in `Publisher`.
 
 ## Capabilities
 
@@ -143,28 +134,22 @@ the broker at startup to produce an `AmqpPublisher`. It is also the broker's def
 policy, so a `#[subscriber(.., publish("dest"))]` handler mounted without an explicit publisher
 replies through it.
 
-The [prelude](#the-prelude) exports it under its concept name, `Publish`, which is what the mount
-sites below write; `AmqpPublish` stays available at the crate root for a file that mixes brokers
-and has to say which one it means. The same holds for `AmqpTransactionalPublish`, exported as
-`TransactionalPublish` wherever the `transaction` feature is on.
+The mount sites below write it as `Publish`, its [prelude](#the-prelude) name.
 
 Sender links are attached on first use and cached per address. A message the peer settles with
 anything other than `accept` (rejected, released, modified) is reported as
 `AmqpError::PublishNotAccepted`, so a broker-side refusal cannot pass as a successful publish.
 
-Core 0.7 unified publishing behind one builder: every publish surface is entered with
-`message(&value)` for a value or `raw(&bytes)` for a payload the service already holds encoded, and
-a bare `AmqpPublisher` reaches those entry points through the core's blanket `PublishExt`, so a
-handler slot, application state, and a lifecycle hook all publish with the same call shape.
+Every publish surface is entered with `message(&value)` for a value or `raw(&bytes)` for a payload
+the service already holds encoded, and a bare `AmqpPublisher` reaches those entry points through
+the framework's blanket `PublishExt`.
 
-A broker crate that needs a per-message argument of its own puts it on the publisher, ahead of the
-builder entry point: a step like `publisher.with_x(v)` returns a small adapter that implements
-`Publisher`, captures the argument, and stamps it onto the `OutgoingMessage` inside its own
-`publish` before delegating, so the argument rides the ordinary chain
-(`publisher.with_x(v).message(&order).publish()`). This crate ships no such step. Its per-message
-vocabulary is the AMQP properties section, and the core's well-known headers (`content-type`,
-`correlation-id`, `reply-to`, `message-id`, and the partition key as `group-id`) already name every
-field the mapping carries.
+A per-message argument of a broker's own goes on the publisher, ahead of the builder entry point:
+a step like `publisher.with_x(v)` returns an adapter that implements `Publisher`, captures the
+argument, and stamps it onto the `OutgoingMessage` inside its own `publish` before delegating, so
+the argument rides the ordinary chain (`publisher.with_x(v).message(&order).publish()`). This crate
+ships no such step; its per-message vocabulary is the AMQP properties section, which the framework's
+well-known headers already cover.
 
 ## Request/reply
 
@@ -181,12 +166,11 @@ publisher arrives live, already paired with the connected broker:
 --8<-- "crates/ruststream-amqp/examples/amqp_request_reply.rs:request"
 ```
 
-The responder end reads the reply address the requester named and publishes the answer there. The
-address is minted per request, so the fixed-destination `publish(..)` reply form does not fit: the
-reply rides an injected publisher, and echoes `correlation-id` so a late reply cannot resolve a
-later request. The slot names the capability it needs (`Out<impl Publisher>`), never a broker
-publisher type: `AmqpPublisher` is inferred from the `AmqpPublish` policy attached at the include
-site, so the same handler mounts unchanged on the in-process test broker.
+The responder end reads the reply address the requester named and publishes the answer there,
+echoing `correlation-id` back. The address is minted per request, so the reply rides an injected
+publisher rather than the fixed-destination `publish(..)` form. The slot names the capability it
+needs (`Out<impl Publisher>`); `AmqpPublisher` is inferred from the policy attached at the include
+site.
 
 ```rust
 --8<-- "crates/ruststream-amqp/examples/amqp_request_reply.rs:responder"

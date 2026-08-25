@@ -1,16 +1,14 @@
 //! Transactional publishing, behind the `transaction` feature.
 //!
 //! A batch of invoices becomes visible on the broker atomically: nothing is readable until the
-//! commit, and an abort discards the whole batch. The transactional policy is a distinct type, so
-//! only a publisher paired from it carries the transactional surface.
+//! commit, and an abort discards the whole batch. Only a publisher paired from the transactional
+//! policy carries the transactional surface.
 //!
 //! Run a broker first (`just brokers-up`), then:
 //! `cargo run --example amqp_transaction --features transaction -- run`
 
 use std::io;
 
-// `OutgoingMessage` stays explicit: a service publishes through the builder, so naming the
-// message type says this code works a layer below it.
 use ruststream::OutgoingMessage;
 use ruststream_amqp::prelude::*;
 use serde::Deserialize;

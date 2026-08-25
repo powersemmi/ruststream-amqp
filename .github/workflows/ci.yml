@@ -20,9 +20,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The floor, what users build with, and the early warning. Releases in between add
-        # nothing: what fails on a later one fails on the floor too. Keep the floor in step with
-        # `rust-version` in the workspace manifest; the step below fails the leg if it drifts.
+        # Keep the floor in step with `rust-version` in the workspace manifest; the step below
+        # fails the leg if it drifts.
         toolchain: [stable, beta, "1.88"]
     # Installing a toolchain does not select it: `rust-toolchain.toml` outranks the rustup
     # default the install action sets, so without this the floor leg silently ran on stable.
@@ -153,8 +152,7 @@ jobs:
       # `tracing-attributes` declares `syn = "1.0"` but calls `base10_parse`, added in 1.0.5; the
       # selector is version-qualified because several major lines of syn are in the graph.
       #
-      # Nothing is pinned on the core's account: ruststream declares the floors it actually needs,
-      # so `tokio` and `tracing` resolve honestly from its manifest.
+      # ruststream declares its own floors, so nothing here pins on its account.
       - name: Pin dependencies whose declared bounds are too loose
         run: |
           cargo update -p serde_repr --precise 0.1.12
@@ -165,10 +163,9 @@ jobs:
       # Minimum dependencies on the minimum compiler: the worst case a user can assemble.
       # Resolution above needs nightly, so only this step drops to the floor.
       #
-      # Every feature except the two TLS pass-throughs: `rustls` and `native-tls` are one-line
-      # forwards to fe2o3-amqp and this crate declares no TLS dependency of its own, so their
-      # minimal graphs measure the vendors' floors rather than these bounds - at the cost of
-      # building two C crypto stacks, at their oldest releases, on every run.
+      # Every feature except the two TLS pass-throughs: `rustls` and `native-tls` forward to
+      # fe2o3-amqp and this crate declares no TLS dependency of its own, so their minimal graphs
+      # measure the vendors' floors rather than these bounds.
       - name: Build and test against minimal versions
         env:
           RUSTUP_TOOLCHAIN: "1.88"

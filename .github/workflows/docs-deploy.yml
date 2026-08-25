@@ -1,15 +1,11 @@
 name: Deploy docs
 
 on:
-  # The published site tracks releases, not main. A docs change merged today describes the
-  # crate that will ship, not the one a reader has installed, so publishing it immediately puts
-  # instructions for unreleased API in front of everyone on the current version. Deploying from
-  # the release keeps each documented version next to the code it documents; `docs.yml` still
-  # builds and lints every docs change on its PR, so nothing reaches main unchecked.
+  # Deliberately not on push to main: publishing a merged docs change immediately would document
+  # unreleased API to readers on the current version. `docs.yml` still checks every docs PR.
   release:
     types: [published]
-  # The escape hatch: a typo fix or a broken link worth publishing between releases, run
-  # against the tag it belongs to.
+  # The escape hatch between releases, run against the tag it belongs to.
   workflow_dispatch:
     inputs:
       ref:

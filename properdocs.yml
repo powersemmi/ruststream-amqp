@@ -74,12 +74,9 @@ hooks:
 plugins:
   - search
   # Versioned docs are published with `mike` (see the Docs workflow and the version switcher).
-  # Each translation is a tree of its own under `docs/<locale>/`, mirroring the English paths.
-  # English stays at the docs root: a file outside a locale folder is the default language.
-  #
-  # English is normative; a page with no translation yet falls back to the English text inside
-  # the localized site rather than disappearing from it, which is what lets translations land
-  # page by page. Nothing is translated yet, so every localized page is currently the fallback.
+  # Each translation is a tree under `docs/<locale>/`, mirroring the English paths; a file outside
+  # a locale folder is English. `fallback_to_default` serves the English text for a page with no
+  # translation yet, so translations can land page by page.
   - i18n:
       docs_structure: folder
       fallback_to_default: true
