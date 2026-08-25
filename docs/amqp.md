@@ -12,6 +12,32 @@ ruststream-amqp = "0.7"
 serde = { version = "1", features = ["derive"] }
 ```
 
+## The prelude
+
+`use ruststream_amqp::prelude::*;` is the one import a service file writes. It carries the broker,
+the address descriptor, the publish policies, and the framework's own prelude, which it re-exports:
+choosing this crate's prelude already says which broker the service runs on, so nothing is lost by
+letting the framework glob ride along.
+
+It also carries the framework capability traits this broker's live forms implement, which makes the
+glob a manifest of what the broker can do. A handler bounding `Out<impl RequestReply>` against a
+broker without native request/reply never receives the name at all, so the mistake surfaces as an
+unresolved import rather than as a bound that fails somewhere deeper.
+
+The policies arrive under their concept name, with the broker prefix stripped:
+
+| Crate root | In the prelude |
+|---|---|
+| `AmqpPublish` | `Publish` |
+| `AmqpTransactionalPublish` (feature `transaction`) | `TransactionalPublish` |
+
+So a mount site reads `b.include(handler).publisher(Publish)` on every broker, and moving a service
+between brokers changes one import instead of every include site. A name being absent means this
+broker lacks the concept, not that it spells it differently. `Publish` here is the publish *policy*,
+not the framework's publish builder of the same name that a handler enters with `message(..)` or
+`raw(..)`; the two never meet in a signature. The rule across the framework is that a policy ends in
+`Publish` and the capability trait of its live form ends in `Publisher`.
+
 ## Capabilities
 
 The framework's optional capability traits, and what this broker implements natively:
@@ -116,6 +142,11 @@ constructed anywhere (in a router, in configuration, at a mount site) and the ru
 the broker at startup to produce an `AmqpPublisher`. It is also the broker's default publish
 policy, so a `#[subscriber(.., publish("dest"))]` handler mounted without an explicit publisher
 replies through it.
+
+The [prelude](#the-prelude) exports it under its concept name, `Publish`, which is what the mount
+sites below write; `AmqpPublish` stays available at the crate root for a file that mixes brokers
+and has to say which one it means. The same holds for `AmqpTransactionalPublish`, exported as
+`TransactionalPublish` wherever the `transaction` feature is on.
 
 Sender links are attached on first use and cached per address. A message the peer settles with
 anything other than `accept` (rejected, released, modified) is reported as

@@ -16,6 +16,24 @@
 //! rather than a bound that fails deeper in. Globbing two broker preludes into one file stays
 //! safe: the same core item arriving through both paths unifies, and the compiler checks that.
 //!
+//! # Policy names
+//!
+//! The policies arrive under their concept name, with the broker prefix stripped:
+//! [`Publish`] is `AmqpPublish` and [`TransactionalPublish`] is `AmqpTransactionalPublish`. A
+//! mount site therefore reads `b.include(handler).publisher(Publish)` on every broker, and moving
+//! a service between brokers is a change of one import rather than of every include site. This is
+//! the manifest principle applied to the policy layer: a concept is here exactly when this broker
+//! supports it, so the absence of a name means the broker lacks the concept, not that it spells it
+//! differently. The prefixed originals stay at the crate root, for a file that mixes two brokers
+//! and has to say which `Publish` it means.
+//!
+//! [`Publish`] is the publish *policy* - a declaration the runtime pairs with the connected
+//! broker - not the framework's publish builder of the same name, which a handler enters with
+//! `message(..)` or `raw(..)` and never names. The two never meet in a signature. Across the
+//! framework a policy ends in `Publish` and the capability trait of its live form ends in
+//! `Publisher`, so [`TransactionalPublish`] is what a mount site attaches and
+//! `TransactionalPublisher` is what the resulting handle implements.
+//!
 //! # Examples
 //!
 //! ```
@@ -30,7 +48,9 @@
 //!
 //! let broker = AmqpBroker::new("amqp://localhost:5672");
 //! let orders = AmqpAddress::queue("orders").credit(64);
-//! # let _ = (handle, broker, orders, AmqpPublish);
+//! // The publish policy under its concept name, the same one every broker's prelude offers.
+//! let policy = Publish;
+//! # let _ = (handle, broker, orders, policy);
 //! ```
 
 pub use ruststream::prelude::*;
@@ -47,12 +67,14 @@ pub use ruststream::prelude::*;
 // `asyncapi` feature reads off the broker, never a name a service writes.
 pub use ruststream::RequestReply;
 
-pub use crate::{AmqpAddress, AmqpBroker, AmqpPublish};
+// The broker and its one descriptor family keep their own names; the policies arrive under the
+// concept name every broker's prelude uses, so a mount site does not spell the transport.
+pub use crate::{AmqpAddress, AmqpBroker, AmqpPublish as Publish};
 
-// Gated with the capability itself: without the feature there is no transactional publisher, so
-// the manifest must not name the trait either.
+// Gated with the capability itself: without the feature there is neither a transactional
+// publisher nor a policy that pairs into one, so the manifest names neither.
 #[cfg(feature = "transaction")]
-pub use crate::AmqpTransactionalPublish;
+pub use crate::AmqpTransactionalPublish as TransactionalPublish;
 #[cfg(feature = "transaction")]
 pub use ruststream::TransactionalPublisher;
 

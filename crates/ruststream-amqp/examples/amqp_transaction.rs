@@ -35,7 +35,7 @@ fn app() -> impl App {
 
             // --8<-- [start:transaction]
             b.after_startup(
-                AmqpTransactionalPublish,
+                TransactionalPublish,
                 async move |publisher| -> io::Result<()> {
                     publisher
                         .begin_transaction()
