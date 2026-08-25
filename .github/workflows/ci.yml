@@ -143,20 +143,24 @@ jobs:
       - name: Resolve minimal versions
         run: cargo +nightly update -Z minimal-versions
 
-      # Each entry is a third-party manifest whose declared bound is lower than what its own code
-      # needs; drop an entry when that crate's floor moves. `serde_repr` 0.1.0 (via
-      # fe2o3-amqp-types) declares `quote = "0.6"` but calls a macro that release does not export.
-      # `slab` 0.4.2 and `url` 2.0 are what fe2o3-amqp's bounds admit, below the `try_remove` and
-      # `TryFrom<&str> for Url` this crate's transport path reaches for. `tokio` and `tracing` are
-      # the core's own bounds: ruststream declares `tokio = "1"` / `tracing = "0.1"` while using
-      # `watch::Sender: Clone` and `Option<&str>: Value`, neither of which the floors carry.
+      # Each entry names a third-party manifest whose declared bound is lower than what its own
+      # code needs, pinned to the first version that builds; drop an entry when that crate's floor
+      # moves, and add one here when a new bound turns up.
+      #
+      # `serde_repr` 0.1.0 (via fe2o3-amqp-types) declares `quote = "0.6"` but calls a macro that
+      # release does not export. `slab` 0.4.2 and `url` 2.0 are what fe2o3-amqp's bounds admit,
+      # below the `try_remove` and `TryFrom<&str> for Url` this crate's transport path reaches for.
+      # `tracing-attributes` declares `syn = "1.0"` but calls `base10_parse`, added in 1.0.5; the
+      # selector is version-qualified because several major lines of syn are in the graph.
+      #
+      # Nothing is pinned on the core's account: ruststream declares the floors it actually needs,
+      # so `tokio` and `tracing` resolve honestly from its manifest.
       - name: Pin dependencies whose declared bounds are too loose
         run: |
           cargo update -p serde_repr --precise 0.1.12
           cargo update -p slab --precise 0.4.4
           cargo update -p url --precise 2.2.0
-          cargo update -p tokio --precise 1.42.0
-          cargo update -p tracing --precise 0.1.35
+          cargo update -p syn@1.0.0 --precise 1.0.5
 
       # Minimum dependencies on the minimum compiler: the worst case a user can assemble.
       # Resolution above needs nightly, so only this step drops to the floor.
