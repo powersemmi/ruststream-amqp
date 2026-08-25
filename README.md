@@ -50,9 +50,7 @@ ruststream-amqp = { version = "0.7", features = ["testing"] }
 ## Write a service
 
 ```rust
-use ruststream::runtime::{App, AppInfo, HandlerResult, RustStream};
-use ruststream::subscriber;
-use ruststream_amqp::{AmqpAddress, AmqpBroker};
+use ruststream_amqp::prelude::*;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]

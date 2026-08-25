@@ -9,9 +9,10 @@
 use std::io;
 use std::time::Duration;
 
-use ruststream::runtime::{App, AppInfo, HandlerResult, Out, RustStream};
-use ruststream::{Headers, IncomingMessage, OutgoingMessage, Publisher, RequestReply, subscriber};
-use ruststream_amqp::{AmqpAddress, AmqpBroker, AmqpPublish};
+// `OutgoingMessage` stays explicit: a service publishes through the builder, so naming the
+// message type says this code works a layer below it.
+use ruststream::OutgoingMessage;
+use ruststream_amqp::prelude::*;
 
 // --8<-- [start:responder]
 /// The responder. A reply goes to the address the requester named in `reply-to`, which the broker

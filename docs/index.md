@@ -16,6 +16,9 @@ ruststream-amqp = "0.7"
 serde = { version = "1", features = ["derive"] }
 ```
 
+`ruststream_amqp::prelude::*` is the one import a service file writes: it carries the broker, the
+address descriptor, and the publish policies, and re-exports the framework's own prelude.
+
 ```rust
 --8<-- "crates/ruststream-amqp/examples/amqp_service.rs:app"
 ```

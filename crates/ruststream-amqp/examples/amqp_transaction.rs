@@ -9,9 +9,10 @@
 
 use std::io;
 
-use ruststream::runtime::{App, AppInfo, HandlerResult, RustStream};
-use ruststream::{OutgoingMessage, Publisher, TransactionalPublisher, subscriber};
-use ruststream_amqp::{AmqpAddress, AmqpBroker, AmqpTransactionalPublish};
+// `OutgoingMessage` stays explicit: a service publishes through the builder, so naming the
+// message type says this code works a layer below it.
+use ruststream::OutgoingMessage;
+use ruststream_amqp::prelude::*;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]

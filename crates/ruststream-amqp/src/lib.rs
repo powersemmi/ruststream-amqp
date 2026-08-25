@@ -21,6 +21,7 @@ mod broker;
 mod config;
 mod error;
 mod message;
+pub mod prelude;
 mod publisher;
 mod subscriber;
 #[cfg(feature = "testing")]

@@ -3,9 +3,7 @@
 //! Run a broker first (`just brokers-up`), then:
 //! `cargo run --example amqp_service -- run`
 
-use ruststream::runtime::{App, AppInfo, HandlerResult, RustStream};
-use ruststream::subscriber;
-use ruststream_amqp::{AmqpAddress, AmqpBroker};
+use ruststream_amqp::prelude::*;
 use serde::Deserialize;
 
 // --8<-- [start:handler]
