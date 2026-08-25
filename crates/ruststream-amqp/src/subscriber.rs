@@ -211,10 +211,8 @@ async fn pump(mut p: Pump) {
         apply(&p.receiver, cmd).await;
     }
 
-    if !fatal {
-        if let Err((_, err)) = p.receiver.detach().await {
-            tracing::debug!(address = %p.address, error = %err, "amqp receiver detach failed");
-        }
+    if !fatal && let Err((_, err)) = p.receiver.detach().await {
+        tracing::debug!(address = %p.address, error = %err, "amqp receiver detach failed");
     }
     if let Err(err) = p.session.end().await {
         tracing::debug!(address = %p.address, error = %err, "amqp session end failed");
