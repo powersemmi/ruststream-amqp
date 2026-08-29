@@ -20,7 +20,7 @@ async fn greet(name: &[u8], ctx: &mut Context<'_>, Out(out): Out<impl Publisher>
     let Some(reply_to) = ctx.headers().reply_to().map(str::to_owned) else {
         return HandlerResult::drop();
     };
-    let mut headers = Headers::new();
+    let mut headers = HeaderMap::new();
     if let Some(correlation_id) = ctx.headers().correlation_id() {
         headers.insert("correlation-id", correlation_id.to_owned());
     }

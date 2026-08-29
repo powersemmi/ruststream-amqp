@@ -11,7 +11,7 @@ use fe2o3_amqp_types::messaging::{
     ApplicationProperties, Body, Data, Message, MessageId, Properties,
 };
 use fe2o3_amqp_types::primitives::{Binary, SimpleValue, Symbol, Value};
-use ruststream::{AckError, Headers, IncomingMessage, OutgoingMessage, Partitioned};
+use ruststream::{AckError, HeaderMap, IncomingMessage, OutgoingMessage, Partitioned};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::error::AmqpError;
@@ -52,7 +52,7 @@ pub(crate) type SettleSender = mpsc::UnboundedSender<SettleCmd>;
 /// report [`AckError::Unsupported`] instead of pretending.
 pub struct AmqpMessage {
     payload: Bytes,
-    headers: Headers,
+    headers: HeaderMap,
     /// `None` when the delivery is already settled (at-most-once, request/reply replies).
     settle: Option<SettleHandle>,
 }
@@ -74,7 +74,7 @@ impl std::fmt::Debug for AmqpMessage {
 impl AmqpMessage {
     pub(crate) fn unsettled(
         payload: Bytes,
-        headers: Headers,
+        headers: HeaderMap,
         tx: SettleSender,
         info: DeliveryInfo,
     ) -> Self {
@@ -85,7 +85,7 @@ impl AmqpMessage {
         }
     }
 
-    pub(crate) fn settled(payload: Bytes, headers: Headers) -> Self {
+    pub(crate) fn settled(payload: Bytes, headers: HeaderMap) -> Self {
         Self {
             payload,
             headers,
@@ -118,7 +118,7 @@ impl IncomingMessage for AmqpMessage {
         &self.payload
     }
 
-    fn headers(&self) -> &Headers {
+    fn headers(&self) -> &HeaderMap {
         &self.headers
     }
 
@@ -193,8 +193,8 @@ pub(crate) fn to_amqp_message(msg: &OutgoingMessage<'_>) -> Message<Data> {
 }
 
 /// Extracts `RustStream` headers from a delivered `AMQP` message.
-pub(crate) fn headers_from_amqp<B>(message: &Message<B>) -> Headers {
-    let mut headers = Headers::new();
+pub(crate) fn headers_from_amqp<B>(message: &Message<B>) -> HeaderMap {
+    let mut headers = HeaderMap::new();
     if let Some(properties) = &message.properties {
         if let Some(content_type) = &properties.content_type {
             headers.insert("content-type", content_type.to_string());
@@ -303,7 +303,7 @@ mod tests {
 
     #[test]
     fn well_known_headers_ride_the_properties_section() {
-        let mut headers = Headers::new();
+        let mut headers = HeaderMap::new();
         headers.insert("content-type", "application/json");
         headers.insert("correlation-id", "corr-1");
         headers.insert("reply-to", "replies");
@@ -337,7 +337,7 @@ mod tests {
 
     #[test]
     fn headers_round_trip_through_the_amqp_sections() {
-        let mut headers = Headers::new();
+        let mut headers = HeaderMap::new();
         headers.insert("content-type", "application/json");
         headers.insert("correlation-id", "corr-1");
         headers.insert(PARTITION_KEY_HEADER, "user-42");
