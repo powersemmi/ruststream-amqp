@@ -59,9 +59,9 @@ struct Order {
 }
 
 #[subscriber(AmqpAddress::queue("orders"))]
-async fn handle(order: &Order) -> HandlerResult {
+async fn handle(order: &Order) -> HandlerOutcome {
     println!("got order {}", order.id);
-    HandlerResult::Ack
+    HandlerOutcome::ack()
 }
 
 #[ruststream::app]
@@ -75,7 +75,7 @@ The descriptor carries the AMQP-specific options inline in the decorator:
 
 ```rust
 #[subscriber(AmqpAddress::queue("orders").credit(64))]
-async fn handle(order: &Order) -> HandlerResult { /* ... */ }
+async fn handle(order: &Order) -> HandlerOutcome { /* ... */ }
 ```
 
 ## Test it

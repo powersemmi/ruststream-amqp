@@ -18,16 +18,13 @@ serde = { version = "1", features = ["derive"] }
 the address descriptor, the publish policies, the framework capability traits this broker
 implements, and the framework's own prelude.
 
-The policies arrive under their concept name, with the broker prefix stripped:
-
-| Crate root | In the prelude |
-|---|---|
-| `AmqpPublish` | `Publish` |
-| `AmqpTransactionalPublish` (feature `transaction`) | `TransactionalPublish` |
-
-A mount site then reads `b.include(handler).publisher(Publish)`. `Publish` is the publish policy,
-not the framework's publish builder of the same name that a handler enters with `message(..)` or
-`raw(..)`; a policy ends in `Publish` and the capability trait of its live form ends in `Publisher`.
+The policies keep their crate-root names, so a mount site reads
+`b.include(handler).publisher(AmqpPublish)`. The unprefixed concept names belong to the framework's
+prelude: `Publish` there is the slot capability a manual handler bounds its `Out` entry with, and a
+policy exported under that name would shadow it - silently, since an explicit re-export wins over
+a glob. A policy ends in `Publish` and the capability trait of its live form ends in `Publisher`,
+so `AmqpTransactionalPublish` is what a mount site attaches and `TransactionalPublisher` is what
+the resulting handle implements.
 
 ## Capabilities
 
@@ -43,6 +40,11 @@ The framework's optional capability traits, and what this broker implements nati
 | `Partitioned` | yes | [the partition key rides the `group-id` property](#headers-and-the-partition-key) |
 | `Seekable` and `Positioned` | no | the queue position belongs to the broker; the protocol exposes no client-addressable offset to seek to |
 | `DescribeServer` | yes | reports the connection host and the `amqp` protocol for the framework's server description |
+
+A delivery carries no broker metadata beyond its own sections, so the per-delivery context stays
+the framework's `()` default and this crate publishes no `Ctx` keys. What an AMQP message says
+about itself lives in the `properties` and `application-properties` sections, which arrive as
+headers and are read with `ctx.headers()` or the framework's `Headers<T>` extractor.
 
 ## The lifecycle
 
@@ -114,16 +116,16 @@ The plain string form `#[subscriber("orders")]` also works: a by-name source res
 
 Settlement maps onto the protocol's dispositions, with no invented middle layer:
 
-| Handler result | Disposition | Effect |
+| Handler outcome | Disposition | Effect |
 | --- | --- | --- |
-| `HandlerResult::Ack` | `accept` | the delivery is done, the broker drops it |
-| `HandlerResult::retry()` | `release` | the delivery returns to the broker for redelivery |
-| `HandlerResult::drop()` | `reject` | terminal; the broker's dead-letter policy decides |
+| `HandlerOutcome::ack()` | `accept` | the delivery is done, the broker drops it |
+| `HandlerOutcome::retry()` | `release` | the delivery returns to the broker for redelivery |
+| `HandlerOutcome::drop()` | `reject` | terminal; the broker's dead-letter policy decides |
 
 On an at-most-once subscription the deliveries arrive already settled, so `ack` and `nack` report
 `AckError::Unsupported` instead of a settlement that never reaches the wire.
 
-AMQP 1.0 has no protocol-level delayed redelivery, so `HandlerResult::retry_after(delay)` falls
+AMQP 1.0 has no protocol-level delayed redelivery, so `HandlerOutcome::retry_after(delay)` falls
 back to the runtime's broker-agnostic deferred re-publish rather than a broker-side timer.
 
 ## Publishing
@@ -134,15 +136,16 @@ the broker at startup to produce an `AmqpPublisher`. It is also the broker's def
 policy, so a `#[subscriber(.., publish("dest"))]` handler mounted without an explicit publisher
 replies through it.
 
-The mount sites below write it as `Publish`, its [prelude](#the-prelude) name.
-
 Sender links are attached on first use and cached per address. A message the peer settles with
 anything other than `accept` (rejected, released, modified) is reported as
 `AmqpError::PublishNotAccepted`, so a broker-side refusal cannot pass as a successful publish.
 
-Every publish surface is entered with `message(&value)` for a value or `raw(&bytes)` for a payload
-the service already holds encoded, and a bare `AmqpPublisher` reaches those entry points through
-the framework's blanket `PublishExt`.
+Every publish surface is entered with `message(&value)`, and the wire follows the value's type: a
+`serde::Serialize` value encodes with the resolved codec, a `#[derive(Serialized)]` newtype carries
+bytes the service already holds and they leave as they are. Bytes therefore travel under a name of
+their own rather than as an anonymous payload, which is also what puts them in the generated
+document. A bare `AmqpPublisher` reaches that entry point through the framework's blanket
+`PublishExt`.
 
 A per-message argument of a broker's own goes on the publisher, ahead of the builder entry point:
 a step like `publisher.with_x(v)` returns an adapter that implements `Publisher`, captures the
@@ -171,6 +174,12 @@ echoing `correlation-id` back. The address is minted per request, so the reply r
 publisher rather than the fixed-destination `publish(..)` form. The slot names the capability it
 needs (`Out<impl Publisher>`); `AmqpPublisher` is inferred from the policy attached at the include
 site.
+
+Both ends of the exchange are byte-shaped here, and the payload types say so: the request arrives
+as a `#[derive(Deserialized)]` view of the delivery's bytes, so no codec runs on it, and the
+greeting the handler builds is a `#[derive(Outgoing, Serialized)]` newtype, so it leaves
+byte-for-byte. The derive carries no `name`, which is what opens the `to(..)` position the
+per-request reply address fills.
 
 ```rust
 --8<-- "crates/ruststream-amqp/examples/amqp_request_reply.rs:responder"
