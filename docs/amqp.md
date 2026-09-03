@@ -18,13 +18,22 @@ serde = { version = "1", features = ["derive"] }
 the address descriptor, the publish policies, the framework capability traits this broker
 implements, and the framework's own prelude.
 
-The policies keep their crate-root names, so a mount site reads
-`b.include(handler).publisher(AmqpPublish)`. The unprefixed concept names belong to the framework's
-prelude: `Publish` there is the slot capability a manual handler bounds its `Out` entry with, and a
-policy exported under that name would shadow it - silently, since an explicit re-export wins over
-a glob. A policy ends in `Publish` and the capability trait of its live form ends in `Publisher`,
-so `AmqpTransactionalPublish` is what a mount site attaches and `TransactionalPublisher` is what
-the resulting handle implements.
+The imports follow the two vocabularies a service is written in. A handler body names
+capabilities, so it imports `ruststream::prelude::*` alone and bounds its slots with the broker
+capability traits (`Out<impl Publisher>`, `Out<impl TransactionalPublisher>`,
+`Out<impl RequestReply>`); the concrete publisher arrives from the mount site. A routes file names
+policies, so it imports this glob, where they arrive with the broker prefix stripped:
+
+| Crate root | In the prelude |
+|---|---|
+| `AmqpPublish` | `Publish` |
+| `AmqpTransactionalPublish` (feature `transaction`) | `TransactionalPublish` |
+
+A mount site therefore reads `b.include(handler).publisher(Publish)` on every broker, and moving a
+service between brokers is a change of one import rather than of every include site. The two
+vocabularies never share a name: a policy ends in `Publish`, and the capability trait of its live
+form ends in `Publisher`. The prefixed originals stay exported too, for a file that globs two
+broker preludes and has to say which `Publish` it means.
 
 ## Capabilities
 
@@ -134,7 +143,7 @@ A publisher is a policy plus the live connection. `AmqpPublish` holds no connect
 constructed anywhere (in a router, in configuration, at a mount site) and the runtime pairs it with
 the broker at startup to produce an `AmqpPublisher`. It is also the broker's default publish
 policy, so a `#[subscriber(.., publish("dest"))]` handler mounted without an explicit publisher
-replies through it.
+replies through it. The mount sites below write it as `Publish`, its [prelude](#the-prelude) name.
 
 Sender links are attached on first use and cached per address. A message the peer settles with
 anything other than `accept` (rejected, released, modified) is reported as

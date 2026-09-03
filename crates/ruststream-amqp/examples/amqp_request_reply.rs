@@ -61,9 +61,9 @@ fn app() -> impl App {
         AmqpBroker::new("amqp://artemis:artemis@localhost:5672")
             .container_id("request-reply-example"),
         |b| {
-            b.include(greet).publisher(AmqpPublish);
+            b.include(greet).publisher(Publish);
             // --8<-- [start:request]
-            b.after_startup(AmqpPublish, async move |publisher| -> io::Result<()> {
+            b.after_startup(Publish, async move |publisher| -> io::Result<()> {
                 let reply = publisher
                     .request(
                         OutgoingMessage::new("greeter", b"world".as_slice()),

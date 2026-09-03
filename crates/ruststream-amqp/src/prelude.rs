@@ -4,18 +4,24 @@
 //! broker implements, and the framework's own prelude. Two broker preludes may be globbed into
 //! one file; items they share unify.
 //!
-//! # Policy names
+//! # Two vocabularies
 //!
-//! The policies keep their crate-root names, [`AmqpPublish`] and (with the `transaction` feature)
-//! `AmqpTransactionalPublish`. The unprefixed concept names belong to the framework's prelude:
-//! `Publish` there is the slot capability a manual handler bounds its `Out` entry with, and a
-//! policy exported here under that name would shadow it - silently, since an explicit re-export
-//! wins over a glob - leaving that bound unwritable through this glob. The prefix therefore stays
-//! on every policy, not only on the ones the framework already names.
+//! A handler body names capabilities, and imports `ruststream::prelude::*` alone: a slot is bound
+//! with the broker capability trait the body needs (`Out<impl Publisher>`,
+//! `Out<impl TransactionalPublisher>`, `Out<impl RequestReply>`), and the concrete publisher
+//! arrives from the mount site. A routes file names policies, and imports this glob, where they
+//! arrive with the broker prefix stripped:
 //!
-//! A policy ends in `Publish` and the capability trait of its live form ends in `Publisher`, so
-//! `AmqpTransactionalPublish` is what a mount site attaches and `TransactionalPublisher` is what
-//! the resulting handle implements.
+//! | Crate root | Here |
+//! |---|---|
+//! | [`AmqpPublish`] | [`Publish`] |
+//! | `AmqpTransactionalPublish` (feature `transaction`) | `TransactionalPublish` |
+//!
+//! A mount site therefore reads `b.include(handler).publisher(Publish)` on every broker, and
+//! moving a service between brokers is a change of one import rather than of every include site.
+//! The two vocabularies never share a name: a policy ends in `Publish`, and the capability trait
+//! of its live form ends in `Publisher`. The prefixed originals stay exported here as well, for a
+//! file that globs two broker preludes and has to say which `Publish` it means.
 //!
 //! # Examples
 //!
@@ -29,7 +35,7 @@
 //!
 //! let broker = AmqpBroker::new("amqp://localhost:5672");
 //! let orders = AmqpAddress::queue("orders").credit(64);
-//! let policy = AmqpPublish;
+//! let policy = Publish;
 //! # let _ = (handle, broker, orders, policy);
 //! ```
 
@@ -40,9 +46,9 @@ pub use ruststream::prelude::*;
 // adding the capability trait makes the plain `msg.partition_key()` ambiguous (E0034).
 pub use ruststream::RequestReply;
 
-pub use crate::{AmqpAddress, AmqpBroker, AmqpPublish};
+pub use crate::{AmqpAddress, AmqpBroker, AmqpPublish, AmqpPublish as Publish};
 
 #[cfg(feature = "transaction")]
-pub use crate::AmqpTransactionalPublish;
+pub use crate::{AmqpTransactionalPublish, AmqpTransactionalPublish as TransactionalPublish};
 #[cfg(feature = "transaction")]
 pub use ruststream::TransactionalPublisher;
