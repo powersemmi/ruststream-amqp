@@ -6,31 +6,30 @@
 //!
 //! # Policy names
 //!
-//! The policies arrive under their concept name, with the broker prefix stripped:
+//! The policies keep their crate-root names, [`AmqpPublish`] and (with the `transaction` feature)
+//! `AmqpTransactionalPublish`. The unprefixed concept names belong to the framework's prelude:
+//! `Publish` there is the slot capability a manual handler bounds its `Out` entry with, and a
+//! policy exported here under that name would shadow it - silently, since an explicit re-export
+//! wins over a glob - leaving that bound unwritable through this glob. The prefix therefore stays
+//! on every policy, not only on the ones the framework already names.
 //!
-//! | Crate root | Here |
-//! |---|---|
-//! | `AmqpPublish` | [`Publish`] |
-//! | `AmqpTransactionalPublish` (feature `transaction`) | [`TransactionalPublish`] |
-//!
-//! [`Publish`] is the publish policy, not the framework's publish builder of the same name that a
-//! handler enters with `message(..)` or `raw(..)`. A policy ends in `Publish` and the capability
-//! trait of its live form ends in `Publisher`, so [`TransactionalPublish`] is what a mount site
-//! attaches and `TransactionalPublisher` is what the resulting handle implements.
+//! A policy ends in `Publish` and the capability trait of its live form ends in `Publisher`, so
+//! `AmqpTransactionalPublish` is what a mount site attaches and `TransactionalPublisher` is what
+//! the resulting handle implements.
 //!
 //! # Examples
 //!
 //! ```
 //! use ruststream_amqp::prelude::*;
 //!
-//! async fn handle(order: &[u8], ctx: &mut Context<'_>) -> HandlerResult {
+//! async fn handle(order: &str, ctx: &mut Context<'_>) -> HandlerOutcome {
 //!     let _ = (order.len(), ctx.name());
-//!     HandlerResult::Ack
+//!     HandlerOutcome::ack()
 //! }
 //!
 //! let broker = AmqpBroker::new("amqp://localhost:5672");
 //! let orders = AmqpAddress::queue("orders").credit(64);
-//! let policy = Publish;
+//! let policy = AmqpPublish;
 //! # let _ = (handle, broker, orders, policy);
 //! ```
 
@@ -41,9 +40,9 @@ pub use ruststream::prelude::*;
 // adding the capability trait makes the plain `msg.partition_key()` ambiguous (E0034).
 pub use ruststream::RequestReply;
 
-pub use crate::{AmqpAddress, AmqpBroker, AmqpPublish as Publish};
+pub use crate::{AmqpAddress, AmqpBroker, AmqpPublish};
 
 #[cfg(feature = "transaction")]
-pub use crate::AmqpTransactionalPublish as TransactionalPublish;
+pub use crate::AmqpTransactionalPublish;
 #[cfg(feature = "transaction")]
 pub use ruststream::TransactionalPublisher;

@@ -9,19 +9,19 @@
 
 use std::io;
 
-use ruststream::OutgoingMessage;
 use ruststream_amqp::prelude::*;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize, Outgoing)]
+#[outgoing(name = "invoices")]
 struct Invoice {
     id: u64,
 }
 
 #[subscriber(AmqpAddress::queue("invoices"))]
-async fn handle(invoice: &Invoice) -> HandlerResult {
+async fn handle(invoice: &Invoice) -> HandlerOutcome {
     println!("got invoice {}", invoice.id);
-    HandlerResult::Ack
+    HandlerOutcome::ack()
 }
 
 #[ruststream::app]
@@ -33,7 +33,7 @@ fn app() -> impl App {
 
             // --8<-- [start:transaction]
             b.after_startup(
-                TransactionalPublish,
+                AmqpTransactionalPublish,
                 async move |publisher| -> io::Result<()> {
                     publisher
                         .begin_transaction()
@@ -41,9 +41,9 @@ fn app() -> impl App {
                         .map_err(io::Error::other)?;
 
                     for id in 1..=3_u64 {
-                        let payload = format!("{{\"id\":{id}}}");
-                        let message = OutgoingMessage::new("invoices", payload.as_bytes());
-                        if let Err(error) = publisher.publish(message).await {
+                        // The destination rides the type's `#[outgoing(name = ..)]`, so the
+                        // publish names only the value; the transaction is the publisher's.
+                        if let Err(error) = publisher.message(&Invoice { id }).publish().await {
                             publisher.abort().await.map_err(io::Error::other)?;
                             return Err(io::Error::other(error));
                         }
