@@ -14,7 +14,7 @@ use ruststream::{
 use crate::error::AmqpError;
 use crate::testing::broker::TestState;
 use crate::testing::router::{Delivery, DeliveryReceiver, DeliverySender, SubscriptionId};
-use crate::{DEFAULT_PAGE_WAIT, PARTITION_KEY_HEADER};
+use crate::{DEFAULT_BATCH_WAIT, PARTITION_KEY_HEADER};
 
 /// Subscriber returned by [`ConnectedAmqpTestBroker`](crate::testing::ConnectedAmqpTestBroker).
 ///
@@ -48,7 +48,7 @@ impl AmqpTestSubscriber {
                 requeue,
                 coordinator,
             })
-            .max_wait(DEFAULT_PAGE_WAIT),
+            .max_wait(DEFAULT_BATCH_WAIT),
         }
     }
 }
@@ -68,7 +68,7 @@ impl Subscriber for AmqpTestSubscriber {
     }
 }
 
-/// Pages come from the same client-side buffer the real subscriber uses, so a page handler runs
+/// Batches come from the same client-side buffer the real subscriber uses, so a batch handler runs
 /// against this broker exactly as it does against a server.
 impl BatchSubscriber for AmqpTestSubscriber {
     type Batch = Vec<AmqpTestMessage>;

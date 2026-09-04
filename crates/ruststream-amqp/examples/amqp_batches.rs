@@ -1,7 +1,7 @@
-//! A page handler: one call per page of orders instead of one per order.
+//! A batch handler: one call per batch of orders instead of one per order.
 //!
 //! Run a broker first (`just brokers-up`), then:
-//! `cargo run --example amqp_pages -- run`
+//! `cargo run --example amqp_batches -- run`
 
 use std::time::Duration;
 
@@ -14,9 +14,9 @@ struct Order {
     id: u64,
 }
 
-/// A page body takes a slice, and `page_wait` caps how long a partial page waits for the
+/// A batch body takes a slice, and `batch_wait` caps how long a partial batch waits for the
 /// deliveries that would fill it.
-#[subscriber(AmqpAddress::queue("orders").page_wait(Duration::from_millis(50)))]
+#[subscriber(AmqpAddress::queue("orders").batch_wait(Duration::from_millis(50)))]
 async fn settle(orders: &[Order]) -> HandlerOutcome {
     println!("settling {} orders", orders.len());
     for order in orders {

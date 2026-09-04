@@ -42,7 +42,7 @@ The framework's optional capability traits, and what this broker implements nati
 | Capability | Native | Notes |
 | --- | --- | --- |
 | `Subscribe` | yes | subscribe by name; the name is sent verbatim, as `AmqpAddress::raw` does |
-| `BatchSubscriber` | yes, on the client | [a transfer carries one message, so the framework's buffer assembles the pages](#pages) |
+| `BatchSubscriber` | yes, on the client | [a transfer carries one message, so the framework's buffer assembles the batches](#batches) |
 | `TransactionalPublisher` | yes, with the `transaction` feature | [transactional posting](#transactions), one broker-side transaction per handle |
 | `OwnedTransactions` | no | only the borrowed form is implemented; the client's transactional path covers posting |
 | `RequestReply` | yes | [`reply-to`, `correlation-id`, and a dynamic reply link](#requestreply) |
@@ -51,7 +51,7 @@ The framework's optional capability traits, and what this broker implements nati
 | `DescribeServer` | yes | reports the connection host and the `amqp` protocol for the framework's server description |
 
 A delivery carries no broker metadata beyond its own sections, so the per-delivery context stays
-the framework's `()` default and this crate publishes no `Ctx` keys; a page inherits that default,
+the framework's `()` default and this crate publishes no `Ctx` keys; a batch inherits that default,
 having no subscription-scoped handle to offer either. What an AMQP message says about itself lives
 in the `properties` and `application-properties` sections, which arrive as headers and are read
 with `ctx.headers()` or the framework's `Headers<T>` extractor.
@@ -122,29 +122,29 @@ A descriptor that cannot form a subscription (an empty address, zero credit) is 
 The plain string form `#[subscriber("orders")]` also works: a by-name source resolves to
 `AmqpAddress::raw`, so the address goes to the broker verbatim with no capability attached.
 
-## Pages
+## Batches
 
-A handler taking a slice is handed a page of messages rather than one, and the mount site names
-the page size:
+A handler taking a slice is handed a batch of messages rather than one, and the mount site names
+the batch size:
 
 ```rust
---8<-- "crates/ruststream-amqp/examples/amqp_pages.rs:handler"
+--8<-- "crates/ruststream-amqp/examples/amqp_batches.rs:handler"
 ```
 
 ```rust
---8<-- "crates/ruststream-amqp/examples/amqp_pages.rs:app"
+--8<-- "crates/ruststream-amqp/examples/amqp_batches.rs:app"
 ```
 
-AMQP 1.0 has no page pull: a transfer carries one message, and credit is flow control rather than
-a page size. The pages are therefore assembled on the client, by the framework's own buffer, and a
-page holds at most the size the mount site named - fewer whenever that is all that arrived in time,
-never more. Nothing at the mount site says which of the two a broker does, which is the point: the
-size is the one word either way.
+AMQP 1.0 has no batch pull: a transfer carries one message, and credit is flow control rather than
+a batch size. The batches are therefore assembled on the client, by the framework's own buffer, and
+a batch holds at most the size the mount site named - fewer whenever that is all that arrived in
+time, never more. Nothing at the mount site says which of the two a broker does, which is the point:
+the size is the one word either way.
 
-What belongs to this crate is the deadline that closes a partial page: `page_wait` on the
-descriptor, 10 milliseconds by default. It trades latency for fuller pages under a trickle of
-traffic; under a steady flow the size closes the page first and the deadline never fires. Credit is
-a separate dial: it bounds what the broker may have in flight, while the page size is how many
+What belongs to this crate is the deadline that closes a partial batch: `batch_wait` on the
+descriptor, 10 milliseconds by default. It trades latency for fuller batches under a trickle of
+traffic; under a steady flow the size closes the batch first and the deadline never fires. Credit is
+a separate dial: it bounds what the broker may have in flight, while the batch size is how many
 messages one handler call sees.
 
 ## Acknowledgement and dispositions
@@ -270,8 +270,9 @@ its connected form implements `ruststream::testing::TestableBroker`, so the same
 The test broker routes by exact address match and does not simulate broker-specific behaviour
 (dead-letter policies, credit, redelivery timing). Those are verified end to end against a real
 broker: `just test-brokers` starts ActiveMQ Artemis from `docker-compose.test.yml` and runs the
-integration tests plus the conformance lifecycle, paging, request/reply, and transactions suites
+integration tests plus the conformance lifecycle, batching, request/reply, and transactions suites
 against it, gated behind `AMQP_TEST_URL`.
 
-Pages are the one behaviour the two brokers share verbatim: both assemble them with the framework's
-buffer, so a page handler runs against the test broker exactly as it does against a server.
+Batches are the one behaviour the two brokers share verbatim: both assemble them with the
+framework's buffer, so a batch handler runs against the test broker exactly as it does against a
+server.

@@ -27,7 +27,7 @@ address descriptor, and the publish policies, and re-exports the framework's own
 
 <div class="grid cards" markdown>
 
-- :material-transit-connection-variant: **[AMQP guide](amqp.md)** - addressing, pages, dispositions, request/reply, transactions, and testing.
+- :material-transit-connection-variant: **[AMQP guide](amqp.md)** - addressing, batching, dispositions, request/reply, transactions, and testing.
 - :material-book-open-variant: **[RustStream docs](https://powersemmi.github.io/ruststream/)** - the framework itself: subscribers, routing, codecs, middleware, the CLI.
 - :material-language-rust: **[API reference](https://docs.rs/ruststream-amqp)** - the crate's rustdoc on docs.rs.
 

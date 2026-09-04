@@ -1,4 +1,4 @@
-//! Conformance: the routing and paging suites against the in-process transport, and the
+//! Conformance: the routing and batching suites against the in-process transport, and the
 //! lifecycle plus capability suites against a real broker (gated behind `AMQP_TEST_URL`).
 //!
 //! Start a broker for the gated half with `just brokers-up` (`ActiveMQ` Artemis), then:
@@ -26,8 +26,8 @@ async fn amqp_test_broker_passes_conformance_suite() {
     harness::run_suite(AmqpTestBroker::new).await;
 }
 
-/// Both brokers page through the same client-side buffer, so the in-process one proves the
-/// contract - a page never longer than the size it was opened with - without a server.
+/// Both brokers batch through the same client-side buffer, so the in-process one proves the
+/// contract - a batch never longer than the size it was opened with - without a server.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn amqp_test_broker_passes_batches_suite() {
     capabilities::batches(

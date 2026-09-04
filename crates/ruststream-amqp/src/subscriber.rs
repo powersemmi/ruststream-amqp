@@ -26,7 +26,7 @@ use crate::message::{
     AmqpMessage, SettleCmd, SettleKind, SettleSender, headers_from_amqp, payload_from_body,
 };
 
-/// A subscription to one `AMQP` address; yields [`AmqpMessage`]s one at a time, or in pages.
+/// A subscription to one `AMQP` address; yields [`AmqpMessage`]s one at a time, or in batches.
 ///
 /// Dropping the subscriber stops the pump task, detaches the link, and ends the subscription's
 /// session.
@@ -87,7 +87,7 @@ impl AmqpSubscriber {
         Ok(Self {
             address: addr,
             deliveries: BufferedSubscriber::new(Deliveries { rx: out_rx })
-                .max_wait(address.page_wait_value()),
+                .max_wait(address.batch_wait_value()),
         })
     }
 }
@@ -101,11 +101,11 @@ impl Subscriber for AmqpSubscriber {
     }
 }
 
-/// `AMQP` 1.0 has no page pull: a transfer carries one message and credit is flow control, not a
-/// page size. The pages are therefore assembled on the client, by the framework's own buffer, so
-/// a page never carries more than the size the registration named. What this crate chooses is the
-/// deadline that closes a partial one, which rides the descriptor as
-/// [`AmqpAddress::page_wait`](crate::AmqpAddress::page_wait).
+/// `AMQP` 1.0 has no batch pull: a transfer carries one message and credit is flow control, not a
+/// batch size. The batches are therefore assembled on the client, by the framework's own buffer,
+/// so a batch never carries more than the size the registration named. What this crate chooses is
+/// the deadline that closes a partial one, which rides the descriptor as
+/// [`AmqpAddress::batch_wait`](crate::AmqpAddress::batch_wait).
 impl BatchSubscriber for AmqpSubscriber {
     type Batch = Vec<AmqpMessage>;
 

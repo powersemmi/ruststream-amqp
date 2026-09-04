@@ -17,8 +17,8 @@ use crate::subscriber::AmqpSubscriber;
 /// Default protocol-level credit (prefetch) granted to a subscription.
 pub const DEFAULT_CREDIT: u32 = 256;
 
-/// Default deadline closing a partial page on a batch subscription.
-pub const DEFAULT_PAGE_WAIT: Duration = Duration::from_millis(10);
+/// Default deadline closing a partial batch on a batch subscription.
+pub const DEFAULT_BATCH_WAIT: Duration = Duration::from_millis(10);
 
 /// Delivery guarantee of a subscription.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -56,7 +56,7 @@ pub struct AmqpAddress {
     kind: Kind,
     credit: u32,
     settle: Settle,
-    page_wait: Duration,
+    batch_wait: Duration,
 }
 
 impl AmqpAddress {
@@ -66,7 +66,7 @@ impl AmqpAddress {
             kind,
             credit: DEFAULT_CREDIT,
             settle: Settle::default(),
-            page_wait: DEFAULT_PAGE_WAIT,
+            batch_wait: DEFAULT_BATCH_WAIT,
         }
     }
 
@@ -123,11 +123,11 @@ impl AmqpAddress {
         self
     }
 
-    /// Caps how long a partial page waits for more deliveries on a batch subscription, counted
-    /// from its first one. Defaults to [`DEFAULT_PAGE_WAIT`].
+    /// Caps how long a partial batch waits for more deliveries on a batch subscription, counted
+    /// from its first one. Defaults to [`DEFAULT_BATCH_WAIT`].
     ///
-    /// `AMQP` 1.0 has no page pull, so the pages are assembled on the client and this deadline is
-    /// what trades latency for fuller pages under a trickle of traffic. It has no effect on a
+    /// `AMQP` 1.0 has no batch pull, so the batches are assembled on the client and this deadline
+    /// is what trades latency for fuller batches under a trickle of traffic. It has no effect on a
     /// single-message subscription, where every delivery goes out as it arrives.
     ///
     /// # Examples
@@ -136,11 +136,11 @@ impl AmqpAddress {
     /// use std::time::Duration;
     ///
     /// use ruststream_amqp::AmqpAddress;
-    /// let source = AmqpAddress::queue("orders").page_wait(Duration::from_millis(50));
+    /// let source = AmqpAddress::queue("orders").batch_wait(Duration::from_millis(50));
     /// # let _ = source;
     /// ```
-    pub fn page_wait(mut self, page_wait: Duration) -> Self {
-        self.page_wait = page_wait;
+    pub fn batch_wait(mut self, batch_wait: Duration) -> Self {
+        self.batch_wait = batch_wait;
         self
     }
 
@@ -158,8 +158,8 @@ impl AmqpAddress {
         self.settle
     }
 
-    pub(crate) fn page_wait_value(&self) -> Duration {
-        self.page_wait
+    pub(crate) fn batch_wait_value(&self) -> Duration {
+        self.batch_wait
     }
 
     /// The terminus capability this descriptor advertises, when one applies.
@@ -220,12 +220,15 @@ mod tests {
     }
 
     #[test]
-    fn the_page_deadline_defaults_and_takes_an_override() {
-        assert_eq!(AmqpAddress::queue("q").page_wait_value(), DEFAULT_PAGE_WAIT);
+    fn the_batch_deadline_defaults_and_takes_an_override() {
+        assert_eq!(
+            AmqpAddress::queue("q").batch_wait_value(),
+            DEFAULT_BATCH_WAIT
+        );
         assert_eq!(
             AmqpAddress::queue("q")
-                .page_wait(Duration::from_millis(50))
-                .page_wait_value(),
+                .batch_wait(Duration::from_millis(50))
+                .batch_wait_value(),
             Duration::from_millis(50)
         );
     }
