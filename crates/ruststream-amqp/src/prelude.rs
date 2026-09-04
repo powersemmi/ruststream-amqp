@@ -17,7 +17,7 @@
 //! | [`AmqpPublish`] | [`Publish`] |
 //! | `AmqpTransactionalPublish` (feature `transaction`) | `TransactionalPublish` |
 //!
-//! A mount site therefore reads `b.include(handler).publisher(Publish)` on every broker, and
+//! A mount site therefore reads `b.include(handler).out(Reply, Publish)` on every broker, and
 //! moving a service between brokers is a change of one import rather than of every include site.
 //! The two vocabularies never share a name: a policy ends in `Publish`, and the capability trait
 //! of its live form ends in `Publisher`. The prefixed originals stay exported here as well, for a

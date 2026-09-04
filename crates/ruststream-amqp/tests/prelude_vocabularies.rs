@@ -18,7 +18,7 @@ fn _request_slot_bound<T: RequestReply>() {}
 
 #[test]
 fn the_mount_vocabulary_names_the_policies_without_the_broker_prefix() {
-    // The value form a mount site writes: `.publisher(Publish)`.
+    // The value form a mount site writes: `.out(Reply, Publish)`.
     let _: Publish = Publish;
 
     #[cfg(feature = "transaction")]

@@ -29,7 +29,7 @@ policies, so it imports this glob, where they arrive with the broker prefix stri
 | `AmqpPublish` | `Publish` |
 | `AmqpTransactionalPublish` (feature `transaction`) | `TransactionalPublish` |
 
-A mount site therefore reads `b.include(handler).publisher(Publish)` on every broker, and moving a
+A mount site therefore reads `b.include(handler).out(Reply, Publish)` on every broker, and moving a
 service between brokers is a change of one import rather than of every include site. The two
 vocabularies never share a name: a policy ends in `Publish`, and the capability trait of its live
 form ends in `Publisher`. The prefixed originals stay exported too, for a file that globs two
@@ -168,8 +168,11 @@ back to the runtime's broker-agnostic deferred re-publish rather than a broker-s
 A publisher is a policy plus the live connection. `AmqpPublish` holds no connection, so it is
 constructed anywhere (in a router, in configuration, at a mount site) and the runtime pairs it with
 the broker at startup to produce an `AmqpPublisher`. It is also the broker's default publish
-policy, so a `#[subscriber(.., publish("dest"))]` handler mounted without an explicit publisher
-replies through it. The mount sites below write it as `Publish`, its [prelude](#the-prelude) name.
+policy, so a `#[subscriber(.., publish("dest"))]` handler whose mount site names no reply publisher
+replies through it. A mount site that does name one writes `.out(Reply, Publish)` for the reply and
+`.out(<marker>, Publish).build()` for an injected slot, `Publish` being the policy's
+[prelude](#the-prelude) name. The policy carries no options of its own, so it is written bare;
+this crate ships no mount-site settings trait over it.
 
 Sender links are attached on first use and cached per address. A message the peer settles with
 anything other than `accept` (rejected, released, modified) is reported as
@@ -207,8 +210,9 @@ publisher arrives live, already paired with the connected broker:
 The responder end reads the reply address the requester named and publishes the answer there,
 echoing `correlation-id` back. The address is minted per request, so the reply rides an injected
 publisher rather than the fixed-destination `publish(..)` form. The slot names the capability it
-needs (`Out<impl Publisher>`); `AmqpPublisher` is inferred from the policy attached at the include
-site.
+needs (`Out<impl Publisher>`); `AmqpPublisher` is inferred from the policy the include site binds
+to the slot's marker, `b.include(greet).out(DefaultSlot, Publish).build()` for the unnamed slot
+this handler declares.
 
 Both ends of the exchange are byte-shaped here, and the payload types say so: the request arrives
 as a `#[derive(Deserialized)]` view of the delivery's bytes, so no codec runs on it, and the
