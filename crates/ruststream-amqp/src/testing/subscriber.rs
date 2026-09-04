@@ -1,18 +1,20 @@
 //! [`AmqpTestSubscriber`] and [`AmqpTestMessage`].
 
 use std::future::{Future, ready};
+use std::num::NonZeroUsize;
 use std::sync::{Arc, OnceLock};
 
 use futures::Stream;
 
 use ruststream::{
-    AckError, HeaderMap, IncomingMessage, Partitioned, Subscriber, testing::Coordinator,
+    AckError, BatchSubscriber, BufferedSubscriber, HeaderMap, IncomingMessage, Partitioned,
+    Subscriber, testing::Coordinator,
 };
 
-use crate::PARTITION_KEY_HEADER;
 use crate::error::AmqpError;
 use crate::testing::broker::TestState;
 use crate::testing::router::{Delivery, DeliveryReceiver, DeliverySender, SubscriptionId};
+use crate::{DEFAULT_PAGE_WAIT, PARTITION_KEY_HEADER};
 
 /// Subscriber returned by [`ConnectedAmqpTestBroker`](crate::testing::ConnectedAmqpTestBroker).
 ///
@@ -21,11 +23,7 @@ use crate::testing::router::{Delivery, DeliveryReceiver, DeliverySender, Subscri
 pub struct AmqpTestSubscriber {
     state: Arc<TestState>,
     id: SubscriptionId,
-    rx: DeliveryReceiver,
-    requeue: DeliverySender,
-    /// A clone of the broker's harness coordinator, threaded into each yielded message so a
-    /// requeue re-counts and a consumed delivery decrements. `None` outside a harness run.
-    coordinator: Option<Coordinator>,
+    deliveries: BufferedSubscriber<Deliveries>,
 }
 
 impl std::fmt::Debug for AmqpTestSubscriber {
@@ -45,9 +43,12 @@ impl AmqpTestSubscriber {
         Self {
             state,
             id,
-            rx,
-            requeue,
-            coordinator,
+            deliveries: BufferedSubscriber::new(Deliveries {
+                rx,
+                requeue,
+                coordinator,
+            })
+            .max_wait(DEFAULT_PAGE_WAIT),
         }
     }
 }
@@ -59,6 +60,37 @@ impl Drop for AmqpTestSubscriber {
 }
 
 impl Subscriber for AmqpTestSubscriber {
+    type Message = AmqpTestMessage;
+    type Error = AmqpError;
+
+    fn stream(&mut self) -> impl Stream<Item = Result<Self::Message, Self::Error>> + Send + '_ {
+        self.deliveries.stream()
+    }
+}
+
+/// Pages come from the same client-side buffer the real subscriber uses, so a page handler runs
+/// against this broker exactly as it does against a server.
+impl BatchSubscriber for AmqpTestSubscriber {
+    type Batch = Vec<AmqpTestMessage>;
+
+    fn batches(
+        &mut self,
+        size: NonZeroUsize,
+    ) -> impl Stream<Item = Result<Self::Batch, <Self as Subscriber>::Error>> + Send + '_ {
+        self.deliveries.batches(size)
+    }
+}
+
+/// The routed stream under the buffer: one delivery per item, off the subscription's channel.
+struct Deliveries {
+    rx: DeliveryReceiver,
+    requeue: DeliverySender,
+    /// A clone of the broker's harness coordinator, threaded into each yielded message so a
+    /// requeue re-counts and a consumed delivery decrements. `None` outside a harness run.
+    coordinator: Option<Coordinator>,
+}
+
+impl Subscriber for Deliveries {
     type Message = AmqpTestMessage;
     type Error = AmqpError;
 

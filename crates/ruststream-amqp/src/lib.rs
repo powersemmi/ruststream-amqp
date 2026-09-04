@@ -13,6 +13,8 @@
 //!   envelope format is invented and non-Rust peers see plain `AMQP` messages.
 //! - Back-pressure is the protocol's own credit-based flow control, surfaced as the
 //!   [`AmqpAddress::credit`] prefetch.
+//! - Pages are assembled on the client: a transfer carries one message, so a page handler gets
+//!   the size it named and [`AmqpAddress::page_wait`] decides how long a partial page waits.
 
 #![forbid(unsafe_code)]
 
@@ -29,7 +31,7 @@ pub mod testing;
 #[cfg(feature = "transaction")]
 mod txn;
 
-pub use address::{AmqpAddress, DEFAULT_CREDIT, Settle};
+pub use address::{AmqpAddress, DEFAULT_CREDIT, DEFAULT_PAGE_WAIT, Settle};
 pub use broker::{AmqpBroker, ConnectedAmqpBroker};
 pub use config::Sasl;
 pub use error::AmqpError;
