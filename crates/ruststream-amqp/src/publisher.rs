@@ -1,16 +1,13 @@
 //! [`AmqpPublisher`], its [`AmqpPublish`] policy, and native request/reply.
 
-use std::collections::HashMap;
 use std::future::{Future, ready};
 use std::sync::Arc;
 use std::time::Duration;
 
-use fe2o3_amqp::Sender;
 use fe2o3_amqp_types::messaging::{Message, Outcome, Properties};
 use ruststream::{OutgoingMessage, PairError, PublishPolicy, Publisher, RequestReply};
-use tokio::sync::Mutex;
 
-use crate::broker::{AmqpCore, ConnectedAmqpBroker, CoreCell};
+use crate::broker::{AmqpCore, ConnectedAmqpBroker, CoreCell, SenderLink};
 use crate::error::{AmqpError, box_err};
 use crate::message::{AmqpMessage, headers_from_amqp, payload_from_body, to_amqp_message};
 
@@ -23,7 +20,6 @@ use crate::message::{AmqpMessage, headers_from_amqp, payload_from_body, to_amqp_
 #[derive(Clone)]
 pub struct AmqpPublisher {
     cell: CoreCell,
-    senders: Arc<Mutex<HashMap<String, Arc<Mutex<Sender>>>>>,
 }
 
 impl std::fmt::Debug for AmqpPublisher {
@@ -34,10 +30,7 @@ impl std::fmt::Debug for AmqpPublisher {
 
 impl AmqpPublisher {
     pub(crate) fn new(cell: CoreCell) -> Self {
-        Self {
-            cell,
-            senders: Arc::new(Mutex::new(HashMap::new())),
-        }
+        Self { cell }
     }
 
     fn core(&self) -> Result<&Arc<AmqpCore>, AmqpError> {
@@ -45,41 +38,23 @@ impl AmqpPublisher {
         core.ensure_open()?;
         Ok(core)
     }
-
-    /// The sender link for `address`, attached on first use and cached.
-    // The map guard intentionally spans the attach so two callers cannot race a double-attach
-    // for the same address.
-    #[allow(clippy::significant_drop_tightening)]
-    async fn sender_for(
-        &self,
-        core: &AmqpCore,
-        address: &str,
-    ) -> Result<Arc<Mutex<Sender>>, AmqpError> {
-        let mut senders = self.senders.lock().await;
-        if let Some(sender) = senders.get(address) {
-            return Ok(Arc::clone(sender));
-        }
-        let sender = ConnectedAmqpBroker::attach_sender(core, address).await?;
-        let sender = Arc::new(Mutex::new(sender));
-        senders.insert(address.to_owned(), Arc::clone(&sender));
-        Ok(sender)
-    }
 }
 
-/// Sends one built message over a cached sender link and maps a non-accepted outcome to an
+/// Sends one built message over a shared sender link and maps a non-accepted outcome to an
 /// error, so a broker-side reject can never pass silently.
 pub(crate) async fn send_message(
-    sender: &Mutex<Sender>,
+    link: &SenderLink,
     address: &str,
     message: Message<fe2o3_amqp_types::messaging::Data>,
 ) -> Result<(), AmqpError> {
-    let outcome = {
-        let mut sender = sender.lock().await;
-        sender.send(message).await.map_err(|e| AmqpError::Publish {
-            address: address.to_owned(),
-            source: box_err(e),
-        })?
-    };
+    let outcome = link
+        .with(async |sender| {
+            sender.send(message).await.map_err(|e| AmqpError::Publish {
+                address: address.to_owned(),
+                source: box_err(e),
+            })
+        })
+        .await?;
     accepted(outcome, address)
 }
 
@@ -97,7 +72,7 @@ impl Publisher for AmqpPublisher {
 
     async fn publish(&self, msg: OutgoingMessage<'_>) -> Result<(), Self::Error> {
         let core = self.core()?;
-        let sender = self.sender_for(core, msg.name()).await?;
+        let sender = core.sender_for(msg.name()).await?;
         send_message(&sender, msg.name(), to_amqp_message(&msg)).await
     }
 }
@@ -131,7 +106,7 @@ impl RequestReply for AmqpPublisher {
             properties.reply_to = Some(reply_to);
             properties.correlation_id = Some(correlation_id.clone().into());
 
-            let sender = self.sender_for(core, msg.name()).await?;
+            let sender = core.sender_for(msg.name()).await?;
             send_message(&sender, msg.name(), message).await?;
 
             loop {

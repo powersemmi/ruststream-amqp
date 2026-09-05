@@ -27,6 +27,16 @@ pub enum AmqpError {
         source: Box<dyn StdError + Send + Sync>,
     },
 
+    /// Closing a link during shutdown failed, so the peer may still consider it attached.
+    #[error("amqp link close error for '{address}': {source}")]
+    Detach {
+        /// The address the link was attached to.
+        address: String,
+        /// The client's detach failure.
+        #[source]
+        source: Box<dyn StdError + Send + Sync>,
+    },
+
     /// The transport failed while sending a message.
     #[error("amqp publish error to '{address}': {source}")]
     Publish {

@@ -179,3 +179,53 @@ async fn at_most_once_reports_ack_unsupported() {
 
     connected.shutdown().await.expect("shutdown succeeds");
 }
+
+/// A publisher handed out for a scoped task (the shape `after_startup` and request/reply use) is
+/// dropped while the application keeps running. Every publisher shares one session, so the links
+/// it attached must be closed by the connection, not abandoned by the handle: an abandoned link
+/// leaves the peer's echoing detach unroutable, which takes the shared session down and makes the
+/// later shutdown fail.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_dropped_publisher_leaves_the_connection_usable() {
+    let Some(url) = test_url() else { return };
+    let connected = connect(&url).await;
+
+    let address = unique("dropped-publisher");
+    let mut subscriber = connected
+        .subscribe_address(AmqpAddress::queue(&address))
+        .await
+        .expect("subscription opens");
+
+    {
+        let scoped = connected.publisher();
+        scoped
+            .publish(OutgoingMessage::new(&address, b"scoped".as_slice()))
+            .await
+            .expect("publish succeeds");
+    }
+
+    // The round trip through the peer is the synchronisation point. It is bounded because a
+    // session killed by the dropped link's unroutable detach echo never answers the attach at
+    // all, so the failure has to be a timeout rather than a hang.
+    let survivor = connected.publisher();
+    tokio::time::timeout(
+        RECV_TIMEOUT,
+        survivor.publish(OutgoingMessage::new(&address, b"survivor".as_slice())),
+    )
+    .await
+    .expect("the shared session still answers after the dropped publisher")
+    .expect("publish succeeds");
+
+    let mut stream = pin!(subscriber.stream());
+    for expected in [b"scoped".as_slice(), b"survivor".as_slice()] {
+        let message = tokio::time::timeout(RECV_TIMEOUT, stream.next())
+            .await
+            .expect("delivery arrives")
+            .expect("stream is open")
+            .expect("delivery is ok");
+        assert_eq!(message.payload(), expected);
+        message.ack().await.expect("ack succeeds");
+    }
+
+    connected.shutdown().await.expect("shutdown succeeds");
+}
