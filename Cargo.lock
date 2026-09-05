@@ -177,9 +177,9 @@ checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
 
 [[package]]
 name = "fe2o3-amqp"
-version = "0.16.0"
+version = "0.16.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c1bf4f8851ad8c71afaa1aa164e0caa46b9b9282c78d9ba690b3ac3fa02ec9c6"
+checksum = "ecb58316db8a0de7e0c08603a15a8b95dcff2d48c571699fd4cf5859e090936b"
 dependencies = [
  "bytes",
  "fe2o3-amqp-types",
@@ -197,7 +197,6 @@ dependencies = [
  "tokio",
  "tokio-native-tls",
  "tokio-rustls",
- "tokio-stream",
  "tokio-util",
  "url",
  "uuid",
@@ -1197,17 +1196,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1729aa945f29d91ba541258c8df89027d5792d85a8841fb65e8bf0f4ede4ef61"
 dependencies = [
  "rustls",
- "tokio",
-]
-
-[[package]]
-name = "tokio-stream"
-version = "0.1.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3d06f0b082ba57c26b79407372e57cf2a1e28124f78e9479fe80322cf53420b"
-dependencies = [
- "futures-core",
- "pin-project-lite",
  "tokio",
 ]
 
