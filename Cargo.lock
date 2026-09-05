@@ -176,12 +176,12 @@ checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
 
 [[package]]
 name = "fe2o3-amqp"
-version = "0.16.2"
+version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ecb58316db8a0de7e0c08603a15a8b95dcff2d48c571699fd4cf5859e090936b"
+checksum = "62eb332494336089a7670bddca664bb0e632bd4e9f4fe8b83674ef6d2237fff3"
 dependencies = [
  "bytes",
- "fe2o3-amqp-types 0.16.0",
+ "fe2o3-amqp-types",
  "futures-util",
  "getrandom 0.4.3",
  "native-tls",
@@ -189,7 +189,7 @@ dependencies = [
  "pin-project-lite",
  "rustls",
  "serde",
- "serde_amqp 0.16.0",
+ "serde_amqp",
  "serde_bytes",
  "slab",
  "thiserror",
@@ -205,26 +205,13 @@ dependencies = [
 
 [[package]]
 name = "fe2o3-amqp-types"
-version = "0.16.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "63a759b57e923ff56dde0935a479be557b8681095e190f0cdf2a2777e8060cfd"
-dependencies = [
- "ordered-float",
- "serde",
- "serde_amqp 0.16.0",
- "serde_bytes",
- "serde_repr",
-]
-
-[[package]]
-name = "fe2o3-amqp-types"
 version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3909c772bb7f9a7bf1af25277fa8fa8f9da8df417ddfd6c8a729a738aa1fe6c5"
 dependencies = [
  "ordered-float",
  "serde",
- "serde_amqp 0.17.0",
+ "serde_amqp",
  "serde_bytes",
  "serde_repr",
 ]
@@ -870,7 +857,7 @@ version = "0.7.0"
 dependencies = [
  "bytes",
  "fe2o3-amqp",
- "fe2o3-amqp-types 0.17.0",
+ "fe2o3-amqp-types",
  "futures",
  "ruststream",
  "serde",
@@ -942,21 +929,6 @@ checksum = "4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba"
 dependencies = [
  "serde_core",
  "serde_derive",
-]
-
-[[package]]
-name = "serde_amqp"
-version = "0.16.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "110918b753cd22eaeb30632c7b73cc548b2a6258ec07a2bd5ea8ebf6365f8d69"
-dependencies = [
- "bytes",
- "indexmap",
- "ordered-float",
- "serde",
- "serde_amqp_derive",
- "serde_bytes",
- "thiserror",
 ]
 
 [[package]]

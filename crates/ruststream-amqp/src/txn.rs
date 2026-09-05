@@ -9,7 +9,9 @@
 use std::future::{Future, ready};
 use std::sync::Arc;
 
-use fe2o3_amqp::transaction::{Controller, OwnedTransaction, TransactionDischarge};
+use fe2o3_amqp::transaction::{
+    Controller, OwnedTransaction, TransactionDischarge, TransactionPosting,
+};
 use fe2o3_amqp_types::definitions::SenderSettleMode;
 use fe2o3_amqp_types::transaction::Coordinator;
 use ruststream::{OutgoingMessage, PairError, PublishPolicy, Publisher, TransactionalPublisher};
