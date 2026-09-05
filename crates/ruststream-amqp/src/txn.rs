@@ -6,10 +6,8 @@
 //! [`TransactionalPublisher`] kind (one broker-side transaction per handle) and leaves
 //! transactional retirement (acks) and acquisition out.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
-use fe2o3_amqp::Sender;
 use fe2o3_amqp::transaction::{Controller, OwnedTransaction, TransactionDischarge};
 use fe2o3_amqp_types::definitions::SenderSettleMode;
 use fe2o3_amqp_types::transaction::Coordinator;
@@ -61,7 +59,6 @@ impl ConnectedAmqpBroker {
 /// with no open transaction error - never a silent no-op.
 pub struct AmqpTxnPublisher {
     core: Arc<AmqpCore>,
-    senders: Mutex<HashMap<String, Arc<Mutex<Sender>>>>,
     txn: Mutex<Option<OwnedTransaction>>,
 }
 
@@ -75,23 +72,8 @@ impl AmqpTxnPublisher {
     pub(crate) fn new(core: Arc<AmqpCore>) -> Self {
         Self {
             core,
-            senders: Mutex::new(HashMap::new()),
             txn: Mutex::new(None),
         }
-    }
-
-    // The map guard intentionally spans the attach so two callers cannot race a double-attach
-    // for the same address.
-    #[allow(clippy::significant_drop_tightening)]
-    async fn sender_for(&self, address: &str) -> Result<Arc<Mutex<Sender>>, AmqpError> {
-        let mut senders = self.senders.lock().await;
-        if let Some(sender) = senders.get(address) {
-            return Ok(Arc::clone(sender));
-        }
-        let sender = ConnectedAmqpBroker::attach_sender(&self.core, address).await?;
-        let sender = Arc::new(Mutex::new(sender));
-        senders.insert(address.to_owned(), Arc::clone(&sender));
-        Ok(sender)
     }
 }
 
@@ -100,20 +82,21 @@ impl Publisher for AmqpTxnPublisher {
 
     async fn publish(&self, msg: OutgoingMessage<'_>) -> Result<(), Self::Error> {
         self.core.ensure_open()?;
-        let sender = self.sender_for(msg.name()).await?;
+        let sender = self.core.sender_for(msg.name()).await?;
         let message = to_amqp_message(&msg);
 
         let txn = self.txn.lock().await;
         if let Some(txn) = txn.as_ref() {
-            let outcome = {
-                let mut sender = sender.lock().await;
-                txn.post(&mut sender, message)
-                    .await
-                    .map_err(|e| AmqpError::Publish {
-                        address: msg.name().to_owned(),
-                        source: box_err(e),
-                    })?
-            };
+            let outcome = sender
+                .with(async |sender| {
+                    txn.post(sender, message)
+                        .await
+                        .map_err(|e| AmqpError::Publish {
+                            address: msg.name().to_owned(),
+                            source: box_err(e),
+                        })
+                })
+                .await?;
             accepted(outcome, msg.name())
         } else {
             drop(txn);
