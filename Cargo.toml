@@ -15,7 +15,10 @@ authors = ["RustStream contributors"]
 [workspace.dependencies]
 ruststream-amqp = { path = "crates/ruststream-amqp" }
 
-ruststream = { version = ">=0.7.0, <0.8.0", default-features = false }
+# The floor names the pre-release because cargo excludes pre-releases from a range that does not
+# mention one, so `>=0.7.0` alone would not admit `0.7.0-rc.1`. The bound still admits the final
+# 0.7.0 and every later 0.7 patch.
+ruststream = { version = ">=0.7.0-rc.1, <0.8.0", default-features = false }
 
 fe2o3-amqp = "0.16"
 fe2o3-amqp-types = "0.16"
