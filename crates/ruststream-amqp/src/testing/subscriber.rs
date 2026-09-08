@@ -11,10 +11,12 @@ use ruststream::{
     Subscriber, testing::Coordinator,
 };
 
+use crate::PARTITION_KEY_HEADER;
+use crate::address::AmqpAddress;
+use crate::broker::is_at_most_once;
 use crate::error::AmqpError;
 use crate::testing::broker::TestState;
 use crate::testing::router::{Delivery, DeliveryReceiver, DeliverySender, SubscriptionId};
-use crate::{DEFAULT_BATCH_WAIT, PARTITION_KEY_HEADER};
 
 /// Subscriber returned by [`ConnectedAmqpTestBroker`](crate::testing::ConnectedAmqpTestBroker).
 ///
@@ -39,7 +41,12 @@ impl AmqpTestSubscriber {
         rx: DeliveryReceiver,
         requeue: DeliverySender,
         coordinator: Option<Coordinator>,
+        address: &AmqpAddress,
     ) -> Self {
+        // An at-most-once subscription settles its deliveries on receipt, so they get no channel
+        // back: that absence is what makes their settlement report `Unsupported`, which is what a
+        // server-side subscription does.
+        let requeue = (!is_at_most_once(address.settle_value())).then_some(requeue);
         Self {
             state,
             id,
@@ -48,7 +55,7 @@ impl AmqpTestSubscriber {
                 requeue,
                 coordinator,
             })
-            .max_wait(DEFAULT_BATCH_WAIT),
+            .max_wait(address.batch_wait_value()),
         }
     }
 }
@@ -84,7 +91,9 @@ impl BatchSubscriber for AmqpTestSubscriber {
 /// The routed stream under the buffer: one delivery per item, off the subscription's channel.
 struct Deliveries {
     rx: DeliveryReceiver,
-    requeue: DeliverySender,
+    /// The channel a released delivery goes back on, or `None` on an at-most-once subscription,
+    /// where a delivery is settled before the handler ever sees it.
+    requeue: Option<DeliverySender>,
     /// A clone of the broker's harness coordinator, threaded into each yielded message so a
     /// requeue re-counts and a consumed delivery decrements. `None` outside a harness run.
     coordinator: Option<Coordinator>,
@@ -118,10 +127,14 @@ impl Subscriber for Deliveries {
 ///
 /// `ack` consumes the handle; `nack(requeue = true)` re-queues the delivery on the owning
 /// subscription's channel so the next handler invocation sees it again; `nack(requeue = false)`
-/// drops it, matching the real subscriber's reject path in effect.
+/// drops it, matching the real subscriber's reject path in effect. On an at-most-once
+/// subscription the delivery is settled on receipt, so both report
+/// [`AckError::Unsupported`](ruststream::AckError::Unsupported), as
+/// [`AmqpMessage`](crate::AmqpMessage) does.
 pub struct AmqpTestMessage {
     delivery: Option<Delivery>,
-    requeue: DeliverySender,
+    /// `None` when the delivery arrived already settled; see [`Deliveries::requeue`].
+    requeue: Option<DeliverySender>,
     /// A clone of the broker's harness coordinator. When set, this delivery is counted in
     /// flight and is decremented exactly once when the message is consumed or dropped.
     coordinator: Option<Coordinator>,
@@ -146,7 +159,7 @@ impl std::fmt::Debug for AmqpTestMessage {
 impl AmqpTestMessage {
     pub(crate) fn new(
         delivery: Delivery,
-        requeue: DeliverySender,
+        requeue: Option<DeliverySender>,
         coordinator: Option<Coordinator>,
     ) -> Self {
         Self {
@@ -154,6 +167,30 @@ impl AmqpTestMessage {
             requeue,
             coordinator,
         }
+    }
+
+    /// Settles the delivery, returning it to the subscription's queue when `requeue`. Accepting
+    /// and rejecting are one act in process: the delivery is dropped, and there is no broker-side
+    /// dead-letter policy behind it to tell the two apart.
+    fn settle(&mut self, requeue: bool) -> Result<(), AckError> {
+        let Some(sender) = self.requeue.clone() else {
+            return Err(AckError::Unsupported);
+        };
+        let delivery = self
+            .delivery
+            .take()
+            .expect("AmqpTestMessage ack/nack invoked twice");
+        if requeue {
+            let sent = sender.send(delivery);
+            // The requeue bypasses fanout, so count the re-enqueue here to balance this
+            // message's `Drop` decrement. The redelivered copy is consumed in turn.
+            if sent.is_ok()
+                && let Some(coordinator) = &self.coordinator
+            {
+                coordinator.enqueued();
+            }
+        }
+        Ok(())
     }
 }
 
@@ -179,26 +216,11 @@ impl IncomingMessage for AmqpTestMessage {
     }
 
     fn ack(mut self) -> impl Future<Output = Result<(), AckError>> {
-        self.delivery.take();
-        ready(Ok(()))
+        ready(self.settle(false))
     }
 
     fn nack(mut self, requeue: bool) -> impl Future<Output = Result<(), AckError>> {
-        let delivery = self
-            .delivery
-            .take()
-            .expect("AmqpTestMessage ack/nack invoked twice");
-        if requeue {
-            let sent = self.requeue.send(delivery);
-            // The requeue bypasses fanout, so count the re-enqueue here to balance this
-            // message's `Drop` decrement. The redelivered copy is consumed in turn.
-            if sent.is_ok()
-                && let Some(coordinator) = &self.coordinator
-            {
-                coordinator.enqueued();
-            }
-        }
-        ready(Ok(()))
+        ready(self.settle(requeue))
     }
 
     fn partition_key(&self) -> Option<&[u8]> {

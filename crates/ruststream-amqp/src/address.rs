@@ -199,6 +199,28 @@ impl SubscriptionSource<ConnectedAmqpBroker> for AmqpAddress {
     }
 }
 
+/// The same descriptor resolves against the in-process stand-in, so a handler keeps the
+/// declaration it runs in production when it is mounted on
+/// [`AmqpTestBroker`](crate::testing::AmqpTestBroker).
+///
+/// What the stand-in reproduces and what it drops is documented on
+/// [`ConnectedAmqpTestBroker::subscribe_address`](crate::testing::ConnectedAmqpTestBroker::subscribe_address).
+#[cfg(feature = "testing")]
+impl SubscriptionSource<crate::testing::ConnectedAmqpTestBroker> for AmqpAddress {
+    type Subscriber = crate::testing::AmqpTestSubscriber;
+
+    fn name(&self) -> &str {
+        self.address()
+    }
+
+    async fn subscribe(
+        self,
+        connected: &crate::testing::ConnectedAmqpTestBroker,
+    ) -> Result<Self::Subscriber, AmqpError> {
+        connected.subscribe_address(self).await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

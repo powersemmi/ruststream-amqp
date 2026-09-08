@@ -267,6 +267,19 @@ its connected form implements `ruststream::testing::TestableBroker`, so the same
 `ruststream::testing::expect_published`. See
 [Unit-testing a service with TestApp](https://powersemmi.github.io/ruststream/latest/guides/testing/#unit-testing-a-service-with-testapp).
 
+`AmqpAddress` resolves against the test broker as well, so a handler runs under the harness with
+the declaration it carries in production: `#[subscriber(AmqpAddress::queue("orders").credit(64))]`
+mounts on `AmqpTestBroker` unchanged, and the test exercises the wiring the service ships instead
+of a bare address string standing in for it.
+
+What crosses over is what the descriptor decides on the client: the address the stand-in routes by,
+the settle mode (an at-most-once delivery arrives settled, so its `ack` reports
+`AckError::Unsupported` here too), and the batch deadline. What the protocol decides is dropped,
+because in process there is no protocol: `credit` is link flow control, and the queue/topic
+distinction is a terminus capability the peer honours, so every subscription fans out like a topic.
+A test expecting competing consumers on one queue to split the deliveries between them therefore
+asserts something no real broker holds up.
+
 The test broker routes by exact address match and does not simulate broker-specific behaviour
 (dead-letter policies, credit, redelivery timing). Those are verified end to end against a real
 broker: `just test-brokers` starts ActiveMQ Artemis from `docker-compose.test.yml` and runs the

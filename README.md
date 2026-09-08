@@ -34,7 +34,7 @@ AMQP 1.0 is an ISO-standard protocol spoken by ActiveMQ Artemis and Classic, Rab
 - **Native request/reply.** `AmqpPublisher` implements the `RequestReply` capability over `reply-to`, `correlation-id`, and a dynamic receiver link.
 - **Transactions** (feature `transaction`). A distinct `AmqpTransactionalPublish` policy pairs into a `TransactionalPublisher` built on the protocol's transactional posting; the plain publisher carries no transactional surface.
 - **Headers without an envelope.** Well-known headers ride the `properties` section (`content-type`, `correlation-id`, `reply-to`, `message-id`, the partition key as `group-id`); everything else rides `application-properties`, so non-Rust peers see plain AMQP messages.
-- **In-process test broker** (feature `testing`). `AmqpTestBroker` reproduces core routing with no server, implements `ruststream::testing::TestableBroker`, and passes the framework's conformance suite in process.
+- **In-process test broker** (feature `testing`). `AmqpTestBroker` reproduces core routing with no server, takes the same `AmqpAddress` descriptors the service declares in production, implements `ruststream::testing::TestableBroker`, and passes the framework's conformance suite in process.
 
 ## Install
 
@@ -93,6 +93,8 @@ broker.inject(OutgoingMessage::new("orders", br#"{"id":1}"#));
 let confirmations =
     expect_published(&broker, "confirmations", 1, std::time::Duration::from_secs(1)).await;
 ```
+
+Handlers keep their production declaration: `AmqpAddress` resolves against the test broker too, so `#[subscriber(AmqpAddress::queue("orders"))]` mounts on `AmqpTestBroker` unchanged and the test runs the wiring the service ships.
 
 Broker-specific behaviour (dispositions, credit, dead-lettering) is covered by the env-gated live suite instead: `just test-brokers` spins up ActiveMQ Artemis and runs the integration tests plus the framework conformance suites against it.
 

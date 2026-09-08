@@ -10,6 +10,7 @@ use ruststream::{
     RawMessage, Subscribe,
 };
 
+use crate::address::AmqpAddress;
 use crate::error::AmqpError;
 use crate::testing::router::AddressRouter;
 use crate::testing::subscriber::AmqpTestSubscriber;
@@ -88,6 +89,65 @@ impl ConnectedAmqpTestBroker {
             state: Arc::clone(&self.state),
         }
     }
+
+    /// Opens a subscription described by `address`, mirroring
+    /// [`ConnectedAmqpBroker::subscribe_address`](crate::ConnectedAmqpBroker::subscribe_address),
+    /// so a handler declared with the production descriptor mounts here unchanged.
+    ///
+    /// What the descriptor decides on the client is reproduced: the address the stand-in routes
+    /// by, the settle mode (an at-most-once delivery arrives settled and its `ack` reports
+    /// [`AckError::Unsupported`](ruststream::AckError::Unsupported), as it does against a server),
+    /// and the batch deadline, which is the framework's own buffer on both brokers. What the
+    /// protocol decides is dropped, because there is no protocol here:
+    /// [`credit`](AmqpAddress::credit) is link flow control, and the queue/topic distinction is a
+    /// terminus capability the peer honours, so every subscription fans out like a topic. A test
+    /// asserting that competing consumers on one queue each see a delivery once would therefore
+    /// assert something a real broker never holds up; that case belongs in the live suite.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AmqpError::InvalidAddress`] for a descriptor that cannot form a subscription (an
+    /// empty address, zero credit), which is what the real broker rejects before any I/O.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ruststream::Broker;
+    /// use ruststream_amqp::AmqpAddress;
+    /// use ruststream_amqp::testing::AmqpTestBroker;
+    /// # #[tokio::main(flavor = "current_thread")]
+    /// # async fn main() -> Result<(), ruststream_amqp::AmqpError> {
+    /// let broker = AmqpTestBroker::new().connect().await?;
+    /// let subscriber = broker.subscribe_address(AmqpAddress::queue("orders")).await?;
+    /// # let _ = subscriber;
+    /// # Ok(())
+    /// # }
+    /// ```
+    // The descriptor is taken by value because that is the shape of the contract: the real
+    // broker's method consumes it, and `SubscriptionSource::subscribe` hands it over. A reference
+    // here would make the two brokers spell the same call differently.
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn subscribe_address(
+        &self,
+        address: AmqpAddress,
+    ) -> impl Future<Output = Result<AmqpTestSubscriber, AmqpError>> {
+        ready(self.open(&address))
+    }
+
+    /// The one place a subscription is registered, so the descriptor path and the name path
+    /// cannot drift apart.
+    fn open(&self, address: &AmqpAddress) -> Result<AmqpTestSubscriber, AmqpError> {
+        address.validate()?;
+        let (id, requeue, rx) = self.state.router.subscribe(address.address().to_owned());
+        Ok(AmqpTestSubscriber::new(
+            Arc::clone(&self.state),
+            id,
+            rx,
+            requeue,
+            self.state.coordinator().cloned(),
+            address,
+        ))
+    }
 }
 
 impl ConnectedBroker for ConnectedAmqpTestBroker {
@@ -104,14 +164,9 @@ impl Subscribe for ConnectedAmqpTestBroker {
     type Subscriber = AmqpTestSubscriber;
 
     fn subscribe(&self, name: &str) -> impl Future<Output = Result<Self::Subscriber, Self::Error>> {
-        let (id, requeue, rx) = self.state.router.subscribe(name.to_owned());
-        ready(Ok(AmqpTestSubscriber::new(
-            Arc::clone(&self.state),
-            id,
-            rx,
-            requeue,
-            self.state.coordinator().cloned(),
-        )))
+        // A bare name is a verbatim address on the real broker; it is one here too, so both
+        // subscription paths carry the same meaning.
+        ready(self.open(&AmqpAddress::raw(name)))
     }
 }
 
