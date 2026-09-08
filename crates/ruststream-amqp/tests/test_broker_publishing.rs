@@ -13,8 +13,8 @@
 
 use std::time::Duration;
 
-use ruststream::OutgoingMessage;
 use ruststream::testing::TestApp;
+use ruststream::{ConnectedBroker, OutgoingMessage};
 use ruststream_amqp::AmqpError;
 use ruststream_amqp::prelude::*;
 use ruststream_amqp::testing::AmqpTestBroker;
@@ -294,4 +294,32 @@ async fn a_handler_binding_the_request_capability_mounts() {
         .settled(HandlerOutcome::drop());
 
     app.shutdown().await.expect("shutdown failed");
+}
+
+// The ladder makes the owner's misuse a compile error; what stays checkable at runtime is a handle
+// that aliases the transport. Both ends of its life must refuse, because a real publisher does: it
+// has no connection to send on before `connect`, and none after `shutdown`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_aliasing_publisher_refuses_outside_the_connection() {
+    let broker = AmqpTestBroker::new();
+    let early = broker.publisher();
+
+    let before = early
+        .publish(OutgoingMessage::new("orders", b"early".as_slice()))
+        .await
+        .expect_err("a publish before connect must not report success");
+    assert!(matches!(before, AmqpError::NotConnected), "got {before}");
+
+    let connected = broker.connect().await.expect("connect failed");
+    early
+        .publish(OutgoingMessage::new("orders", b"live".as_slice()))
+        .await
+        .expect("the same handle routes once the transport is connected");
+
+    connected.shutdown().await.expect("shutdown failed");
+    let after = early
+        .publish(OutgoingMessage::new("orders", b"late".as_slice()))
+        .await
+        .expect_err("a publish after shutdown must not report success");
+    assert!(matches!(after, AmqpError::NotConnected), "got {after}");
 }

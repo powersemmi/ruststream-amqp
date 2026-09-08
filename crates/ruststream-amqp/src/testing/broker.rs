@@ -1,8 +1,8 @@
 //! [`AmqpTestBroker`]: the in-process transport and its connected form.
 
 use std::future::{Future, ready};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, OnceLock};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use bytes::Bytes;
 use ruststream::testing::{Coordinator, TestableBroker};
@@ -19,15 +19,29 @@ use crate::testing::publisher::AmqpTestTxnPublisher;
 use crate::testing::router::AddressRouter;
 use crate::testing::subscriber::AmqpTestSubscriber;
 
+/// Where the shared transport is on the ladder.
+///
+/// The typed ladder makes the owner's misuse a compile error, but handles alias it: a publisher
+/// taken before `connect` or kept past `shutdown` reaches this state, and the real ones report
+/// [`AmqpError::NotConnected`] in both cases rather than pretending to have sent anything.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum Phase {
+    /// Constructed, not yet connected: the real broker's connection cell is still empty.
+    #[default]
+    New,
+    /// Connected, so publishes and subscriptions route.
+    Live,
+    /// Shut down; the router is cleared and nothing routes again.
+    Closed,
+}
+
 /// Shared state of one in-process broker: the router, the harness coordinator, and the transport's
-/// liveness.
+/// place on the ladder.
 #[derive(Debug, Default)]
 pub(crate) struct TestState {
     pub(crate) router: AddressRouter,
     coordinator: OnceLock<Coordinator>,
-    /// Mirrors the real transport: handles that alias a shut-down connection must report an error
-    /// rather than route into a dead router.
-    closed: AtomicBool,
+    phase: Mutex<Phase>,
     /// Names the private reply addresses of in-process requests, as the peer's dynamic terminus
     /// names them on a server.
     reply_seq: AtomicU64,
@@ -43,13 +57,18 @@ impl TestState {
             .publish(name, payload, headers, self.coordinator());
     }
 
-    /// `Ok` while the transport is live, [`AmqpError::NotConnected`] once it has shut down - the
-    /// error the real handles report for the same misuse.
+    fn enter(&self, phase: Phase) {
+        *self.phase.lock().expect("amqp test phase mutex poisoned") = phase;
+    }
+
+    /// `Ok` only while the transport is connected, and [`AmqpError::NotConnected`] otherwise - the
+    /// error the real handles report both before the connection exists and after it is gone.
     pub(crate) fn ensure_live(&self) -> Result<(), AmqpError> {
-        if self.closed.load(Ordering::Acquire) {
-            return Err(AmqpError::NotConnected);
+        let phase = *self.phase.lock().expect("amqp test phase mutex poisoned");
+        match phase {
+            Phase::Live => Ok(()),
+            Phase::New | Phase::Closed => Err(AmqpError::NotConnected),
         }
-        Ok(())
     }
 
     pub(crate) fn next_reply_address(&self) -> String {
@@ -92,6 +111,9 @@ impl Broker for AmqpTestBroker {
     type Connected = ConnectedAmqpTestBroker;
 
     fn connect(self) -> impl Future<Output = Result<Self::Connected, Self::Error>> {
+        // Publishers handed out before this point share the state, so they start routing here -
+        // which is when the real broker's shared connection cell is filled.
+        self.state.enter(Phase::Live);
         ready(Ok(ConnectedAmqpTestBroker { state: self.state }))
     }
 }
@@ -200,7 +222,7 @@ impl ConnectedBroker for ConnectedAmqpTestBroker {
     fn shutdown(self) -> impl Future<Output = Result<(), Self::Error>> {
         // Publishers handed out earlier alias this transport and outlive it, so they have to see
         // the closure rather than route into a cleared router.
-        self.state.closed.store(true, Ordering::Release);
+        self.state.enter(Phase::Closed);
         self.state.router.clear();
         ready(Ok(()))
     }
