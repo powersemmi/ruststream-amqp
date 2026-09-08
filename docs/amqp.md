@@ -278,7 +278,10 @@ binds `Out<impl RequestReply>` or `Out<impl TransactionalPublisher>` mounts in p
 Behaviour crosses over with them, because a test that cannot fail is worth nothing. The terminus
 decides delivery here as it does on a server: `AmqpAddress::queue` subscriptions on one address
 compete for each message, `AmqpAddress::topic` subscriptions each get a copy, so a work-queue
-service cannot pass in process what a broker would fail. An at-most-once delivery arrives settled
+service cannot pass in process what a broker would fail. An `AmqpAddress::raw` address declares no
+capability, so a server consults its own configuration and the stand-in, having none, delivers each
+message once; say `topic` where the broadcast is the thing being asserted. An at-most-once delivery
+arrives settled
 and its `ack` reports `AckError::Unsupported`. Batches come from the same client-side buffer, with
 the descriptor's own `batch_wait`. A transaction publishes nothing before its commit and discards
 its buffer on an abort, and misuse (a second `begin_transaction`, a commit with nothing open) is an

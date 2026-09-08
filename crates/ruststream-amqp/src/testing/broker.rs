@@ -149,8 +149,12 @@ impl ConnectedAmqpTestBroker {
     /// The descriptor keeps its meaning here. The address is what the stand-in routes by; the
     /// terminus decides how, so [`queue`](AmqpAddress::queue) subscriptions on one address compete
     /// for each message and [`topic`](AmqpAddress::topic) ones each get a copy, which is what makes
-    /// a work-queue service testable in process at all. The settle mode holds too (an at-most-once
-    /// delivery arrives settled and its `ack` reports
+    /// a work-queue service testable in process at all. A [`raw`](AmqpAddress::raw) address
+    /// declares no terminus capability, so on a server the peer's own configuration decides; here
+    /// there is no configuration to consult, and the message is delivered once rather than fanned
+    /// out to a broadcast the deployment may not have. Say `topic` to assert the broadcast, which
+    /// is what the products needing the capability have to be told anyway. The settle mode holds
+    /// too (an at-most-once delivery arrives settled and its `ack` reports
     /// [`AckError::Unsupported`](ruststream::AckError::Unsupported), as it does against a server),
     /// and so does the batch deadline, which is the framework's own buffer on both brokers.
     ///
