@@ -14,11 +14,11 @@
 //!
 //! # What it does not reproduce
 //!
-//! Everything the emulation can hold exactly it holds, including the ones that decide whether a
-//! test means anything: the queue/topic terminus (competing consumers versus a copy each), the
-//! settle mode, batching, transaction visibility, and reply correlation. What is left is what a
-//! broker holds and a process cannot, and each of these makes an assertion unsound rather than
-//! merely imprecise, so it belongs in the live suite (`just test-brokers`) instead:
+//! Everything the emulation can hold exactly, it holds - the queue/topic terminus (competing
+//! consumers versus a copy each), the settle mode, batching, transaction visibility, reply
+//! correlation - because those decide whether a passing test means anything. What is left is what
+//! a broker holds and a process cannot. Each one makes an assertion unsound rather than merely
+//! imprecise, so it belongs in the live suite (`just test-brokers`) instead:
 //!
 //! - **No storage.** A message published to an address with no live subscription is recorded in
 //!   the publish log and dropped; a server would hold it until a consumer attaches. Open the
