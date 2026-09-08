@@ -3,19 +3,20 @@
 //! [`AmqpAddress`] is the crate's only subscription source, so these cases pin it against
 //! `AmqpTestBroker`: every address kind opens a subscription under `TestApp` with the handler
 //! untouched, and the options the stand-in reproduces keep the meaning they carry against a
-//! server. What it drops instead (credit, the queue/topic terminus capability) is covered by the
-//! live suite in `integration_amqp.rs`.
+//! server - the terminus among them, since whether consumers compete or each get a copy is the
+//! difference between a work queue and a broadcast. What has no in-process counterpart (credit)
+//! is covered by the live suite in `integration_amqp.rs`.
 
 #![cfg(feature = "testing")]
 
 use std::pin::pin;
 use std::time::Duration;
 
-use futures::StreamExt;
+use futures::{Stream, StreamExt};
 use ruststream::testing::TestApp;
-use ruststream::{AckError, Subscriber};
+use ruststream::{AckError, OutgoingMessage, Subscriber};
 use ruststream_amqp::prelude::*;
-use ruststream_amqp::testing::AmqpTestBroker;
+use ruststream_amqp::testing::{AmqpTestBroker, AmqpTestMessage};
 use ruststream_amqp::{AmqpError, Settle};
 use serde::{Deserialize, Serialize};
 
@@ -161,4 +162,89 @@ async fn an_invalid_descriptor_is_rejected_before_the_subscription_opens() {
         .await
         .expect_err("an empty address cannot form a subscription");
     assert!(matches!(err, AmqpError::InvalidAddress(_)), "got {err}");
+}
+
+/// The next delivery's payload, or a panic naming the wait that ran out.
+async fn next_payload<S>(stream: &mut S) -> Vec<u8>
+where
+    S: Stream<Item = Result<AmqpTestMessage, AmqpError>> + Unpin,
+{
+    let message = tokio::time::timeout(WAIT, stream.next())
+        .await
+        .expect("delivery arrives")
+        .expect("stream is open")
+        .expect("delivery is ok");
+    let payload = message.payload().to_vec();
+    message.ack().await.expect("ack succeeds");
+    payload
+}
+
+// The work-queue case: a queue terminus hands each message to one of its consumers, so a service
+// that splits work across handlers is testable in process instead of passing a broadcast that a
+// real broker would never perform.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn competing_queue_subscriptions_share_the_address() {
+    let broker = AmqpTestBroker::new()
+        .connect()
+        .await
+        .expect("connect failed");
+    let mut first = broker
+        .subscribe_address(AmqpAddress::queue("work"))
+        .await
+        .expect("the first subscription opens");
+    let mut second = broker
+        .subscribe_address(AmqpAddress::queue("work"))
+        .await
+        .expect("the second subscription opens");
+
+    let producer = broker.publisher();
+    for id in 0..4_u8 {
+        producer
+            .publish(OutgoingMessage::new("work", [b'0' + id].as_slice()))
+            .await
+            .expect("publish failed");
+    }
+
+    let mut first_stream = Box::pin(first.stream());
+    let mut second_stream = Box::pin(second.stream());
+    let mut seen = Vec::new();
+    for _ in 0..2 {
+        seen.push(next_payload(&mut first_stream).await);
+        seen.push(next_payload(&mut second_stream).await);
+    }
+    seen.sort_unstable();
+    assert_eq!(
+        seen,
+        vec![b"0".to_vec(), b"1".to_vec(), b"2".to_vec(), b"3".to_vec()],
+        "each message must reach exactly one of the competing consumers, and none may be lost",
+    );
+}
+
+// The broadcast case, which the same address kind must not silently give: a topic terminus copies
+// every message to every subscription.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn topic_subscriptions_each_get_a_copy() {
+    let broker = AmqpTestBroker::new()
+        .connect()
+        .await
+        .expect("connect failed");
+    let mut first = broker
+        .subscribe_address(AmqpAddress::topic("events"))
+        .await
+        .expect("the first subscription opens");
+    let mut second = broker
+        .subscribe_address(AmqpAddress::topic("events"))
+        .await
+        .expect("the second subscription opens");
+
+    broker
+        .publisher()
+        .publish(OutgoingMessage::new("events", b"broadcast".as_slice()))
+        .await
+        .expect("publish failed");
+
+    let mut first_stream = Box::pin(first.stream());
+    let mut second_stream = Box::pin(second.stream());
+    assert_eq!(next_payload(&mut first_stream).await, b"broadcast");
+    assert_eq!(next_payload(&mut second_stream).await, b"broadcast");
 }

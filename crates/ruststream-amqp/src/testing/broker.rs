@@ -1,35 +1,60 @@
 //! [`AmqpTestBroker`]: the in-process transport and its connected form.
 
 use std::future::{Future, ready};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 
 use bytes::Bytes;
 use ruststream::testing::{Coordinator, TestableBroker};
 use ruststream::{
-    Broker, ConnectedBroker, DefaultPublish, OutgoingMessage, PairError, PublishPolicy, Publisher,
-    RawMessage, Subscribe,
+    Broker, ConnectedBroker, DefaultPublish, HeaderMap, OutgoingMessage, RawMessage, Subscribe,
 };
 
 use crate::address::AmqpAddress;
 use crate::error::AmqpError;
+use crate::publisher::AmqpPublish;
+use crate::testing::publisher::AmqpTestPublisher;
+#[cfg(feature = "transaction")]
+use crate::testing::publisher::AmqpTestTxnPublisher;
 use crate::testing::router::AddressRouter;
 use crate::testing::subscriber::AmqpTestSubscriber;
 
-/// Shared state of one in-process broker: the router plus the harness coordinator.
+/// Shared state of one in-process broker: the router, the harness coordinator, and the transport's
+/// liveness.
 #[derive(Debug, Default)]
 pub(crate) struct TestState {
     pub(crate) router: AddressRouter,
     coordinator: OnceLock<Coordinator>,
+    /// Mirrors the real transport: handles that alias a shut-down connection must report an error
+    /// rather than route into a dead router.
+    closed: AtomicBool,
+    /// Names the private reply addresses of in-process requests, as the peer's dynamic terminus
+    /// names them on a server.
+    reply_seq: AtomicU64,
 }
 
 impl TestState {
-    fn coordinator(&self) -> Option<&Coordinator> {
+    pub(crate) fn coordinator(&self) -> Option<&Coordinator> {
         self.coordinator.get()
     }
 
-    pub(crate) fn publish(&self, name: &str, payload: Bytes, headers: ruststream::HeaderMap) {
+    pub(crate) fn publish(&self, name: &str, payload: Bytes, headers: HeaderMap) {
         self.router
             .publish(name, payload, headers, self.coordinator());
+    }
+
+    /// `Ok` while the transport is live, [`AmqpError::NotConnected`] once it has shut down - the
+    /// error the real handles report for the same misuse.
+    pub(crate) fn ensure_live(&self) -> Result<(), AmqpError> {
+        if self.closed.load(Ordering::Acquire) {
+            return Err(AmqpError::NotConnected);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn next_reply_address(&self) -> String {
+        let seq = self.reply_seq.fetch_add(1, Ordering::Relaxed);
+        format!("amqp-test-reply-{seq}")
     }
 }
 
@@ -58,9 +83,7 @@ impl AmqpTestBroker {
     /// A publisher usable before `connect`, mirroring the real broker's early-publisher path.
     #[must_use]
     pub fn publisher(&self) -> AmqpTestPublisher {
-        AmqpTestPublisher {
-            state: Arc::clone(&self.state),
-        }
+        AmqpTestPublisher::new(Arc::clone(&self.state))
     }
 }
 
@@ -82,27 +105,43 @@ pub struct ConnectedAmqpTestBroker {
 }
 
 impl ConnectedAmqpTestBroker {
-    /// A publisher from the connected form.
+    /// A publisher from the connected form, mirroring
+    /// [`ConnectedAmqpBroker::publisher`](crate::ConnectedAmqpBroker::publisher).
     #[must_use]
     pub fn publisher(&self) -> AmqpTestPublisher {
-        AmqpTestPublisher {
-            state: Arc::clone(&self.state),
-        }
+        AmqpTestPublisher::new(Arc::clone(&self.state))
+    }
+
+    /// A transactional publisher from the connected form, mirroring
+    /// [`ConnectedAmqpBroker::transactional_publisher`](crate::ConnectedAmqpBroker::transactional_publisher).
+    #[cfg(feature = "transaction")]
+    #[must_use]
+    pub fn transactional_publisher(&self) -> AmqpTestTxnPublisher {
+        AmqpTestTxnPublisher::new(Arc::clone(&self.state))
     }
 
     /// Opens a subscription described by `address`, mirroring
     /// [`ConnectedAmqpBroker::subscribe_address`](crate::ConnectedAmqpBroker::subscribe_address),
     /// so a handler declared with the production descriptor mounts here unchanged.
     ///
-    /// What the descriptor decides on the client is reproduced: the address the stand-in routes
-    /// by, the settle mode (an at-most-once delivery arrives settled and its `ack` reports
+    /// The descriptor keeps its meaning here. The address is what the stand-in routes by; the
+    /// terminus decides how, so [`queue`](AmqpAddress::queue) subscriptions on one address compete
+    /// for each message and [`topic`](AmqpAddress::topic) ones each get a copy, which is what makes
+    /// a work-queue service testable in process at all. The settle mode holds too (an at-most-once
+    /// delivery arrives settled and its `ack` reports
     /// [`AckError::Unsupported`](ruststream::AckError::Unsupported), as it does against a server),
-    /// and the batch deadline, which is the framework's own buffer on both brokers. What the
-    /// protocol decides is dropped, because there is no protocol here:
-    /// [`credit`](AmqpAddress::credit) is link flow control, and the queue/topic distinction is a
-    /// terminus capability the peer honours, so every subscription fans out like a topic. A test
-    /// asserting that competing consumers on one queue each see a delivery once would therefore
-    /// assert something a real broker never holds up; that case belongs in the live suite.
+    /// and so does the batch deadline, which is the framework's own buffer on both brokers.
+    ///
+    /// One option has no counterpart here: [`credit`](AmqpAddress::credit) is link flow control,
+    /// which keeps unsent messages on the broker until the subscription has room. A channel cannot
+    /// hold them the same way without becoming a broker-side queue, and nothing a handler observes
+    /// would change, so the in-process subscription is unbounded: no test can assert a prefetch
+    /// window, and none should. The live suite covers what credit does to a real link.
+    ///
+    /// Two more differences are the router's, not the descriptor's, and the module docs of the
+    /// registry state them: a message published to an address with no live subscription is logged
+    /// and dropped rather than stored, and a released delivery returns to the subscription that had
+    /// it rather than to the address, so a competing consumer does not pick it up.
     ///
     /// # Errors
     ///
@@ -138,7 +177,11 @@ impl ConnectedAmqpTestBroker {
     /// cannot drift apart.
     fn open(&self, address: &AmqpAddress) -> Result<AmqpTestSubscriber, AmqpError> {
         address.validate()?;
-        let (id, requeue, rx) = self.state.router.subscribe(address.address().to_owned());
+        self.state.ensure_live()?;
+        let (id, requeue, rx) = self
+            .state
+            .router
+            .subscribe(address.address().to_owned(), address.routing());
         Ok(AmqpTestSubscriber::new(
             Arc::clone(&self.state),
             id,
@@ -155,6 +198,9 @@ impl ConnectedBroker for ConnectedAmqpTestBroker {
     type Closed = ();
 
     fn shutdown(self) -> impl Future<Output = Result<(), Self::Error>> {
+        // Publishers handed out earlier alias this transport and outlive it, so they have to see
+        // the closure rather than route into a cleared router.
+        self.state.closed.store(true, Ordering::Release);
         self.state.router.clear();
         ready(Ok(()))
     }
@@ -190,51 +236,8 @@ impl TestableBroker for ConnectedAmqpTestBroker {
 
 ruststream::register_testable_broker!(ConnectedAmqpTestBroker);
 
-/// Publisher for the in-process broker.
-#[derive(Debug, Clone)]
-pub struct AmqpTestPublisher {
-    state: Arc<TestState>,
-}
-
-impl Publisher for AmqpTestPublisher {
-    type Error = AmqpError;
-
-    fn publish(&self, msg: OutgoingMessage<'_>) -> impl Future<Output = Result<(), Self::Error>> {
-        self.state.publish(
-            msg.name(),
-            Bytes::copy_from_slice(msg.payload()),
-            msg.headers().clone(),
-        );
-        ready(Ok(()))
-    }
-}
-
-/// The publish policy for [`AmqpTestPublisher`], mirroring
-/// [`AmqpPublish`](crate::AmqpPublish) on the real broker.
-///
-/// # Examples
-///
-/// ```
-/// use ruststream_amqp::testing::AmqpTestPublish;
-///
-/// let policy = AmqpTestPublish::default();
-/// # let _ = policy;
-/// ```
-#[derive(Debug, Clone, Copy, Default)]
-#[must_use]
-pub struct AmqpTestPublish;
-
-impl PublishPolicy<ConnectedAmqpTestBroker> for AmqpTestPublish {
-    type Live = AmqpTestPublisher;
-
-    fn pair(
-        self,
-        connected: &ConnectedAmqpTestBroker,
-    ) -> impl Future<Output = Result<Self::Live, PairError>> {
-        ready(Ok(connected.publisher()))
-    }
-}
-
+/// The default reply publisher is the production policy, so a handler that names no publisher
+/// replies through the same declaration on both brokers.
 impl DefaultPublish for ConnectedAmqpTestBroker {
-    type Policy = AmqpTestPublish;
+    type Policy = AmqpPublish;
 }

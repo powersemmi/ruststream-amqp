@@ -267,25 +267,43 @@ its connected form implements `ruststream::testing::TestableBroker`, so the same
 `ruststream::testing::expect_published`. See
 [Unit-testing a service with TestApp](https://powersemmi.github.io/ruststream/latest/guides/testing/#unit-testing-a-service-with-testapp).
 
-`AmqpAddress` resolves against the test broker as well, so a handler runs under the harness with
-the declaration it carries in production: `#[subscriber(AmqpAddress::queue("orders").credit(64))]`
-mounts on `AmqpTestBroker` unchanged, and the test exercises the wiring the service ships instead
-of a bare address string standing in for it.
+The whole production declaration resolves against the test broker, so the test runs the wiring the
+service ships rather than a rewritten copy of it. `#[subscriber(AmqpAddress::queue("orders"))]`
+mounts on `AmqpTestBroker` unchanged, `.out(Reply, Publish)` mounts the production policy, and
+`AmqpTransactionalPublish` pairs into an in-process publisher that buffers until the commit. There
+is no test-only policy to swap in at the mount site, and no capability that exists on one broker
+and not the other: `RequestReply` and `TransactionalPublisher` are carried over, so a handler that
+binds `Out<impl RequestReply>` or `Out<impl TransactionalPublisher>` mounts in process too.
 
-What crosses over is what the descriptor decides on the client: the address the stand-in routes by,
-the settle mode (an at-most-once delivery arrives settled, so its `ack` reports
-`AckError::Unsupported` here too), and the batch deadline. What the protocol decides is dropped,
-because in process there is no protocol: `credit` is link flow control, and the queue/topic
-distinction is a terminus capability the peer honours, so every subscription fans out like a topic.
-A test expecting competing consumers on one queue to split the deliveries between them therefore
-asserts something no real broker holds up.
+Behaviour crosses over with them, because a test that cannot fail is worth nothing. The terminus
+decides delivery here as it does on a server: `AmqpAddress::queue` subscriptions on one address
+compete for each message, `AmqpAddress::topic` subscriptions each get a copy, so a work-queue
+service cannot pass in process what a broker would fail. An at-most-once delivery arrives settled
+and its `ack` reports `AckError::Unsupported`. Batches come from the same client-side buffer, with
+the descriptor's own `batch_wait`. A transaction publishes nothing before its commit and discards
+its buffer on an abort, and misuse (a second `begin_transaction`, a commit with nothing open) is an
+error rather than a silent success. A request carries `reply-to` and `correlation-id`, resolves
+with the correlated reply, and fails with `AmqpError::RequestTimeout` when nothing answers. The
+framework's own conformance suites - lifecycle, batching, request/reply, transactions - run against
+the test broker in `tests/conformance_amqp.rs`, which is what keeps those claims honest.
 
-The test broker routes by exact address match and does not simulate broker-specific behaviour
-(dead-letter policies, credit, redelivery timing). Those are verified end to end against a real
-broker: `just test-brokers` starts ActiveMQ Artemis from `docker-compose.test.yml` and runs the
-integration tests plus the conformance lifecycle, batching, request/reply, and transactions suites
-against it, gated behind `AMQP_TEST_URL`.
+What is left out is what a broker holds and a process cannot, and each one makes an assertion
+unsound rather than merely imprecise:
 
-Batches are the one behaviour the two brokers share verbatim: both assemble them with the
-framework's buffer, so a batch handler runs against the test broker exactly as it does against a
-server.
+- **No storage.** A message published to an address with no live subscription is logged and
+  dropped, where a server would hold it for a consumer that attaches later. Open the subscriptions
+  first.
+- **No broker-side redelivery.** A released delivery returns to the subscription that had it, never
+  to a competing consumer, and there is no dead-letter policy behind `nack(requeue = false)`.
+- **No durability.** A committed transaction is atomic as far as a handler can observe, but the
+  buffer lives in this process: nothing survives a crash, and there is no broker-side transaction
+  timeout or fencing.
+- **No flow control.** `credit` has no counterpart. Holding messages back the way a link does would
+  make the router a broker-side queue, and no handler would observe the difference, so in-process
+  subscriptions are unbounded and a prefetch window cannot be asserted here.
+- **No refusal.** A request sent where nothing consumes it times out instead of being rejected or
+  dead-lettered.
+
+Those belong to the live suite: `just test-brokers` starts ActiveMQ Artemis from
+`docker-compose.test.yml` and runs the integration tests plus every conformance suite against it,
+gated behind `AMQP_TEST_URL`.

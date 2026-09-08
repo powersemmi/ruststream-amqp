@@ -169,6 +169,12 @@ impl AmqpTestMessage {
         }
     }
 
+    /// A delivery that arrived already settled, so it has no channel back: a request/reply answer,
+    /// which [`AmqpMessage::settled`](crate::AmqpMessage) is on the real publisher too.
+    pub(crate) fn settled(delivery: Delivery, coordinator: Option<Coordinator>) -> Self {
+        Self::new(delivery, None, coordinator)
+    }
+
     /// Settles the delivery, returning it to the subscription's queue when `requeue`. Accepting
     /// and rejecting are one act in process: the delivery is dropped, and there is no broker-side
     /// dead-letter policy behind it to tell the two apart.

@@ -39,6 +39,20 @@ enum Kind {
     Raw,
 }
 
+/// How the subscriptions on one address share its traffic: the terminus capability seen from the
+/// consuming end.
+///
+/// This is the difference between a work queue and a broadcast, so the in-process broker
+/// reproduces it instead of handing every message to everyone and hoping the deployment agrees.
+#[cfg(feature = "testing")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Routing {
+    /// Competing consumers: each message goes to exactly one of the subscriptions.
+    Anycast,
+    /// Fan-out: every subscription gets its own copy.
+    Multicast,
+}
+
 /// A subscription descriptor for an `AMQP` 1.0 address.
 ///
 /// Implements [`SubscriptionSource`], so it can sit inline in the `#[subscriber(..)]` decorator:
@@ -160,6 +174,21 @@ impl AmqpAddress {
 
     pub(crate) fn batch_wait_value(&self) -> Duration {
         self.batch_wait
+    }
+
+    /// How this descriptor's terminus shares the address's traffic, for the in-process broker.
+    ///
+    /// `queue` competes, `topic` fans out. A `raw` address declares no capability, so on a server
+    /// the peer's own configuration decides; in process there is no configuration to consult, and
+    /// the stand-in delivers each message once rather than inventing a fan-out the deployment may
+    /// not have. A service that wants the broadcast asserted says `topic`, which is also what the
+    /// products needing the capability have to be told.
+    #[cfg(feature = "testing")]
+    pub(crate) fn routing(&self) -> Routing {
+        match self.kind {
+            Kind::Topic => Routing::Multicast,
+            Kind::Queue | Kind::Raw => Routing::Anycast,
+        }
     }
 
     /// The terminus capability this descriptor advertises, when one applies.

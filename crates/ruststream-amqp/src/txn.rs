@@ -48,6 +48,21 @@ impl PublishPolicy<ConnectedAmqpBroker> for AmqpTransactionalPublish {
     }
 }
 
+/// The transactional policy pairs on the in-process broker as well, into a publisher that buffers
+/// until the commit. The split is preserved there: this policy is still the only way to reach a
+/// transactional surface, so a mount that compiles against the stand-in compiles against a server.
+#[cfg(feature = "testing")]
+impl PublishPolicy<crate::testing::ConnectedAmqpTestBroker> for AmqpTransactionalPublish {
+    type Live = crate::testing::AmqpTestTxnPublisher;
+
+    fn pair(
+        self,
+        connected: &crate::testing::ConnectedAmqpTestBroker,
+    ) -> impl Future<Output = Result<Self::Live, PairError>> {
+        ready(Ok(connected.transactional_publisher()))
+    }
+}
+
 impl ConnectedAmqpBroker {
     /// A transactional publisher from the connected form; synchronous, the transaction is
     /// declared by `begin_transaction`.
