@@ -81,7 +81,7 @@ async fn handle(order: &Order) -> HandlerOutcome { /* ... */ }
 
 ## Test it
 
-The `testing` feature runs handlers against an in-process AMQP stand-in - no server, same routing, same ladder. Inject a message as an external producer would with `TestableBroker::inject`, then assert on what a handler published with the free `expect_published`:
+The `testing` feature runs handlers against an in-process AMQP stand-in - no server, same behaviour, same ladder. Inject a message as an external producer would with `TestableBroker::inject`, then assert on what a handler published with the free `expect_published`:
 
 ```rust
 use ruststream::{Broker, OutgoingMessage};

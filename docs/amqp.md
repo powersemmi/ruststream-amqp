@@ -259,10 +259,10 @@ delivered messages implement the `Partitioned` capability.
 
 ## Testing
 
-The `testing` feature ships `AmqpTestBroker`: an in-process transport that reproduces the crate's
-core routing with no server and no AMQP wire. It follows the same ladder as the real broker, and
-its connected form implements `ruststream::testing::TestableBroker`, so the same broker drives the
-`TestApp` harness and the framework's conformance suite. Inject traffic with
+The `testing` feature ships `AmqpTestBroker`: an in-process transport that reproduces this crate's
+behaviour with no server and no AMQP wire. It follows the same ladder as the real broker, and its
+connected form implements `ruststream::testing::TestableBroker`, so the same broker drives the
+`TestApp` harness and the framework's conformance suites. Inject traffic with
 `broker.inject(OutgoingMessage::new(..))` and assert on published output with the free
 `ruststream::testing::expect_published`. See
 [Unit-testing a service with TestApp](https://powersemmi.github.io/ruststream/latest/guides/testing/#unit-testing-a-service-with-testapp).
