@@ -323,3 +323,46 @@ async fn an_aliasing_publisher_refuses_outside_the_connection() {
         .expect_err("a publish after shutdown must not report success");
     assert!(matches!(after, AmqpError::NotConnected), "got {after}");
 }
+
+#[subscriber(AmqpAddress::queue("relays.live"))]
+async fn relay_to_greeter(order: &Order, Out(out): Out<impl RequestReply>) -> HandlerOutcome {
+    let _ = order.id;
+    match out
+        .request(OutgoingMessage::new("greeter", b"world".as_slice()), WAIT)
+        .await
+    {
+        Ok(reply) if reply.payload() == b"hello, world" => HandlerOutcome::ack(),
+        _ => HandlerOutcome::drop(),
+    }
+}
+
+// A whole exchange inside one run: a handler requests, another handler answers, and the harness
+// still reaches a standstill - the reply is counted in flight and consumed like any other
+// delivery, so a service doing request/reply from a handler is testable at all.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_handler_can_complete_a_request_against_a_handler_next_to_it() {
+    let app =
+        RustStream::new(AppInfo::new("relay", "0.1.0")).with_broker(AmqpTestBroker::new(), |b| {
+            b.include(greet).out(DefaultSlot, Publish).build();
+            b.include(relay_to_greeter)
+                .out(DefaultSlot, Publish)
+                .build();
+        });
+    let app = TestApp::start(app).await.expect("startup failed");
+
+    app.broker::<AmqpTestBroker>()
+        .publish("relays.live", &Order { id: 4 })
+        .await
+        .expect("the exchange must drive the run to a standstill");
+
+    app.broker::<AmqpTestBroker>()
+        .subscriber("relays.live")
+        .assert_called_once()
+        .settled(HandlerOutcome::ack());
+    app.broker::<AmqpTestBroker>()
+        .subscriber("greeter")
+        .assert_called_once()
+        .settled(HandlerOutcome::ack());
+
+    app.shutdown().await.expect("shutdown failed");
+}
