@@ -182,13 +182,14 @@ type Buffered = (String, Bytes, HeaderMap);
 /// # Ok(())
 /// # }
 /// ```
+// Deliberately not `Clone`, as the real transactional publisher is not: a handle carries at most
+// one transaction, and a second handle to the same one would be a second way to settle it.
 #[cfg(feature = "transaction")]
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct AmqpTestTxnPublisher {
     state: Arc<TestState>,
-    /// `Some` while a transaction is open. Clones share it, as they share the one broker-side
-    /// transaction on the real handle.
-    txn: Arc<Mutex<Option<Vec<Buffered>>>>,
+    /// `Some` while a transaction is open.
+    txn: Mutex<Option<Vec<Buffered>>>,
 }
 
 #[cfg(feature = "transaction")]
@@ -196,7 +197,7 @@ impl AmqpTestTxnPublisher {
     pub(crate) fn new(state: Arc<TestState>) -> Self {
         Self {
             state,
-            txn: Arc::new(Mutex::new(None)),
+            txn: Mutex::new(None),
         }
     }
 
