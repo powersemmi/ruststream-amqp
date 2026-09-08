@@ -7,10 +7,33 @@ subscribers, routing, codecs, middleware), see the
 [RustStream documentation](https://powersemmi.github.io/ruststream/).
 
 ```toml
-ruststream = { version = "0.6", features = ["macros", "json"] }
-ruststream-amqp = "0.6"
+ruststream = { version = "0.7", features = ["macros", "json"] }
+ruststream-amqp = "0.7"
 serde = { version = "1", features = ["derive"] }
 ```
+
+## The prelude
+
+`use ruststream_amqp::prelude::*;` is the one import a service file writes. It carries the broker,
+the address descriptor, the publish policies, the framework capability traits this broker
+implements, and the framework's own prelude.
+
+The imports follow the two vocabularies a service is written in. A handler body names
+capabilities, so it imports `ruststream::prelude::*` alone and bounds its slots with the broker
+capability traits (`Out<impl Publisher>`, `Out<impl TransactionalPublisher>`,
+`Out<impl RequestReply>`); the concrete publisher arrives from the mount site. A routes file names
+policies, so it imports this glob, where they arrive with the broker prefix stripped:
+
+| Crate root | In the prelude |
+|---|---|
+| `AmqpPublish` | `Publish` |
+| `AmqpTransactionalPublish` (feature `transaction`) | `TransactionalPublish` |
+
+A mount site therefore reads `b.include(handler).out(Reply, Publish)` on every broker, and moving a
+service between brokers is a change of one import rather than of every include site. The two
+vocabularies never share a name: a policy ends in `Publish`, and the capability trait of its live
+form ends in `Publisher`. The prefixed originals stay exported too, for a file that globs two
+broker preludes and has to say which `Publish` it means.
 
 ## Capabilities
 
@@ -19,13 +42,19 @@ The framework's optional capability traits, and what this broker implements nati
 | Capability | Native | Notes |
 | --- | --- | --- |
 | `Subscribe` | yes | subscribe by name; the name is sent verbatim, as `AmqpAddress::raw` does |
-| `BatchSubscriber` | no | the protocol delivers one message per transfer, and batching is credit, not a batch pull |
+| `BatchSubscriber` | yes, on the client | [a transfer carries one message, so the framework's buffer assembles the batches](#batches) |
 | `TransactionalPublisher` | yes, with the `transaction` feature | [transactional posting](#transactions), one broker-side transaction per handle |
 | `OwnedTransactions` | no | only the borrowed form is implemented; the client's transactional path covers posting |
 | `RequestReply` | yes | [`reply-to`, `correlation-id`, and a dynamic reply link](#requestreply) |
 | `Partitioned` | yes | [the partition key rides the `group-id` property](#headers-and-the-partition-key) |
 | `Seekable` and `Positioned` | no | the queue position belongs to the broker; the protocol exposes no client-addressable offset to seek to |
 | `DescribeServer` | yes | reports the connection host and the `amqp` protocol for the framework's server description |
+
+A delivery carries no broker metadata beyond its own sections, so the per-delivery context stays
+the framework's `()` default and this crate publishes no `Ctx` keys; a batch inherits that default,
+having no subscription-scoped handle to offer either. What an AMQP message says about itself lives
+in the `properties` and `application-properties` sections, which arrive as headers and are read
+with `ctx.headers()` or the framework's `Headers<T>` extractor.
 
 ## The lifecycle
 
@@ -93,20 +122,45 @@ A descriptor that cannot form a subscription (an empty address, zero credit) is 
 The plain string form `#[subscriber("orders")]` also works: a by-name source resolves to
 `AmqpAddress::raw`, so the address goes to the broker verbatim with no capability attached.
 
+## Batches
+
+A handler taking a slice is handed a batch of messages rather than one, and the mount site names
+the batch size:
+
+```rust
+--8<-- "crates/ruststream-amqp/examples/amqp_batches.rs:handler"
+```
+
+```rust
+--8<-- "crates/ruststream-amqp/examples/amqp_batches.rs:app"
+```
+
+AMQP 1.0 has no batch pull: a transfer carries one message, and credit is flow control rather than
+a batch size. The batches are therefore assembled on the client, by the framework's own buffer, and
+a batch holds at most the size the mount site named - fewer whenever that is all that arrived in
+time, never more. Nothing at the mount site says which of the two a broker does, which is the point:
+the size is the one word either way.
+
+What belongs to this crate is the deadline that closes a partial batch: `batch_wait` on the
+descriptor, 10 milliseconds by default. It trades latency for fuller batches under a trickle of
+traffic; under a steady flow the size closes the batch first and the deadline never fires. Credit is
+a separate dial: it bounds what the broker may have in flight, while the batch size is how many
+messages one handler call sees.
+
 ## Acknowledgement and dispositions
 
 Settlement maps onto the protocol's dispositions, with no invented middle layer:
 
-| Handler result | Disposition | Effect |
+| Handler outcome | Disposition | Effect |
 | --- | --- | --- |
-| `HandlerResult::Ack` | `accept` | the delivery is done, the broker drops it |
-| `HandlerResult::retry()` | `release` | the delivery returns to the broker for redelivery |
-| `HandlerResult::drop()` | `reject` | terminal; the broker's dead-letter policy decides |
+| `HandlerOutcome::ack()` | `accept` | the delivery is done, the broker drops it |
+| `HandlerOutcome::retry()` | `release` | the delivery returns to the broker for redelivery |
+| `HandlerOutcome::drop()` | `reject` | terminal; the broker's dead-letter policy decides |
 
 On an at-most-once subscription the deliveries arrive already settled, so `ack` and `nack` report
 `AckError::Unsupported` instead of a settlement that never reaches the wire.
 
-AMQP 1.0 has no protocol-level delayed redelivery, so `HandlerResult::retry_after(delay)` falls
+AMQP 1.0 has no protocol-level delayed redelivery, so `HandlerOutcome::retry_after(delay)` falls
 back to the runtime's broker-agnostic deferred re-publish rather than a broker-side timer.
 
 ## Publishing
@@ -114,12 +168,29 @@ back to the runtime's broker-agnostic deferred re-publish rather than a broker-s
 A publisher is a policy plus the live connection. `AmqpPublish` holds no connection, so it is
 constructed anywhere (in a router, in configuration, at a mount site) and the runtime pairs it with
 the broker at startup to produce an `AmqpPublisher`. It is also the broker's default publish
-policy, so a `#[subscriber(.., publish("dest"))]` handler mounted without an explicit publisher
-replies through it.
+policy, so a `#[subscriber(.., publish("dest"))]` handler whose mount site names no reply publisher
+replies through it. A mount site that does name one writes `.out(Reply, Publish)` for the reply and
+`.out(<marker>, Publish).build()` for an injected slot, `Publish` being the policy's
+[prelude](#the-prelude) name. The policy carries no options of its own, so it is written bare;
+this crate ships no mount-site settings trait over it.
 
 Sender links are attached on first use and cached per address. A message the peer settles with
 anything other than `accept` (rejected, released, modified) is reported as
 `AmqpError::PublishNotAccepted`, so a broker-side refusal cannot pass as a successful publish.
+
+Every publish surface is entered with `message(&value)`, and the wire follows the value's type: a
+`serde::Serialize` value encodes with the resolved codec, a `#[derive(Serialized)]` newtype carries
+bytes the service already holds and they leave as they are. Bytes therefore travel under a name of
+their own rather than as an anonymous payload, which is also what puts them in the generated
+document. A bare `AmqpPublisher` reaches that entry point through the framework's blanket
+`PublishExt`.
+
+A per-message argument of a broker's own goes on the publisher, ahead of the builder entry point:
+a step like `publisher.with_x(v)` returns an adapter that implements `Publisher`, captures the
+argument, and stamps it onto the `OutgoingMessage` inside its own `publish` before delegating, so
+the argument rides the ordinary chain (`publisher.with_x(v).message(&order).publish()`). This crate
+ships no such step; its per-message vocabulary is the AMQP properties section, which the framework's
+well-known headers already cover.
 
 ## Request/reply
 
@@ -136,10 +207,18 @@ publisher arrives live, already paired with the connected broker:
 --8<-- "crates/ruststream-amqp/examples/amqp_request_reply.rs:request"
 ```
 
-The responder end reads the reply address the requester named and publishes the answer there. The
-address is minted per request, so the fixed-destination `publish(..)` reply form does not fit: the
-reply rides an injected publisher, and echoes `correlation-id` so a late reply cannot resolve a
-later request.
+The responder end reads the reply address the requester named and publishes the answer there,
+echoing `correlation-id` back. The address is minted per request, so the reply rides an injected
+publisher rather than the fixed-destination `publish(..)` form. The slot names the capability it
+needs (`Out<impl Publisher>`); `AmqpPublisher` is inferred from the policy the include site binds
+to the slot's marker, `b.include(greet).out(DefaultSlot, Publish).build()` for the unnamed slot
+this handler declares.
+
+Both ends of the exchange are byte-shaped here, and the payload types say so: the request arrives
+as a `#[derive(Deserialized)]` view of the delivery's bytes, so no codec runs on it, and the
+greeting the handler builds is a `#[derive(Outgoing, Serialized)]` newtype, so it leaves
+byte-for-byte. The derive carries no `name`, which is what opens the `to(..)` position the
+per-request reply address fills.
 
 ```rust
 --8<-- "crates/ruststream-amqp/examples/amqp_request_reply.rs:responder"
@@ -191,5 +270,9 @@ its connected form implements `ruststream::testing::TestableBroker`, so the same
 The test broker routes by exact address match and does not simulate broker-specific behaviour
 (dead-letter policies, credit, redelivery timing). Those are verified end to end against a real
 broker: `just test-brokers` starts ActiveMQ Artemis from `docker-compose.test.yml` and runs the
-integration tests plus the conformance lifecycle, request/reply, and transactions suites against
-it, gated behind `AMQP_TEST_URL`.
+integration tests plus the conformance lifecycle, batching, request/reply, and transactions suites
+against it, gated behind `AMQP_TEST_URL`.
+
+Batches are the one behaviour the two brokers share verbatim: both assemble them with the
+framework's buffer, so a batch handler runs against the test broker exactly as it does against a
+server.

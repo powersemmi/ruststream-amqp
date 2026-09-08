@@ -4,7 +4,10 @@
 //! an ack token must be `Send + 'static`. The crate therefore owns a pump task per subscription:
 //! it drives `recv`, forwards deliveries into a bounded channel (back-pressure), and applies
 //! settlement commands shipped back from message handles. The subscriber itself is a plain
-//! bounded-channel consumer, which keeps `stream` cancel-safe and re-enterable.
+//! bounded-channel consumer, which keeps `stream` cancel-safe and re-enterable, under the
+//! framework's client-side buffer that turns it into a [`BatchSubscriber`].
+
+use std::num::NonZeroUsize;
 
 use futures::Stream;
 
@@ -13,7 +16,7 @@ use fe2o3_amqp::link::{Receiver as FeReceiver, RecvError};
 use fe2o3_amqp::session::SessionHandle;
 use fe2o3_amqp_types::messaging::Body;
 use fe2o3_amqp_types::primitives::Value;
-use ruststream::{AckError, Subscriber};
+use ruststream::{AckError, BatchSubscriber, BufferedSubscriber, Subscriber};
 use tokio::sync::mpsc;
 
 use crate::address::AmqpAddress;
@@ -23,13 +26,13 @@ use crate::message::{
     AmqpMessage, SettleCmd, SettleKind, SettleSender, headers_from_amqp, payload_from_body,
 };
 
-/// A subscription to one `AMQP` address; yields [`AmqpMessage`]s.
+/// A subscription to one `AMQP` address; yields [`AmqpMessage`]s one at a time, or in batches.
 ///
 /// Dropping the subscriber stops the pump task, detaches the link, and ends the subscription's
 /// session.
 pub struct AmqpSubscriber {
     address: String,
-    rx: mpsc::Receiver<Result<AmqpMessage, AmqpError>>,
+    deliveries: BufferedSubscriber<Deliveries>,
 }
 
 impl std::fmt::Debug for AmqpSubscriber {
@@ -83,12 +86,43 @@ impl AmqpSubscriber {
 
         Ok(Self {
             address: addr,
-            rx: out_rx,
+            deliveries: BufferedSubscriber::new(Deliveries { rx: out_rx })
+                .max_wait(address.batch_wait_value()),
         })
     }
 }
 
 impl Subscriber for AmqpSubscriber {
+    type Message = AmqpMessage;
+    type Error = AmqpError;
+
+    fn stream(&mut self) -> impl Stream<Item = Result<AmqpMessage, AmqpError>> + Send + '_ {
+        self.deliveries.stream()
+    }
+}
+
+/// `AMQP` 1.0 has no batch pull: a transfer carries one message and credit is flow control, not a
+/// batch size. The batches are therefore assembled on the client, by the framework's own buffer,
+/// so a batch never carries more than the size the registration named. What this crate chooses is
+/// the deadline that closes a partial one, which rides the descriptor as
+/// [`AmqpAddress::batch_wait`](crate::AmqpAddress::batch_wait).
+impl BatchSubscriber for AmqpSubscriber {
+    type Batch = Vec<AmqpMessage>;
+
+    fn batches(
+        &mut self,
+        size: NonZeroUsize,
+    ) -> impl Stream<Item = Result<Self::Batch, <Self as Subscriber>::Error>> + Send + '_ {
+        self.deliveries.batches(size)
+    }
+}
+
+/// The consuming end of the pump channel: one delivery per stream item.
+struct Deliveries {
+    rx: mpsc::Receiver<Result<AmqpMessage, AmqpError>>,
+}
+
+impl Subscriber for Deliveries {
     type Message = AmqpMessage;
     type Error = AmqpError;
 
@@ -211,10 +245,8 @@ async fn pump(mut p: Pump) {
         apply(&p.receiver, cmd).await;
     }
 
-    if !fatal {
-        if let Err((_, err)) = p.receiver.detach().await {
-            tracing::debug!(address = %p.address, error = %err, "amqp receiver detach failed");
-        }
+    if !fatal && let Err((_, err)) = p.receiver.detach().await {
+        tracing::debug!(address = %p.address, error = %err, "amqp receiver detach failed");
     }
     if let Err(err) = p.session.end().await {
         tracing::debug!(address = %p.address, error = %err, "amqp session end failed");

@@ -20,32 +20,40 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        toolchain: [stable, msrv]
+        # Keep the floor in step with `rust-version` in the workspace manifest; the step below
+        # fails the leg if it drifts.
+        toolchain: [stable, beta, "1.88"]
+    # Installing a toolchain does not select it: `rust-toolchain.toml` outranks the rustup
+    # default the install action sets, so without this the floor leg silently ran on stable.
+    # RUSTUP_TOOLCHAIN outranks the file.
+    env:
+      RUSTUP_TOOLCHAIN: ${{ matrix.toolchain }}
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      # The MSRV leg follows `rust-version` in Cargo.toml, so an MSRV bump is a one-line change.
-      - name: Resolve toolchain
-        id: toolchain
-        env:
-          TOOLCHAIN: ${{ matrix.toolchain }}
-        run: |
-          if [ "$TOOLCHAIN" = "msrv" ]; then
-            TOOLCHAIN="$(sed -n 's/^rust-version *= *"\(.*\)"/\1/p' Cargo.toml)"
-            test -n "$TOOLCHAIN"
-          fi
-          echo "toolchain=$TOOLCHAIN" >> "$GITHUB_OUTPUT"
-
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: ${{ steps.toolchain.outputs.toolchain }}
+          toolchain: ${{ matrix.toolchain }}
           components: rustfmt, clippy
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
+
+      # RUSTUP_TOOLCHAIN needs a concrete version, so the floor is written twice: here and in
+      # the manifest. Guard the copy rather than trusting the comment above it.
+      - name: Check the floor matches the manifest
+        if: matrix.toolchain != 'stable' && matrix.toolchain != 'beta'
+        env:
+          TOOLCHAIN: ${{ matrix.toolchain }}
+        run: |
+          declared="$(sed -n 's/^rust-version *= *"\(.*\)"/\1/p' Cargo.toml)"
+          if [ "$declared" != "$TOOLCHAIN" ]; then
+            echo "matrix floor '${TOOLCHAIN}' does not match rust-version '${declared}' in Cargo.toml"
+            exit 1
+          fi
 
       - name: cargo fmt
         if: matrix.toolchain == 'stable'
@@ -55,14 +63,115 @@ jobs:
         if: matrix.toolchain == 'stable'
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
+      # Advisory, not a gate: surfaces a lint added by the next clippy release six weeks
+      # before it turns the build red.
+      - name: cargo clippy (beta, advisory)
+        if: matrix.toolchain == 'beta'
+        continue-on-error: true
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
       - name: cargo check (no default features)
         run: cargo check --workspace --no-default-features
 
       - name: cargo check (all features)
         run: cargo check --workspace --all-targets --all-features
 
+      # --no-fail-fast: a failing target must not hide failures in the targets behind it;
+      # the log then lists every red test, not just the first binary's.
       - name: cargo test (handler-stub only, no live broker)
-        run: cargo test --workspace --all-features
+        run: cargo test --workspace --all-features --no-fail-fast
+
+      # The crate-root missing_docs deny covers item docs; this gate catches what rustc
+      # cannot: broken intra-doc links and redundant targets only rustdoc resolves.
+      - name: cargo doc
+        if: matrix.toolchain == 'stable'
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --all-features --no-deps
+
+  features:
+    name: Each feature alone
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-hack
+        uses: taiki-e/install-action@v2.86.5
+        with:
+          tool: cargo-hack
+
+      # --no-dev-deps: a dev-dependency in scope masks a missing feature gate in the library.
+      # It also rewrites the manifests in place, which is why this job takes no lock file.
+      - name: cargo hack check (each feature)
+        run: cargo hack check --workspace --each-feature --no-dev-deps
+
+  minimal-versions:
+    name: Minimal versions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install nightly (resolver only)
+        uses: dtolnay/rust-toolchain@nightly
+
+      # The floor, for the build step below. Keep the version in step with
+      # `rust-version` in the workspace manifest.
+      - name: Install the MSRV toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.88"
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      # The full flag rather than -Z direct-minimal-versions: the narrow one leaves the assembled
+      # graph unverified, and that is what a user builds. It costs the pinning list below.
+      - name: Resolve minimal versions
+        run: cargo +nightly update -Z minimal-versions
+
+      # Each entry names a third-party manifest whose declared bound is lower than what its own
+      # code needs, pinned to the first version that builds; drop an entry when that crate's floor
+      # moves, and add one here when a new bound turns up.
+      #
+      # `serde_repr` 0.1.0 (via fe2o3-amqp-types) declares `quote = "0.6"` but calls a macro that
+      # release does not export. `slab` 0.4.2 and `url` 2.0 are what fe2o3-amqp's bounds admit,
+      # below the `try_remove` and `TryFrom<&str> for Url` this crate's transport path reaches for.
+      # `tracing-attributes` declares `syn = "1.0"` but calls `base10_parse`, added in 1.0.5; the
+      # selector is version-qualified because several major lines of syn are in the graph.
+      #
+      # ruststream declares its own floors, so nothing here pins on its account.
+      - name: Pin dependencies whose declared bounds are too loose
+        run: |
+          cargo update -p serde_repr --precise 0.1.12
+          cargo update -p slab --precise 0.4.4
+          cargo update -p url --precise 2.2.0
+          cargo update -p syn@1.0.0 --precise 1.0.5
+
+      # Minimum dependencies on the minimum compiler: the worst case a user can assemble.
+      # Resolution above needs nightly, so only this step drops to the floor.
+      #
+      # Every feature except the two TLS pass-throughs: `rustls` and `native-tls` forward to
+      # fe2o3-amqp and this crate declares no TLS dependency of its own, so their minimal graphs
+      # measure the vendors' floors rather than these bounds.
+      - name: Build and test against minimal versions
+        env:
+          RUSTUP_TOOLCHAIN: "1.88"
+        run: |
+          cargo check --locked --workspace --all-targets --features transaction,testing
+          cargo test --locked --workspace --features transaction,testing --no-fail-fast
 
   broker-integration:
     name: Broker integration (Artemis)
@@ -117,7 +226,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install cargo-deny
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@v2.86.5
         with:
           tool: cargo-deny
 

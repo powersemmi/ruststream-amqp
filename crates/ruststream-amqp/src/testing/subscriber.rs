@@ -1,17 +1,20 @@
 //! [`AmqpTestSubscriber`] and [`AmqpTestMessage`].
 
+use std::future::{Future, ready};
+use std::num::NonZeroUsize;
 use std::sync::{Arc, OnceLock};
 
 use futures::Stream;
 
 use ruststream::{
-    AckError, Headers, IncomingMessage, Partitioned, Subscriber, testing::Coordinator,
+    AckError, BatchSubscriber, BufferedSubscriber, HeaderMap, IncomingMessage, Partitioned,
+    Subscriber, testing::Coordinator,
 };
 
-use crate::PARTITION_KEY_HEADER;
 use crate::error::AmqpError;
 use crate::testing::broker::TestState;
 use crate::testing::router::{Delivery, DeliveryReceiver, DeliverySender, SubscriptionId};
+use crate::{DEFAULT_BATCH_WAIT, PARTITION_KEY_HEADER};
 
 /// Subscriber returned by [`ConnectedAmqpTestBroker`](crate::testing::ConnectedAmqpTestBroker).
 ///
@@ -20,11 +23,7 @@ use crate::testing::router::{Delivery, DeliveryReceiver, DeliverySender, Subscri
 pub struct AmqpTestSubscriber {
     state: Arc<TestState>,
     id: SubscriptionId,
-    rx: DeliveryReceiver,
-    requeue: DeliverySender,
-    /// A clone of the broker's harness coordinator, threaded into each yielded message so a
-    /// requeue re-counts and a consumed delivery decrements. `None` outside a harness run.
-    coordinator: Option<Coordinator>,
+    deliveries: BufferedSubscriber<Deliveries>,
 }
 
 impl std::fmt::Debug for AmqpTestSubscriber {
@@ -44,9 +43,12 @@ impl AmqpTestSubscriber {
         Self {
             state,
             id,
-            rx,
-            requeue,
-            coordinator,
+            deliveries: BufferedSubscriber::new(Deliveries {
+                rx,
+                requeue,
+                coordinator,
+            })
+            .max_wait(DEFAULT_BATCH_WAIT),
         }
     }
 }
@@ -58,6 +60,37 @@ impl Drop for AmqpTestSubscriber {
 }
 
 impl Subscriber for AmqpTestSubscriber {
+    type Message = AmqpTestMessage;
+    type Error = AmqpError;
+
+    fn stream(&mut self) -> impl Stream<Item = Result<Self::Message, Self::Error>> + Send + '_ {
+        self.deliveries.stream()
+    }
+}
+
+/// Batches come from the same client-side buffer the real subscriber uses, so a batch handler runs
+/// against this broker exactly as it does against a server.
+impl BatchSubscriber for AmqpTestSubscriber {
+    type Batch = Vec<AmqpTestMessage>;
+
+    fn batches(
+        &mut self,
+        size: NonZeroUsize,
+    ) -> impl Stream<Item = Result<Self::Batch, <Self as Subscriber>::Error>> + Send + '_ {
+        self.deliveries.batches(size)
+    }
+}
+
+/// The routed stream under the buffer: one delivery per item, off the subscription's channel.
+struct Deliveries {
+    rx: DeliveryReceiver,
+    requeue: DeliverySender,
+    /// A clone of the broker's harness coordinator, threaded into each yielded message so a
+    /// requeue re-counts and a consumed delivery decrements. `None` outside a harness run.
+    coordinator: Option<Coordinator>,
+}
+
+impl Subscriber for Deliveries {
     type Message = AmqpTestMessage;
     type Error = AmqpError;
 
@@ -138,19 +171,19 @@ impl IncomingMessage for AmqpTestMessage {
             .unwrap_or_default()
     }
 
-    fn headers(&self) -> &Headers {
-        static EMPTY: OnceLock<Headers> = OnceLock::new();
+    fn headers(&self) -> &HeaderMap {
+        static EMPTY: OnceLock<HeaderMap> = OnceLock::new();
         self.delivery
             .as_ref()
-            .map_or_else(|| EMPTY.get_or_init(Headers::new), |d| &d.headers)
+            .map_or_else(|| EMPTY.get_or_init(HeaderMap::new), |d| &d.headers)
     }
 
-    async fn ack(mut self) -> Result<(), AckError> {
+    fn ack(mut self) -> impl Future<Output = Result<(), AckError>> {
         self.delivery.take();
-        Ok(())
+        ready(Ok(()))
     }
 
-    async fn nack(mut self, requeue: bool) -> Result<(), AckError> {
+    fn nack(mut self, requeue: bool) -> impl Future<Output = Result<(), AckError>> {
         let delivery = self
             .delivery
             .take()
@@ -165,7 +198,7 @@ impl IncomingMessage for AmqpTestMessage {
                 coordinator.enqueued();
             }
         }
-        Ok(())
+        ready(Ok(()))
     }
 
     fn partition_key(&self) -> Option<&[u8]> {

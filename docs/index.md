@@ -11,10 +11,13 @@ Handlers, routers, codecs, and middleware come from the framework; this crate su
 transport, and nothing broker-specific leaks back into the framework.
 
 ```toml
-ruststream = { version = "0.6", features = ["macros", "json"] }
-ruststream-amqp = "0.6"
+ruststream = { version = "0.7", features = ["macros", "json"] }
+ruststream-amqp = "0.7"
 serde = { version = "1", features = ["derive"] }
 ```
+
+`ruststream_amqp::prelude::*` is the one import a service file writes: it carries the broker, the
+address descriptor, and the publish policies, and re-exports the framework's own prelude.
 
 ```rust
 --8<-- "crates/ruststream-amqp/examples/amqp_service.rs:app"
@@ -24,7 +27,7 @@ serde = { version = "1", features = ["derive"] }
 
 <div class="grid cards" markdown>
 
-- :material-transit-connection-variant: **[AMQP guide](amqp.md)** - addressing, dispositions, request/reply, transactions, and testing.
+- :material-transit-connection-variant: **[AMQP guide](amqp.md)** - addressing, batching, dispositions, request/reply, transactions, and testing.
 - :material-book-open-variant: **[RustStream docs](https://powersemmi.github.io/ruststream/)** - the framework itself: subscribers, routing, codecs, middleware, the CLI.
 - :material-language-rust: **[API reference](https://docs.rs/ruststream-amqp)** - the crate's rustdoc on docs.rs.
 

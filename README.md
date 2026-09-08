@@ -9,7 +9,7 @@
   <a href="https://crates.io/crates/ruststream-amqp"><img src="https://img.shields.io/crates/v/ruststream-amqp.svg" alt="crates.io"></a>
   <a href="https://crates.io/crates/ruststream-amqp"><img src="https://img.shields.io/crates/dr/ruststream-amqp" alt="Recent downloads"></a>
   <a href="https://docs.rs/ruststream-amqp"><img src="https://img.shields.io/docsrs/ruststream-amqp" alt="docs.rs"></a>
-  <img src="https://img.shields.io/badge/MSRV-1.85-blue.svg" alt="MSRV 1.85">
+  <img src="https://img.shields.io/badge/MSRV-1.88-blue.svg" alt="MSRV 1.88">
   <img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License">
   <a href="https://t.me/ruststream_community"><img src="https://img.shields.io/badge/-Telegram-blue?logo=telegram&label=News" alt="Telegram news channel"></a>
   <a href="https://t.me/ruststream_communuty_ru_chat"><img src="https://img.shields.io/badge/-Telegram-blue?logo=telegram&label=RU" alt="Telegram RU chat"></a>
@@ -30,6 +30,7 @@ AMQP 1.0 is an ISO-standard protocol spoken by ActiveMQ Artemis and Classic, Rab
 - **Lazy startup contract.** `AmqpBroker::new(url)` is synchronous and does no I/O; the runtime connects once at startup, so the broker composes with `#[ruststream::app]`. SASL (ANONYMOUS, PLAIN, EXTERNAL) and the container id are builder options.
 - **Acknowledgement as dispositions.** `ack` maps to `accept`, `nack(requeue = true)` to `release`, `nack(requeue = false)` to `reject` - the broker's own dead-letter policy applies. At-most-once subscriptions report `AckError::Unsupported` instead of a settlement that never reaches the wire.
 - **Explicit addressing.** The protocol standardises the wire, not the meaning of an address: `AmqpAddress::queue` (anycast), `AmqpAddress::topic` (multicast), `AmqpAddress::raw` (verbatim, for deployments with their own convention), plus `credit` (prefetch as protocol-level flow control) and the `settle` guarantee.
+- **Batches.** A handler taking a slice gets batches of the size its mount site names (`.batch(nonzero!(32))`). A transfer carries one message, so the batches are assembled on the client and `batch_wait` caps how long a partial one waits - the mount site reads the same as on a broker that batches on the wire.
 - **Native request/reply.** `AmqpPublisher` implements the `RequestReply` capability over `reply-to`, `correlation-id`, and a dynamic receiver link.
 - **Transactions** (feature `transaction`). A distinct `AmqpTransactionalPublish` policy pairs into a `TransactionalPublisher` built on the protocol's transactional posting; the plain publisher carries no transactional surface.
 - **Headers without an envelope.** Well-known headers ride the `properties` section (`content-type`, `correlation-id`, `reply-to`, `message-id`, the partition key as `group-id`); everything else rides `application-properties`, so non-Rust peers see plain AMQP messages.
@@ -39,20 +40,18 @@ AMQP 1.0 is an ISO-standard protocol spoken by ActiveMQ Artemis and Classic, Rab
 
 ```toml
 [dependencies]
-ruststream = { version = "0.6", features = ["macros", "json"] }
-ruststream-amqp = "0.6"
+ruststream = { version = "0.7", features = ["macros", "json"] }
+ruststream-amqp = "0.7"
 serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
-ruststream-amqp = { version = "0.6", features = ["testing"] }
+ruststream-amqp = { version = "0.7", features = ["testing"] }
 ```
 
 ## Write a service
 
 ```rust
-use ruststream::runtime::{App, AppInfo, HandlerResult, RustStream};
-use ruststream::subscriber;
-use ruststream_amqp::{AmqpAddress, AmqpBroker};
+use ruststream_amqp::prelude::*;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -61,9 +60,9 @@ struct Order {
 }
 
 #[subscriber(AmqpAddress::queue("orders"))]
-async fn handle(order: &Order) -> HandlerResult {
+async fn handle(order: &Order) -> HandlerOutcome {
     println!("got order {}", order.id);
-    HandlerResult::Ack
+    HandlerOutcome::ack()
 }
 
 #[ruststream::app]
@@ -77,7 +76,7 @@ The descriptor carries the AMQP-specific options inline in the decorator:
 
 ```rust
 #[subscriber(AmqpAddress::queue("orders").credit(64))]
-async fn handle(order: &Order) -> HandlerResult { /* ... */ }
+async fn handle(order: &Order) -> HandlerOutcome { /* ... */ }
 ```
 
 ## Test it

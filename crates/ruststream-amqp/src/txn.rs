@@ -6,9 +6,12 @@
 //! [`TransactionalPublisher`] kind (one broker-side transaction per handle) and leaves
 //! transactional retirement (acks) and acquisition out.
 
+use std::future::{Future, ready};
 use std::sync::Arc;
 
-use fe2o3_amqp::transaction::{Controller, OwnedTransaction, TransactionDischarge};
+use fe2o3_amqp::transaction::{
+    Controller, OwnedTransaction, TransactionDischarge, TransactionPosting,
+};
 use fe2o3_amqp_types::definitions::SenderSettleMode;
 use fe2o3_amqp_types::transaction::Coordinator;
 use ruststream::{OutgoingMessage, PairError, PublishPolicy, Publisher, TransactionalPublisher};
@@ -37,8 +40,11 @@ pub struct AmqpTransactionalPublish;
 impl PublishPolicy<ConnectedAmqpBroker> for AmqpTransactionalPublish {
     type Live = AmqpTxnPublisher;
 
-    async fn pair(self, connected: &ConnectedAmqpBroker) -> Result<Self::Live, PairError> {
-        Ok(connected.transactional_publisher())
+    fn pair(
+        self,
+        connected: &ConnectedAmqpBroker,
+    ) -> impl Future<Output = Result<Self::Live, PairError>> {
+        ready(Ok(connected.transactional_publisher()))
     }
 }
 

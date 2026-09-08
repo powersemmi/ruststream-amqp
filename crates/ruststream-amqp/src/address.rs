@@ -6,6 +6,8 @@
 //! matching terminus capability (`"queue"` / `"topic"`), which is how `ActiveMQ` Artemis and other
 //! products disambiguate; `raw` sends the address verbatim with no capability.
 
+use std::time::Duration;
+
 use ruststream::SubscriptionSource;
 
 use crate::broker::ConnectedAmqpBroker;
@@ -14,6 +16,9 @@ use crate::subscriber::AmqpSubscriber;
 
 /// Default protocol-level credit (prefetch) granted to a subscription.
 pub const DEFAULT_CREDIT: u32 = 256;
+
+/// Default deadline closing a partial batch on a batch subscription.
+pub const DEFAULT_BATCH_WAIT: Duration = Duration::from_millis(10);
 
 /// Delivery guarantee of a subscription.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -51,6 +56,7 @@ pub struct AmqpAddress {
     kind: Kind,
     credit: u32,
     settle: Settle,
+    batch_wait: Duration,
 }
 
 impl AmqpAddress {
@@ -60,6 +66,7 @@ impl AmqpAddress {
             kind,
             credit: DEFAULT_CREDIT,
             settle: Settle::default(),
+            batch_wait: DEFAULT_BATCH_WAIT,
         }
     }
 
@@ -116,6 +123,27 @@ impl AmqpAddress {
         self
     }
 
+    /// Caps how long a partial batch waits for more deliveries on a batch subscription, counted
+    /// from its first one. Defaults to [`DEFAULT_BATCH_WAIT`].
+    ///
+    /// `AMQP` 1.0 has no batch pull, so the batches are assembled on the client and this deadline
+    /// is what trades latency for fuller batches under a trickle of traffic. It has no effect on a
+    /// single-message subscription, where every delivery goes out as it arrives.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::time::Duration;
+    ///
+    /// use ruststream_amqp::AmqpAddress;
+    /// let source = AmqpAddress::queue("orders").batch_wait(Duration::from_millis(50));
+    /// # let _ = source;
+    /// ```
+    pub fn batch_wait(mut self, batch_wait: Duration) -> Self {
+        self.batch_wait = batch_wait;
+        self
+    }
+
     /// The address string sent to the broker.
     #[must_use]
     pub fn address(&self) -> &str {
@@ -128,6 +156,10 @@ impl AmqpAddress {
 
     pub(crate) fn settle_value(&self) -> Settle {
         self.settle
+    }
+
+    pub(crate) fn batch_wait_value(&self) -> Duration {
+        self.batch_wait
     }
 
     /// The terminus capability this descriptor advertises, when one applies.
@@ -185,6 +217,20 @@ mod tests {
             AmqpAddress::queue("orders").credit(0).validate(),
             Err(AmqpError::InvalidAddress(_))
         ));
+    }
+
+    #[test]
+    fn the_batch_deadline_defaults_and_takes_an_override() {
+        assert_eq!(
+            AmqpAddress::queue("q").batch_wait_value(),
+            DEFAULT_BATCH_WAIT
+        );
+        assert_eq!(
+            AmqpAddress::queue("q")
+                .batch_wait(Duration::from_millis(50))
+                .batch_wait_value(),
+            Duration::from_millis(50)
+        );
     }
 
     #[test]

@@ -13,6 +13,8 @@
 //!   envelope format is invented and non-Rust peers see plain `AMQP` messages.
 //! - Back-pressure is the protocol's own credit-based flow control, surfaced as the
 //!   [`AmqpAddress::credit`] prefetch.
+//! - Batches are assembled on the client: a transfer carries one message, so a batch handler gets
+//!   the size it named and [`AmqpAddress::batch_wait`] decides how long a partial batch waits.
 
 #![forbid(unsafe_code)]
 
@@ -21,6 +23,7 @@ mod broker;
 mod config;
 mod error;
 mod message;
+pub mod prelude;
 mod publisher;
 mod subscriber;
 #[cfg(feature = "testing")]
@@ -28,7 +31,7 @@ pub mod testing;
 #[cfg(feature = "transaction")]
 mod txn;
 
-pub use address::{AmqpAddress, DEFAULT_CREDIT, Settle};
+pub use address::{AmqpAddress, DEFAULT_BATCH_WAIT, DEFAULT_CREDIT, Settle};
 pub use broker::{AmqpBroker, ConnectedAmqpBroker};
 pub use config::Sasl;
 pub use error::AmqpError;

@@ -1,5 +1,6 @@
 //! [`AmqpPublisher`], its [`AmqpPublish`] policy, and native request/reply.
 
+use std::future::{Future, ready};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -156,7 +157,10 @@ pub struct AmqpPublish;
 impl PublishPolicy<ConnectedAmqpBroker> for AmqpPublish {
     type Live = AmqpPublisher;
 
-    async fn pair(self, connected: &ConnectedAmqpBroker) -> Result<Self::Live, PairError> {
-        Ok(connected.publisher())
+    fn pair(
+        self,
+        connected: &ConnectedAmqpBroker,
+    ) -> impl Future<Output = Result<Self::Live, PairError>> {
+        ready(Ok(connected.publisher()))
     }
 }
