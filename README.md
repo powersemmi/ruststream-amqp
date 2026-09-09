@@ -35,7 +35,7 @@ AMQP 1.0 is an ISO-standard protocol spoken by ActiveMQ Artemis and Classic, Rab
 - **Native request/reply.** `AmqpPublisher` implements the `RequestReply` capability over `reply-to`, `correlation-id`, and a dynamic receiver link.
 - **Transactions** (feature `transaction`). A distinct `AmqpTransactionalPublish` policy pairs into a `TransactionalPublisher` built on the protocol's transactional posting; the plain publisher carries no transactional surface.
 - **Headers without an envelope.** Well-known headers ride the `properties` section (`content-type`, `correlation-id`, `reply-to`, `message-id`, the partition key as `group-id`); everything else rides `application-properties`, so non-Rust peers see plain AMQP messages.
-- **In-process test broker** (feature `testing`). `AmqpTestBroker` reproduces this crate's routing with no server, drives the framework's `TestApp` harness, and passes the conformance suite in process.
+- **In-process test broker** (feature `testing`). `AmqpTestBroker` reproduces this crate's routing with no server, a service mounts on it and runs under the framework's `TestApp` harness, and it answers the way a real broker does, which the crate's own tests hold it to.
 
 ## Install
 
