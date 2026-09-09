@@ -231,8 +231,10 @@ delivered message implements the `Partitioned` capability.
 ## Testing
 
 The `testing` feature ships `AmqpTestBroker`: an in-process transport that reproduces the crate's
-core routing with no server and no AMQP wire. It follows the same ladder as the real broker, and
-the framework's `TestApp` harness runs a service's handlers on it. See
+core routing with no server and no AMQP wire. A test file imports it by its own path,
+`use ruststream_amqp::testing::AmqpTestBroker;`, alongside the prelude glob. It follows the same
+ladder as the real broker, and the framework's `TestApp` harness runs a service's handlers on it.
+See
 [Unit-testing a service with TestApp](https://powersemmi.github.io/ruststream/latest/guides/testing/#unit-testing-a-service-with-testapp).
 
 The test broker routes by exact address match. Dead-letter policies, credit and redelivery timing
