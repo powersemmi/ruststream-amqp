@@ -256,17 +256,20 @@ impl Broker for AmqpBroker {
 /// The userinfo goes with the scheme and the path: a URL of the form `amqp://user:password@host`
 /// would otherwise put the password into a document services publish and share. Never fails,
 /// because metadata must not block startup on a URL the connection itself will reject anyway.
+///
+/// The cuts are ordered. The authority ends at the first `/`, `?` or `#`, so an `@` past that
+/// point belongs to a path or a query and separates nothing: looking for `@` first reads
+/// `amqp://host/a@b` as a host of `b`. Inside the authority the last `@` is the separator, because
+/// a password may contain one.
 fn host_of(url: &str) -> String {
     let after_scheme = url.split_once("://").map_or(url, |(_, rest)| rest);
-    // rsplit: a password may itself contain '@', and the last one separates userinfo from host.
-    let after_userinfo = after_scheme
+    let authority = after_scheme
+        .split_once(['/', '?', '#'])
+        .map_or(after_scheme, |(authority, _)| authority);
+    authority
         .rsplit_once('@')
-        .map_or(after_scheme, |(_, rest)| rest);
-    let host = after_userinfo
-        .split(['/', '?'])
-        .next()
-        .unwrap_or(after_userinfo);
-    host.to_owned()
+        .map_or(authority, |(_, host)| host)
+        .to_owned()
 }
 
 /// `DescribeServer` reports the host and port the service connects to, which is what the
@@ -413,8 +416,13 @@ mod tests {
         assert_eq!(host_of("amqps://broker:5671/vhost"), "broker:5671");
         assert_eq!(host_of("amqp://broker:5672/?sasl=plain"), "broker:5672");
         assert_eq!(host_of("broker:5672"), "broker:5672");
-        // A password may contain '@', so the split has to take the last one.
+        // A password may contain '@', so inside the authority the split takes the last one.
         assert_eq!(host_of("amqp://user:p@ss@broker:5672"), "broker:5672");
+        // The authority ends before the path, query and fragment, so an '@' past it separates
+        // nothing. Cutting on '@' before cutting the path reports a host of "b".
+        assert_eq!(host_of("amqp://broker:5672/a@b"), "broker:5672");
+        assert_eq!(host_of("amqp://broker:5672/?token=a@b"), "broker:5672");
+        assert_eq!(host_of("amqp://broker:5672#a@b"), "broker:5672");
     }
 
     /// The URL carries the credentials the connection needs, and the description is published in
