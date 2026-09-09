@@ -20,26 +20,37 @@ struct Order {
 }
 
 /// A reply that fixes its own destination, so the mount site adds nothing to it.
+///
+/// No reply here shares a field set with the request: the assertions read a decoded payload, so
+/// two types that decode into one another would let an assertion aimed at the wrong address pass.
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Outgoing)]
 #[outgoing(name = "receipts")]
 struct Receipt {
-    id: u64,
+    order_id: u64,
+    paid: bool,
 }
 
 /// A reply that declares no destination, so the mount site supplies one.
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Outgoing)]
 struct Confirmation {
-    id: u64,
+    order_id: u64,
+    accepted: bool,
 }
 
 #[subscriber("receipt-requests", publish)]
 async fn issue_receipt(order: &Order) -> Receipt {
-    Receipt { id: order.id }
+    Receipt {
+        order_id: order.id,
+        paid: true,
+    }
 }
 
 #[subscriber("confirmation-requests", publish("confirmations"))]
 async fn confirm(order: &Order) -> Confirmation {
-    Confirmation { id: order.id }
+    Confirmation {
+        order_id: order.id,
+        accepted: true,
+    }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -65,7 +76,10 @@ async fn a_reply_lands_where_its_own_type_declares() {
     app.broker::<AmqpTestBroker>()
         .published::<Receipt>("receipts")
         .assert_called_once()
-        .with(&Receipt { id: 7 });
+        .with(&Receipt {
+            order_id: 7,
+            paid: true,
+        });
 
     app.shutdown().await.expect("shutdown failed");
 }
@@ -91,7 +105,10 @@ async fn a_reply_that_declares_no_name_lands_where_the_mount_site_says() {
     app.broker::<AmqpTestBroker>()
         .published::<Confirmation>("confirmations")
         .assert_called_once()
-        .with(&Confirmation { id: 11 });
+        .with(&Confirmation {
+            order_id: 11,
+            accepted: true,
+        });
 
     app.shutdown().await.expect("shutdown failed");
 }
