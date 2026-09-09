@@ -260,11 +260,8 @@ delivered messages implement the `Partitioned` capability.
 ## Testing
 
 The `testing` feature ships `AmqpTestBroker`: an in-process transport that reproduces this crate's
-behaviour with no server and no AMQP wire. It follows the same ladder as the real broker, and its
-connected form implements `ruststream::testing::TestableBroker`, so the same broker drives the
-`TestApp` harness and the framework's conformance suites. Inject traffic with
-`broker.inject(OutgoingMessage::new(..))` and assert on published output with the free
-`ruststream::testing::expect_published`. See
+behaviour with no server and no AMQP wire. It follows the same ladder as the real broker, and it
+drives the `TestApp` harness. See
 [Unit-testing a service with TestApp](https://powersemmi.github.io/ruststream/latest/guides/testing/#unit-testing-a-service-with-testapp).
 
 The whole production declaration resolves against the test broker, so the test runs the wiring the
@@ -286,9 +283,7 @@ and its `ack` reports `AckError::Unsupported`. Batches come from the same client
 the descriptor's own `batch_wait`. A transaction publishes nothing before its commit and discards
 its buffer on an abort, and misuse (a second `begin_transaction`, a commit with nothing open) is an
 error rather than a silent success. A request carries `reply-to` and `correlation-id`, resolves
-with the correlated reply, and fails with `AmqpError::RequestTimeout` when nothing answers. The
-framework's own conformance suites - lifecycle, batching, request/reply, transactions - run against
-the test broker in `tests/conformance_amqp.rs`, which is what keeps those claims honest.
+with the correlated reply, and fails with `AmqpError::RequestTimeout` when nothing answers.
 
 What is left out is what a broker holds and a process cannot, and each one makes an assertion
 unsound rather than merely imprecise:

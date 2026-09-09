@@ -34,7 +34,7 @@ AMQP 1.0 is an ISO-standard protocol spoken by ActiveMQ Artemis and Classic, Rab
 - **Native request/reply.** `AmqpPublisher` implements the `RequestReply` capability over `reply-to`, `correlation-id`, and a dynamic receiver link.
 - **Transactions** (feature `transaction`). A distinct `AmqpTransactionalPublish` policy pairs into a `TransactionalPublisher` built on the protocol's transactional posting; the plain publisher carries no transactional surface.
 - **Headers without an envelope.** Well-known headers ride the `properties` section (`content-type`, `correlation-id`, `reply-to`, `message-id`, the partition key as `group-id`); everything else rides `application-properties`, so non-Rust peers see plain AMQP messages.
-- **In-process test broker** (feature `testing`). `AmqpTestBroker` runs a service's own wiring with no server: the same `AmqpAddress` descriptors, the same publish policies, the same capabilities (request/reply, transactional posting), and the terminus semantics that decide whether consumers compete or each get a copy. It implements `ruststream::testing::TestableBroker` and passes the framework's conformance suites in process.
+- **In-process test broker** (feature `testing`). `AmqpTestBroker` runs a service's own wiring with no server: the same `AmqpAddress` descriptors, the same publish policies, the same capabilities (request/reply, transactional posting), and the terminus semantics that decide whether consumers compete or each get a copy.
 
 ## Install
 
@@ -81,18 +81,7 @@ async fn handle(order: &Order) -> HandlerOutcome { /* ... */ }
 
 ## Test it
 
-The `testing` feature runs handlers against an in-process AMQP stand-in - no server, same behaviour, same ladder. Inject a message as an external producer would with `TestableBroker::inject`, then assert on what a handler published with the free `expect_published`:
-
-```rust
-use ruststream::{Broker, OutgoingMessage};
-use ruststream::testing::{TestableBroker, expect_published};
-use ruststream_amqp::testing::AmqpTestBroker;
-
-let broker = AmqpTestBroker::new().connect().await?;
-broker.inject(OutgoingMessage::new("orders", br#"{"id":1}"#));
-let confirmations =
-    expect_published(&broker, "confirmations", 1, std::time::Duration::from_secs(1)).await;
-```
+The `testing` feature runs handlers against an in-process AMQP stand-in - no server, same behaviour, same ladder.
 
 The production wiring is what runs: `AmqpAddress` resolves against the test broker, `.out(Reply, Publish)` mounts the production policy, and the capabilities come with them - a handler binding `Out<impl RequestReply>` or `Out<impl TransactionalPublisher>` mounts in process too. So does the behaviour behind them: competing consumers on a queue address split the traffic while a topic address copies to each, a transaction publishes nothing before its commit, and a request that nothing answers times out. The framework's conformance suites run against this broker, not only against a server.
 
