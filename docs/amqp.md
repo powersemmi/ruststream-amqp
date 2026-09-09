@@ -168,7 +168,7 @@ back to the runtime's broker-agnostic deferred re-publish rather than a broker-s
 A publisher is a policy plus the live connection. `AmqpPublish` holds no connection, so it is
 constructed anywhere (in a router, in configuration, at a mount site) and the runtime pairs it with
 the broker at startup to produce an `AmqpPublisher`. It is also the broker's default publish
-policy, so a `#[subscriber(.., publish("dest"))]` handler whose mount site names no reply publisher
+policy, so a `#[subscriber(.., publish)]` handler whose mount site names no reply publisher
 replies through it. A mount site that does name one writes `.out(Reply, Publish)` for the reply and
 `.out(<marker>, Publish).build()` for an injected slot, `Publish` being the policy's
 [prelude](#the-prelude) name. The policy carries no options of its own, so it is written bare;
@@ -209,10 +209,10 @@ publisher arrives live, already paired with the connected broker:
 
 The responder end reads the reply address the requester named and publishes the answer there,
 echoing `correlation-id` back. The address is minted per request, so the reply rides an injected
-publisher rather than the fixed-destination `publish(..)` form. The slot names the capability it
-needs (`Out<impl Publisher>`); `AmqpPublisher` is inferred from the policy the include site binds
-to the slot's marker, `b.include(greet).out(DefaultSlot, Publish).build()` for the unnamed slot
-this handler declares.
+publisher rather than a `publish` reply, whose destination is fixed when the service is written. The
+slot names the capability it needs (`Out<impl Publisher>`); `AmqpPublisher` is inferred from the
+policy the include site binds to the slot's marker,
+`b.include(greet).out(DefaultSlot, Publish).build()` for the unnamed slot this handler declares.
 
 Both ends of the exchange are byte-shaped here, and the payload types say so: the request arrives
 as a `#[derive(Deserialized)]` view of the delivery's bytes, so no codec runs on it, and the
