@@ -251,14 +251,30 @@ impl Broker for AmqpBroker {
     }
 }
 
+/// Extracts the `host[:port]` part of an `AMQP` URL for `AsyncAPI` metadata.
+///
+/// The userinfo goes with the scheme and the path: a URL of the form `amqp://user:password@host`
+/// would otherwise put the password into a document services publish and share. Never fails,
+/// because metadata must not block startup on a URL the connection itself will reject anyway.
+fn host_of(url: &str) -> String {
+    let after_scheme = url.split_once("://").map_or(url, |(_, rest)| rest);
+    // rsplit: a password may itself contain '@', and the last one separates userinfo from host.
+    let after_userinfo = after_scheme
+        .rsplit_once('@')
+        .map_or(after_scheme, |(_, rest)| rest);
+    let host = after_userinfo
+        .split(['/', '?'])
+        .next()
+        .unwrap_or(after_userinfo);
+    host.to_owned()
+}
+
+/// `DescribeServer` reports the host and port the service connects to, which is what the
+/// `AsyncAPI` document records for it. Credentials in the URL are not part of that coordinate and
+/// do not reach the document.
 impl DescribeServer for AmqpBroker {
     fn describe_server(&self) -> ServerSpec {
-        ServerSpec::new(
-            self.url
-                .trim_start_matches("amqps://")
-                .trim_start_matches("amqp://"),
-            "amqp",
-        )
+        ServerSpec::new(host_of(&self.url), "amqp")
     }
 }
 
@@ -384,4 +400,35 @@ impl DefaultPublish for ConnectedAmqpBroker {
 // Re-exported for the subscriber module without making Settle a broker concern.
 pub(crate) fn is_at_most_once(settle: Settle) -> bool {
     matches!(settle, Settle::AtMostOnce)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AmqpBroker, DescribeServer, host_of};
+
+    #[test]
+    fn the_host_survives_a_scheme_userinfo_a_path_and_a_query() {
+        assert_eq!(host_of("amqp://localhost:5672"), "localhost:5672");
+        assert_eq!(host_of("amqp://user:pass@broker:5672"), "broker:5672");
+        assert_eq!(host_of("amqps://broker:5671/vhost"), "broker:5671");
+        assert_eq!(host_of("amqp://broker:5672/?sasl=plain"), "broker:5672");
+        assert_eq!(host_of("broker:5672"), "broker:5672");
+        // A password may contain '@', so the split has to take the last one.
+        assert_eq!(host_of("amqp://user:p@ss@broker:5672"), "broker:5672");
+    }
+
+    /// The URL carries the credentials the connection needs, and the description is published in
+    /// the service's `AsyncAPI` document, so the two must not be the same string.
+    #[test]
+    fn a_url_carrying_credentials_describes_a_server_without_them() {
+        let spec = AmqpBroker::new("amqp://artemis:artemis@broker.example.com:5672/prod")
+            .describe_server();
+
+        assert_eq!(spec.host.as_deref(), Some("broker.example.com:5672"));
+        assert_eq!(spec.protocol, "amqp");
+
+        let host = spec.host.expect("a networked broker describes a host");
+        assert!(!host.contains("artemis"), "the description leaked {host:?}");
+        assert!(!host.contains('@'), "the description leaked {host:?}");
+    }
 }
