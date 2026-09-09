@@ -47,7 +47,7 @@ The framework's optional capability traits, and what this broker implements nati
 | `RequestReply` | yes | [`reply-to`, `correlation-id`, and a dynamic reply link](#requestreply) |
 | `Partitioned` | yes | [the partition key is the `group-id` property](#headers-and-the-partition-key) |
 | `Seekable` and `Positioned` | no | the protocol exposes no position a client could seek to |
-| `DescribeServer` | yes | reports the connection URL with its scheme stripped, under the protocol name `amqp` |
+| `DescribeServer` | yes | reports the host and port from the connection URL, without the credentials it may carry |
 
 ## The lifecycle
 
@@ -100,14 +100,14 @@ The service names the broker once and mounts the handler on it:
 
 Two options sit on the descriptor:
 
-- `credit(n)` sets how many unsettled deliveries the broker may have in flight to this
+- `credit(nonzero!(n))` sets how many unsettled deliveries the broker may have in flight to this
   subscription. The default is 256. Credit is the protocol's own back-pressure, so a lower value
-  bounds the work in flight.
+  bounds the work in flight. A subscription granted no credit receives nothing, so the count is a
+  `NonZeroU32` and `credit(0)` does not compile.
 - `settle(Settle::AtMostOnce)` switches the subscription to at-most-once delivery, where the
   receiver settles each delivery on receipt.
 
-A descriptor that cannot form a subscription (an empty address, zero credit) is rejected before any
-I/O.
+A descriptor with an empty address is rejected before any I/O.
 
 The plain string form `#[subscriber("orders")]` also works: the name becomes `AmqpAddress::raw`.
 
