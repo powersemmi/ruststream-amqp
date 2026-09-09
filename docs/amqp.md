@@ -110,14 +110,15 @@ other broker:
 
 Two options ride the descriptor:
 
-- `credit(n)` sets the protocol-level credit (prefetch): how many unsettled deliveries the broker
-  may have in flight to this subscription. The default is 256. Credit is the protocol's own
-  back-pressure, so a lower value bounds work in flight without an extra layer.
+- `credit(nonzero!(n))` sets the protocol-level credit (prefetch): how many unsettled deliveries
+  the broker may have in flight to this subscription. The default is 256. Credit is the protocol's
+  own back-pressure, so a lower value bounds work in flight without an extra layer. A subscription
+  granted no credit receives nothing, so the count is a `NonZeroU32` and `credit(0)` does not
+  compile.
 - `settle(Settle::AtMostOnce)` switches the subscription to at-most-once delivery, where the
   receiver settles on receipt.
 
-A descriptor that cannot form a subscription (an empty address, zero credit) is rejected with
-`AmqpError::InvalidAddress` before any I/O.
+A descriptor with an empty address is rejected with `AmqpError::InvalidAddress` before any I/O.
 
 The plain string form `#[subscriber("orders")]` also works: a by-name source resolves to
 `AmqpAddress::raw`, so the address goes to the broker verbatim with no capability attached.

@@ -34,7 +34,7 @@
 //! }
 //!
 //! let broker = AmqpBroker::new("amqp://localhost:5672");
-//! let orders = AmqpAddress::queue("orders").credit(64);
+//! let orders = AmqpAddress::queue("orders").credit(nonzero!(64));
 //! let policy = Publish;
 //! # let _ = (handle, broker, orders, policy);
 //! ```

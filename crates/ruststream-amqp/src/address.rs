@@ -6,16 +6,17 @@
 //! matching terminus capability (`"queue"` / `"topic"`), which is how `ActiveMQ` Artemis and other
 //! products disambiguate; `raw` sends the address verbatim with no capability.
 
+use std::num::NonZeroU32;
 use std::time::Duration;
 
-use ruststream::SubscriptionSource;
+use ruststream::{SubscriptionSource, nonzero};
 
 use crate::broker::ConnectedAmqpBroker;
 use crate::error::AmqpError;
 use crate::subscriber::AmqpSubscriber;
 
 /// Default protocol-level credit (prefetch) granted to a subscription.
-pub const DEFAULT_CREDIT: u32 = 256;
+pub const DEFAULT_CREDIT: NonZeroU32 = nonzero!(256);
 
 /// Default deadline closing a partial batch on a batch subscription.
 pub const DEFAULT_BATCH_WAIT: Duration = Duration::from_millis(10);
@@ -44,9 +45,10 @@ enum Kind {
 /// Implements [`SubscriptionSource`], so it can sit inline in the `#[subscriber(..)]` decorator:
 ///
 /// ```
+/// use ruststream::nonzero;
 /// use ruststream_amqp::AmqpAddress;
 ///
-/// let source = AmqpAddress::queue("orders").credit(64);
+/// let source = AmqpAddress::queue("orders").credit(nonzero!(64));
 /// # let _ = source;
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,7 +56,7 @@ enum Kind {
 pub struct AmqpAddress {
     address: String,
     kind: Kind,
-    credit: u32,
+    credit: NonZeroU32,
     settle: Settle,
     batch_wait: Duration,
 }
@@ -112,7 +114,30 @@ impl AmqpAddress {
 
     /// Sets the protocol-level credit (prefetch): how many unsettled deliveries the broker may
     /// have in flight to this subscription. Defaults to [`DEFAULT_CREDIT`].
-    pub fn credit(mut self, credit: u32) -> Self {
+    ///
+    /// The count is a [`NonZeroU32`] because a subscription granted no credit receives nothing:
+    /// zero is not a quieter setting but a stalled subscription, so it is unrepresentable here.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ruststream::nonzero;
+    /// use ruststream_amqp::AmqpAddress;
+    ///
+    /// let source = AmqpAddress::queue("orders").credit(nonzero!(64));
+    /// # let _ = source;
+    /// ```
+    ///
+    /// A zero is rejected while the service is compiled, not when the subscription opens:
+    ///
+    /// ```compile_fail
+    /// use ruststream::nonzero;
+    /// use ruststream_amqp::AmqpAddress;
+    ///
+    /// let source = AmqpAddress::queue("orders").credit(nonzero!(0));
+    /// # let _ = source;
+    /// ```
+    pub fn credit(mut self, credit: NonZeroU32) -> Self {
         self.credit = credit;
         self
     }
@@ -151,7 +176,7 @@ impl AmqpAddress {
     }
 
     pub(crate) fn credit_value(&self) -> u32 {
-        self.credit
+        self.credit.get()
     }
 
     pub(crate) fn settle_value(&self) -> Settle {
@@ -172,15 +197,13 @@ impl AmqpAddress {
     }
 
     /// Rejects descriptors that cannot form a subscription, before any I/O.
+    ///
+    /// Only the address is checked here: the credit is a [`NonZeroU32`], so an unusable one
+    /// cannot reach this point.
     pub(crate) fn validate(&self) -> Result<(), AmqpError> {
         if self.address.is_empty() {
             return Err(AmqpError::InvalidAddress(
                 "address must be non-empty".into(),
-            ));
-        }
-        if self.credit == 0 {
-            return Err(AmqpError::InvalidAddress(
-                "credit must be at least 1".into(),
             ));
         }
         Ok(())
@@ -211,12 +234,17 @@ mod tests {
         ));
     }
 
+    /// `credit(0)` does not compile: `nonzero!(0)` fails const evaluation, and a runtime zero
+    /// cannot be built either. What is left to pin is that the default is the one that applies.
     #[test]
-    fn zero_credit_is_rejected_before_io() {
-        assert!(matches!(
-            AmqpAddress::queue("orders").credit(0).validate(),
-            Err(AmqpError::InvalidAddress(_))
-        ));
+    fn the_credit_defaults_and_takes_an_override() {
+        assert_eq!(AmqpAddress::queue("orders").credit_value(), 256);
+        assert_eq!(
+            AmqpAddress::queue("orders")
+                .credit(nonzero!(64))
+                .credit_value(),
+            64
+        );
     }
 
     #[test]
