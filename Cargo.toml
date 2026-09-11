@@ -21,7 +21,7 @@ ruststream-amqp = { path = "crates/ruststream-amqp" }
 ruststream = { version = ">=0.7.0-rc.1, <0.8.0", default-features = false }
 
 fe2o3-amqp = "0.17"
-fe2o3-amqp-types = "0.17"
+fe2o3-amqp-types = "0.18"
 bytes = "1"
 futures = "0.3"
 thiserror = "2"

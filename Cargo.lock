@@ -181,7 +181,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "62eb332494336089a7670bddca664bb0e632bd4e9f4fe8b83674ef6d2237fff3"
 dependencies = [
  "bytes",
- "fe2o3-amqp-types",
+ "fe2o3-amqp-types 0.17.0",
  "futures-util",
  "getrandom 0.4.3",
  "native-tls",
@@ -189,7 +189,7 @@ dependencies = [
  "pin-project-lite",
  "rustls",
  "serde",
- "serde_amqp",
+ "serde_amqp 0.17.0",
  "serde_bytes",
  "slab",
  "thiserror",
@@ -211,7 +211,20 @@ checksum = "3909c772bb7f9a7bf1af25277fa8fa8f9da8df417ddfd6c8a729a738aa1fe6c5"
 dependencies = [
  "ordered-float",
  "serde",
- "serde_amqp",
+ "serde_amqp 0.17.0",
+ "serde_bytes",
+ "serde_repr",
+]
+
+[[package]]
+name = "fe2o3-amqp-types"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "647fe7665ea8a44b95570287a5e8b1ed2f59bc5720afdc8c2b00c9fe6b27a6d6"
+dependencies = [
+ "ordered-float",
+ "serde",
+ "serde_amqp 0.18.0",
  "serde_bytes",
  "serde_repr",
 ]
@@ -857,7 +870,7 @@ version = "0.7.0"
 dependencies = [
  "bytes",
  "fe2o3-amqp",
- "fe2o3-amqp-types",
+ "fe2o3-amqp-types 0.18.0",
  "futures",
  "ruststream",
  "serde",
@@ -936,6 +949,21 @@ name = "serde_amqp"
 version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "102dfb47c5b2e26b775e69cff62d8d83289288de2a4e8796145842cd3905e780"
+dependencies = [
+ "bytes",
+ "indexmap",
+ "ordered-float",
+ "serde",
+ "serde_amqp_derive",
+ "serde_bytes",
+ "thiserror",
+]
+
+[[package]]
+name = "serde_amqp"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "733df19246e5e2dd2b8030cbabc70e51d8f66e275eee91a94ccc1df7300e2317"
 dependencies = [
  "bytes",
  "indexmap",
