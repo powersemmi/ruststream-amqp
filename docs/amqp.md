@@ -48,7 +48,7 @@ The framework's optional capability traits, and what this broker implements nati
 | `RequestReply` | yes | [`reply-to`, `correlation-id`, and a dynamic reply link](#requestreply) |
 | `Partitioned` | yes | [the partition key rides the `group-id` property](#headers-and-the-partition-key) |
 | `Seekable` and `Positioned` | no | the queue position belongs to the broker; the protocol exposes no client-addressable offset to seek to |
-| `DescribeServer` | yes | reports the connection host and the `amqp` protocol for the framework's server description |
+| `DescribeServer` | yes | reports the host and port from the connection URL, without the credentials it may carry |
 
 A delivery carries no broker metadata beyond its own sections, so the per-delivery context stays
 the framework's `()` default and this crate publishes no `Ctx` keys; a batch inherits that default,
