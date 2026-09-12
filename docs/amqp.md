@@ -13,9 +13,10 @@ serde = { version = "1", features = ["derive"] }
 
 ## The prelude
 
-`use ruststream_amqp::prelude::*;` is the one import a service file writes. It carries the broker,
-the address descriptor, the publish policies, the capability traits a handler bounds its slots
-with, and the framework's own prelude.
+`use ruststream_amqp::prelude::*;` is the one import a service file writes. It carries the broker
+and its `Sasl` profile, the address descriptor and its `Settle` guarantee, the publish policies,
+`AmqpError`, the capability traits a handler bounds its slots with, and the framework's own
+prelude.
 
 A service is written in two vocabularies. A handler body names capabilities, so
 `ruststream::prelude::*` alone is enough there: each slot is bound with the capability that body
@@ -48,6 +49,7 @@ The framework's optional capability traits, and what this broker implements nati
 | `Partitioned` | yes | [the partition key is the `group-id` property](#headers-and-the-partition-key) |
 | `Seekable` and `Positioned` | no | the protocol exposes no position a client could seek to |
 | `DescribeServer` | yes | reports the host and port from the connection URL, without the credentials it may carry |
+| Per-message publish settings | none | [a publish carries no `header` section, so there is nothing for a call site to adjust](#publishing) |
 
 ## The lifecycle
 
@@ -151,6 +153,14 @@ AMQP 1.0 has no delayed redelivery, so `HandlerOutcome::retry_after(delay)` is s
 runtime's deferred re-publish. That path needs a publisher of its own, wired on the scope with
 `retry_via`; without one the delay is dropped and the delivery is released at once.
 
+The copy goes to the subscription's own address. One AMQP node is both what a receiver attaches to
+and what a sender publishes to, so a subscription here can always say where a publisher reaches it
+again, and `retry_via` composes with every subscription this broker opens - the descriptor form and
+the plain `#[subscriber("orders")]` form alike. The copy carries the retry count in the
+`x-ruststream-retry-count` header, so a handler can tell a first delivery from a deferred one. On a
+`queue` address it competes for consumers like any other message; on a `topic` address every
+subscriber sees it.
+
 ## Publishing
 
 `AmqpPublish` is the policy that constructs the publisher `AmqpPublisher`. You name the policy
@@ -161,6 +171,12 @@ names no reply publisher replies through it.
 Write `.out(Reply, Publish)` for the reply, and `.out(<marker>, Publish).build()` for an injected
 slot; `Publish` is the policy's [prelude](#the-prelude) name. The policy has no options, so you
 write it bare.
+
+A single publish has no settings of its own either. Some brokers let a call site adjust one message
+- a priority, a time to live - with a step on the publish builder. This one ships no such step,
+because it sends no AMQP `header` section, and that section is where `durable`, `priority` and
+`ttl` live. A handler body therefore keeps `Out<impl Publisher>` and imports nothing from this
+crate.
 
 A sender link is attached on first use and kept per address. A publish the broker settles with
 anything other than `accept` (rejected, released, modified) returns an error, so a broker-side
