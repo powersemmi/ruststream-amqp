@@ -13,16 +13,13 @@ use ruststream::{
 };
 use ruststream_amqp::{AmqpAddress, AmqpBroker, ConnectedAmqpBroker, PARTITION_KEY_HEADER, Settle};
 
+mod live;
+
 const RECV_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// The broker URL, or `None` to skip. Under `RUSTSTREAM_REQUIRE_LIVE` a missing one is a failure.
 fn test_url() -> Option<String> {
-    match std::env::var("AMQP_TEST_URL") {
-        Ok(url) if !url.is_empty() => Some(url),
-        _ => {
-            eprintln!("AMQP_TEST_URL is not set; skipping the live-broker integration test");
-            None
-        }
-    }
+    live::url("AMQP_TEST_URL")
 }
 
 async fn connect(url: &str) -> ConnectedAmqpBroker {
@@ -55,7 +52,10 @@ async fn roundtrip_preserves_payload_headers_and_partition_key() {
     headers.insert(PARTITION_KEY_HEADER, "user-42");
     let publisher = connected.publisher();
     publisher
-        .publish(OutgoingMessage::new(&address, b"{\"id\":1}".as_slice()).with_headers(headers))
+        .publish(
+            OutgoingMessage::new(&address, b"{\"id\":1}".as_slice()).with_headers(headers),
+            None,
+        )
         .await
         .expect("publish succeeds");
 
@@ -90,7 +90,7 @@ async fn nack_with_requeue_redelivers() {
         .expect("subscription opens");
     let publisher = connected.publisher();
     publisher
-        .publish(OutgoingMessage::new(&address, b"again".as_slice()))
+        .publish(OutgoingMessage::new(&address, b"again".as_slice()), None)
         .await
         .expect("publish succeeds");
 
@@ -125,7 +125,7 @@ async fn nack_without_requeue_does_not_redeliver() {
         .expect("subscription opens");
     let publisher = connected.publisher();
     publisher
-        .publish(OutgoingMessage::new(&address, b"poison".as_slice()))
+        .publish(OutgoingMessage::new(&address, b"poison".as_slice()), None)
         .await
         .expect("publish succeeds");
 
@@ -139,7 +139,7 @@ async fn nack_without_requeue_does_not_redeliver() {
 
     // The follow-up message must be the next delivery; the rejected one must not come back.
     publisher
-        .publish(OutgoingMessage::new(&address, b"next".as_slice()))
+        .publish(OutgoingMessage::new(&address, b"next".as_slice()), None)
         .await
         .expect("publish succeeds");
     let next = tokio::time::timeout(RECV_TIMEOUT, stream.next())
@@ -165,7 +165,7 @@ async fn at_most_once_reports_ack_unsupported() {
         .expect("subscription opens");
     let publisher = connected.publisher();
     publisher
-        .publish(OutgoingMessage::new(&address, b"fire".as_slice()))
+        .publish(OutgoingMessage::new(&address, b"fire".as_slice()), None)
         .await
         .expect("publish succeeds");
 
@@ -199,7 +199,7 @@ async fn a_dropped_publisher_leaves_the_connection_usable() {
     {
         let scoped = connected.publisher();
         scoped
-            .publish(OutgoingMessage::new(&address, b"scoped".as_slice()))
+            .publish(OutgoingMessage::new(&address, b"scoped".as_slice()), None)
             .await
             .expect("publish succeeds");
     }
@@ -210,7 +210,7 @@ async fn a_dropped_publisher_leaves_the_connection_usable() {
     let survivor = connected.publisher();
     tokio::time::timeout(
         RECV_TIMEOUT,
-        survivor.publish(OutgoingMessage::new(&address, b"survivor".as_slice())),
+        survivor.publish(OutgoingMessage::new(&address, b"survivor".as_slice()), None),
     )
     .await
     .expect("the shared session still answers after the dropped publisher")

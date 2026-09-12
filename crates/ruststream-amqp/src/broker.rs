@@ -14,7 +14,10 @@ use fe2o3_amqp::session::{Session, SessionHandle};
 use fe2o3_amqp::{Receiver, Sender};
 use fe2o3_amqp_types::messaging::Source;
 use fe2o3_amqp_types::primitives::{Array, Symbol};
-use ruststream::{Broker, ConnectedBroker, DefaultPublish, DescribeServer, ServerSpec, Subscribe};
+use ruststream::{
+    Broker, ConnectedBroker, DefaultPublish, DescribeServer, RedeliveryAddress, ServerSpec,
+    Subscribe,
+};
 use tokio::sync::{Mutex, OnceCell};
 
 use crate::address::{AmqpAddress, Settle};
@@ -251,14 +254,13 @@ impl Broker for AmqpBroker {
     }
 }
 
+/// `DescribeServer` reports the host and port the service connects to, which is what the
+/// `AsyncAPI` document records for it. Credentials in the URL are not part of that coordinate and
+/// do not reach the document: `ServerSpec::from_url` drops the userinfo an `amqp://` URL may
+/// carry, so no broker crate has to remember to.
 impl DescribeServer for AmqpBroker {
     fn describe_server(&self) -> ServerSpec {
-        ServerSpec::new(
-            self.url
-                .trim_start_matches("amqps://")
-                .trim_start_matches("amqp://"),
-            "amqp",
-        )
+        ServerSpec::from_url(&self.url, "amqp")
     }
 }
 
@@ -375,6 +377,13 @@ impl Subscribe for ConnectedAmqpBroker {
     async fn subscribe(&self, name: &str) -> Result<Self::Subscriber, Self::Error> {
         self.subscribe_address(AmqpAddress::raw(name)).await
     }
+
+    /// An `AMQP` 1.0 node is one address for both roles: a receiver attaches its source to it, a
+    /// sender its target. A bare name is therefore also where a deferred copy is published to
+    /// reach the subscription again, which is what makes `retry_via` usable on this broker.
+    fn redelivery_address(&self, name: &str) -> Option<RedeliveryAddress> {
+        Some(RedeliveryAddress::new(name.to_owned()))
+    }
 }
 
 impl DefaultPublish for ConnectedAmqpBroker {
@@ -384,4 +393,25 @@ impl DefaultPublish for ConnectedAmqpBroker {
 // Re-exported for the subscriber module without making Settle a broker concern.
 pub(crate) fn is_at_most_once(settle: Settle) -> bool {
     matches!(settle, Settle::AtMostOnce)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AmqpBroker, DescribeServer};
+
+    /// The URL carries the credentials the connection needs, and the description is published in
+    /// the service's `AsyncAPI` document, so the two must not be the same string. The parsing is
+    /// the core's (`ServerSpec::from_url`); what this holds is that the broker goes through it.
+    #[test]
+    fn a_url_carrying_credentials_describes_a_server_without_them() {
+        let spec = AmqpBroker::new("amqp://artemis:artemis@broker.example.com:5672/prod")
+            .describe_server();
+
+        assert_eq!(spec.host.as_deref(), Some("broker.example.com:5672"));
+        assert_eq!(spec.protocol, "amqp");
+
+        let host = spec.host.expect("a networked broker describes a host");
+        assert!(!host.contains("artemis"), "the description leaked {host:?}");
+        assert!(!host.contains('@'), "the description leaked {host:?}");
+    }
 }

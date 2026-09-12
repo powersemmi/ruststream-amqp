@@ -16,10 +16,14 @@ authors = ["RustStream contributors"]
 ruststream-amqp = { path = "crates/ruststream-amqp" }
 
 # The floor names the pre-release because cargo excludes pre-releases from a range that does not
-# mention one, so `>=0.7.0` alone would not admit `0.7.0-rc.1`. The bound still admits the final
+# mention one, so `>=0.7.0` alone would not admit `0.7.0-rc.3`. The bound still admits the final
 # 0.7.0 and every later 0.7 patch.
-ruststream = { version = ">=0.7.0-rc.1, <0.8.0", default-features = false }
+ruststream = { version = ">=0.7.0-rc.3, <0.8.0", default-features = false }
 
+# The two move together: the client's public API is written in the types crate, so a version of
+# `fe2o3-amqp-types` the client was not built against gives every message and terminus type a
+# second, incompatible copy. `fe2o3-amqp-types` 0.18 is published and `fe2o3-amqp` 0.18 is not,
+# so the pair stays on 0.17 until the client catches up.
 fe2o3-amqp = "0.17"
 fe2o3-amqp-types = "0.17"
 bytes = "1"

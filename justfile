@@ -24,7 +24,10 @@ test-brokers: brokers-up
     #!/usr/bin/env bash
     set -euo pipefail
     trap 'just brokers-down' EXIT
+    # This recipe starts the stand, so a gated test that skips itself here is a fault, not a
+    # developer without a broker.
     AMQP_TEST_URL=amqp://artemis:artemis@127.0.0.1:5672 \
+    RUSTSTREAM_REQUIRE_LIVE=1 \
         cargo test --workspace --all-features -- --test-threads=1
 
 fmt:

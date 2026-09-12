@@ -70,7 +70,16 @@ pub(crate) fn accepted(outcome: Outcome, address: &str) -> Result<(), AmqpError>
 impl Publisher for AmqpPublisher {
     type Error = AmqpError;
 
-    async fn publish(&self, msg: OutgoingMessage<'_>) -> Result<(), Self::Error> {
+    /// No per-message settings. `AMQP` 1.0 does define fields that would qualify - `durable`,
+    /// `priority` and `ttl` in the `header` section - but this crate publishes no `header` section
+    /// at all, so there is nothing for a call site to adjust and nothing for a policy to default.
+    type Options = ();
+
+    async fn publish(
+        &self,
+        msg: OutgoingMessage<'_>,
+        _options: Option<&Self::Options>,
+    ) -> Result<(), Self::Error> {
         let core = self.core()?;
         let sender = core.sender_for(msg.name()).await?;
         send_message(&sender, msg.name(), to_amqp_message(&msg)).await
@@ -160,6 +169,22 @@ impl PublishPolicy<ConnectedAmqpBroker> for AmqpPublish {
     fn pair(
         self,
         connected: &ConnectedAmqpBroker,
+    ) -> impl Future<Output = Result<Self::Live, PairError>> {
+        ready(Ok(connected.publisher()))
+    }
+}
+
+/// The policy pairs on the in-process broker as well, so a routes file mounts `.out(Reply,
+/// Publish)` on either broker with no test-only policy standing in for this one. It carries no
+/// settings, so nothing is silently dropped in the crossing; the live form differs, and
+/// [`AmqpTestPublisher`](crate::testing::AmqpTestPublisher) documents what it reproduces.
+#[cfg(feature = "testing")]
+impl PublishPolicy<crate::testing::ConnectedAmqpTestBroker> for AmqpPublish {
+    type Live = crate::testing::AmqpTestPublisher;
+
+    fn pair(
+        self,
+        connected: &crate::testing::ConnectedAmqpTestBroker,
     ) -> impl Future<Output = Result<Self::Live, PairError>> {
         ready(Ok(connected.publisher()))
     }

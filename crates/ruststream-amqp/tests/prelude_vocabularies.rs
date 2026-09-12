@@ -25,6 +25,18 @@ fn the_mount_vocabulary_names_the_policies_without_the_broker_prefix() {
     let _: TransactionalPublish = TransactionalPublish;
 }
 
+/// The glob is the one import of this crate a service writes, so the surface a declaration names
+/// comes with it: the broker and its authentication profile, the descriptor and its delivery
+/// guarantee, and the error startup and publishing report.
+#[test]
+fn the_glob_carries_the_surface_a_declaration_names() {
+    let broker = AmqpBroker::new("amqp://localhost:5672").sasl(Sasl::plain("svc", "secret"));
+    let source = AmqpAddress::topic("events").settle(Settle::AtMostOnce);
+    let reported: Result<(), AmqpError> = Ok(());
+
+    let _ = (broker, source, reported);
+}
+
 #[test]
 fn the_prefixed_originals_stay_reachable_through_the_glob() {
     // What a file globbing two broker preludes writes to say which `Publish` it means.

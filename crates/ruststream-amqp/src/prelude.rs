@@ -1,8 +1,12 @@
 //! The imports a service on `AMQP` 1.0 writes every time, in one glob.
 //!
-//! The broker, the address descriptor, the publish policies, the framework capability traits this
-//! broker implements, and the framework's own prelude. Two broker preludes may be globbed into
-//! one file; items they share unify.
+//! The broker and its authentication profile, the address descriptor and its delivery guarantee,
+//! the crate's error, the publish policies, the capability traits [`RequestReply`] and (with the
+//! `transaction` feature) `TransactionalPublisher`, and the framework's own prelude.
+//! [`Partitioned`](ruststream::Partitioned) stays out, though [`AmqpMessage`](crate::AmqpMessage)
+//! implements it: in scope it makes `msg.partition_key()` ambiguous with the method of the same
+//! name on `IncomingMessage`, so a service that reads partition keys imports it itself. Two broker
+//! preludes may be globbed into one file; items they share unify.
 //!
 //! # Two vocabularies
 //!
@@ -33,10 +37,11 @@
 //!     HandlerOutcome::ack()
 //! }
 //!
-//! let broker = AmqpBroker::new("amqp://localhost:5672");
-//! let orders = AmqpAddress::queue("orders").credit(64);
+//! let broker = AmqpBroker::new("amqp://localhost:5672").sasl(Sasl::plain("svc", "secret"));
+//! let orders = AmqpAddress::queue("orders").credit(nonzero!(64));
+//! let events = AmqpAddress::topic("events").settle(Settle::AtMostOnce);
 //! let policy = Publish;
-//! # let _ = (handle, broker, orders, policy);
+//! # let _ = (handle, broker, orders, events, policy);
 //! ```
 
 pub use ruststream::prelude::*;
@@ -46,7 +51,12 @@ pub use ruststream::prelude::*;
 // adding the capability trait makes the plain `msg.partition_key()` ambiguous (E0034).
 pub use ruststream::RequestReply;
 
-pub use crate::{AmqpAddress, AmqpBroker, AmqpPublish, AmqpPublish as Publish};
+// The broker's own surface a service names while it builds the app and declares its
+// subscriptions. The publisher, the message and the header constant stay explicit imports: a
+// service that names them has left the broker-agnostic path.
+pub use crate::{
+    AmqpAddress, AmqpBroker, AmqpError, AmqpPublish, AmqpPublish as Publish, Sasl, Settle,
+};
 
 #[cfg(feature = "transaction")]
 pub use crate::{AmqpTransactionalPublish, AmqpTransactionalPublish as TransactionalPublish};
