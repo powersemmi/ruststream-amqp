@@ -72,7 +72,7 @@ AmqpBroker::new(url)      只记录配置，同步，不做 I/O
 
 ## 寻址 { #addressing }
 
-AMQP 1.0 规定了传输格式，却没有规定地址的含义，因此意图由 `AmqpAddress` 写明。每个构造函数都会
+AMQP 1.0 规定了协议本身，却没有规定地址的含义，因此意图由 `AmqpAddress` 写明。每个构造函数都会
 声明对应的 terminus 能力，Artemis 和其他产品正是据此区分它们：
 
 | 构造函数 | 语义 | terminus 能力 |
@@ -135,7 +135,7 @@ AMQP 1.0 没有批量拉取：一次 transfer 只投递一条消息，信用额�
 
 在至多一次的订阅上，投递到达时就已经结算，因此 `ack` 和 `nack` 返回 `AckError::Unsupported`。
 
-AMQP 1.0 没有延迟重新投递，所以 `HandlerOutcome::retry_after(delay)` 由运行时的延迟重新发布来完成。
+AMQP 1.0 没有延迟重新投递，所以 `HandlerOutcome::retry_after(delay)` 由运行时的延后重新发布来完成。
 这条路径需要自己的发布者，用 `retry_via` 接到作用域上；没有它，延迟会被丢弃，投递立刻退回 Broker。
 
 副本发往订阅自己的地址。一个 AMQP 节点既是接收方附着的对象，也是发送方发布的目标，因此这里的订阅
@@ -153,7 +153,7 @@ Broker 上实例化发布者。它也是这个 Broker 的默认策略，因此�
 回复写 `.out(Reply, Publish)`，注入的槽位写 `.out(<marker>, Publish).build()`；`Publish` 是该策略
 在 [prelude](#the-prelude) 中的名字。策略没有选项，所以直接写名字即可。
 
-单次发布同样没有自己的设置。有些 Broker 允许调用点用发布 builder 上的一个步骤调整单条消息，比如
+单次发布同样没有自己的设置。有些 Broker 允许调用点用发布构建器上的一个步骤调整单条消息，比如
 优先级、存活时间。这里没有这样的步骤，因为它不发送 AMQP 的 `header` 段，而 `durable`、`priority`
 和 `ttl` 都放在那一段里。因此处理器主体保留 `Out<impl Publisher>`，不从这个 crate 导入任何东西。
 
@@ -218,9 +218,9 @@ Broker 上实例化发布者。它也是这个 Broker 的默认策略，因此�
 
 ## 测试 { #testing }
 
-`testing` feature 提供 `AmqpTestBroker`：一个进程内传输，不需要服务器、不走 AMQP 线路，就复现这个
+`testing` feature 提供 `AmqpTestBroker`：一个进程内传输，不需要服务器、不走 AMQP 网络，就复现这个
 crate 的行为。测试文件按它自己的路径导入，`use ruststream_amqp::testing::AmqpTestBroker;`，与
-prelude 的 glob 并列。它遵循与真实 Broker 相同的状态转移，并驱动 `TestApp` 测试套件。参见
+prelude 的 glob 并列。它遵循与真实 Broker 相同的生命周期阶梯，并驱动 `TestApp` 测试套件。参见
 [用 TestApp 对服务做单元测试](https://powersemmi.github.io/ruststream/latest/guides/testing/#unit-testing-a-service-with-testapp)。
 
 整份生产声明都能在测试 Broker 上解析，因此测试跑的是服务真正交付的那套接线，而不是它的一份改写
