@@ -164,3 +164,19 @@ impl PublishPolicy<ConnectedAmqpBroker> for AmqpPublish {
         ready(Ok(connected.publisher()))
     }
 }
+
+/// The policy pairs on the in-process broker as well, so a routes file mounts `.out(Reply,
+/// Publish)` on either broker with no test-only policy standing in for this one. It carries no
+/// settings, so nothing is silently dropped in the crossing; the live form differs, and
+/// [`AmqpTestPublisher`](crate::testing::AmqpTestPublisher) documents what it reproduces.
+#[cfg(feature = "testing")]
+impl PublishPolicy<crate::testing::ConnectedAmqpTestBroker> for AmqpPublish {
+    type Live = crate::testing::AmqpTestPublisher;
+
+    fn pair(
+        self,
+        connected: &crate::testing::ConnectedAmqpTestBroker,
+    ) -> impl Future<Output = Result<Self::Live, PairError>> {
+        ready(Ok(connected.publisher()))
+    }
+}
