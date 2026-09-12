@@ -14,8 +14,10 @@ serde = { version = "1", features = ["derive"] }
 ## prelude { #the-prelude }
 
 `use ruststream_amqp::prelude::*;` 是服务文件写下的唯一一条导入。它带来 Broker 及其 `Sasl` 配置、
-地址描述符及其 `Settle` 保证、发布策略、`AmqpError`、处理器用来约束槽位的能力 trait，以及框架
-自己的 prelude。
+地址描述符及其 `Settle` 保证、发布策略、`AmqpError`、这个 Broker 实现的能力 trait（`RequestReply`，
+以及开启 `transaction` feature 后的 `TransactionalPublisher`），还有框架自己的 prelude。
+`Partitioned` 不在其中：它一旦进入作用域，`msg.partition_key()` 就会和 `IncomingMessage` 的同名
+方法产生歧义。读取分区键的服务自行导入 `Partitioned`。
 
 服务用两套词汇来写。处理器主体写的是能力，因此那里只要 `ruststream::prelude::*` 就够了：每个槽位
 用主体需要的那个能力来约束（`Out<impl Publisher>`、`Out<impl TransactionalPublisher>`、

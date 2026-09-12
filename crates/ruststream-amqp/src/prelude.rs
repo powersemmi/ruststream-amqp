@@ -1,9 +1,12 @@
 //! The imports a service on `AMQP` 1.0 writes every time, in one glob.
 //!
 //! The broker and its authentication profile, the address descriptor and its delivery guarantee,
-//! the crate's error, the publish policies, the framework capability traits this broker
-//! implements, and the framework's own prelude. Two broker preludes may be globbed into one file;
-//! items they share unify.
+//! the crate's error, the publish policies, the capability traits [`RequestReply`] and (with the
+//! `transaction` feature) `TransactionalPublisher`, and the framework's own prelude.
+//! [`Partitioned`](ruststream::Partitioned) stays out, though [`AmqpMessage`](crate::AmqpMessage)
+//! implements it: in scope it makes `msg.partition_key()` ambiguous with the method of the same
+//! name on `IncomingMessage`, so a service that reads partition keys imports it itself. Two broker
+//! preludes may be globbed into one file; items they share unify.
 //!
 //! # Two vocabularies
 //!

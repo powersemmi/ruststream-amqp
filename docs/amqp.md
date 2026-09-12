@@ -15,8 +15,10 @@ serde = { version = "1", features = ["derive"] }
 
 `use ruststream_amqp::prelude::*;` is the one import a service file writes. It carries the broker
 and its `Sasl` profile, the address descriptor and its `Settle` guarantee, the publish policies,
-`AmqpError`, the capability traits a handler bounds its slots with, and the framework's own
-prelude.
+`AmqpError`, the capability traits this broker implements (`RequestReply`, and
+`TransactionalPublisher` with the `transaction` feature), and the framework's own prelude.
+`Partitioned` stays out: in scope it makes `msg.partition_key()` ambiguous with the method of the
+same name on `IncomingMessage`. A service that reads partition keys imports `Partitioned` itself.
 
 A service is written in two vocabularies. A handler body names capabilities, so
 `ruststream::prelude::*` alone is enough there: each slot is bound with the capability that body
