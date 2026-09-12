@@ -11,14 +11,11 @@ use ruststream::conformance::{capabilities, harness};
 use ruststream_amqp::testing::{AmqpTestBroker, ConnectedAmqpTestBroker};
 use ruststream_amqp::{AmqpAddress, AmqpBroker};
 
+mod live;
+
+/// The broker URL, or `None` to skip. Under `RUSTSTREAM_REQUIRE_LIVE` a missing one is a failure.
 fn test_url() -> Option<String> {
-    match std::env::var("AMQP_TEST_URL") {
-        Ok(url) if !url.is_empty() => Some(url),
-        _ => {
-            eprintln!("AMQP_TEST_URL is not set; skipping the live-broker conformance check");
-            None
-        }
-    }
+    live::url("AMQP_TEST_URL")
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

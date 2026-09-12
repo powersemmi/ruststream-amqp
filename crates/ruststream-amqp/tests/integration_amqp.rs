@@ -13,16 +13,13 @@ use ruststream::{
 };
 use ruststream_amqp::{AmqpAddress, AmqpBroker, ConnectedAmqpBroker, PARTITION_KEY_HEADER, Settle};
 
+mod live;
+
 const RECV_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// The broker URL, or `None` to skip. Under `RUSTSTREAM_REQUIRE_LIVE` a missing one is a failure.
 fn test_url() -> Option<String> {
-    match std::env::var("AMQP_TEST_URL") {
-        Ok(url) if !url.is_empty() => Some(url),
-        _ => {
-            eprintln!("AMQP_TEST_URL is not set; skipping the live-broker integration test");
-            None
-        }
-    }
+    live::url("AMQP_TEST_URL")
 }
 
 async fn connect(url: &str) -> ConnectedAmqpBroker {
