@@ -6,7 +6,7 @@
 //! application handlers can be unit-tested with the
 //! [`TestApp`](ruststream::testing::TestApp) harness. It routes by exact address match and does
 //! not simulate broker-specific semantics (dead-letter policies, credit, redelivery timing);
-//! those are verified end to end against a real broker.
+//! exercise those against a real broker.
 
 mod broker;
 mod router;

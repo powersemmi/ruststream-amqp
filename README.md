@@ -75,7 +75,7 @@ fn app() -> impl App {
 The descriptor carries the AMQP-specific options inline in the decorator:
 
 ```rust
-#[subscriber(AmqpAddress::queue("orders").credit(64))]
+#[subscriber(AmqpAddress::queue("orders").credit(nonzero!(64)))]
 async fn handle(order: &Order) -> HandlerOutcome { /* ... */ }
 ```
 

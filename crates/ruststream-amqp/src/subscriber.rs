@@ -70,8 +70,9 @@ impl AmqpSubscriber {
             })?;
 
         // The delivery channel bounds in-flight conversions at the link credit, so the pump
-        // never buffers beyond what the broker was allowed to send.
-        let (out_tx, out_rx) = mpsc::channel(credit.max(1) as usize);
+        // never buffers beyond what the broker was allowed to send. The credit is non-zero by
+        // construction, so it is already a legal channel capacity.
+        let (out_tx, out_rx) = mpsc::channel(credit as usize);
         let (settle_tx, settle_rx) = mpsc::unbounded_channel();
         let addr = address.address().to_owned();
         tokio::spawn(pump(Pump {
