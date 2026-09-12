@@ -106,7 +106,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Install cargo-hack
-        uses: taiki-e/install-action@v2.86.5
+        uses: taiki-e/install-action@v2.87.7
         with:
           tool: cargo-hack
 
@@ -232,7 +232,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install cargo-deny
-        uses: taiki-e/install-action@v2.86.5
+        uses: taiki-e/install-action@v2.87.7
         with:
           tool: cargo-deny
 
