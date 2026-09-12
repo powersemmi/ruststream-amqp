@@ -101,7 +101,15 @@ impl AmqpTxnPublisher {
 impl Publisher for AmqpTxnPublisher {
     type Error = AmqpError;
 
-    async fn publish(&self, msg: OutgoingMessage<'_>) -> Result<(), Self::Error> {
+    /// The same empty settings as the plain publisher: a transactional post carries the message
+    /// and the transactional state, and this crate adds no `header` section to either.
+    type Options = ();
+
+    async fn publish(
+        &self,
+        msg: OutgoingMessage<'_>,
+        _options: Option<&Self::Options>,
+    ) -> Result<(), Self::Error> {
         self.core.ensure_open()?;
         let sender = self.core.sender_for(msg.name()).await?;
         let message = to_amqp_message(&msg);

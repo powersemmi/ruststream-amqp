@@ -6,14 +6,17 @@
 //! matching terminus capability (`"queue"` / `"topic"`), which is how `ActiveMQ` Artemis and other
 //! products disambiguate; `raw` sends the address verbatim with no capability.
 
+use std::future::{Future, ready};
 use std::num::NonZeroU32;
 use std::time::Duration;
 
-use ruststream::{SubscriptionSource, nonzero};
+use ruststream::{RedeliveryAddress, SubscriptionSource, nonzero};
 
 use crate::broker::ConnectedAmqpBroker;
 use crate::error::AmqpError;
 use crate::subscriber::AmqpSubscriber;
+#[cfg(feature = "testing")]
+use crate::testing::{AmqpTestSubscriber, ConnectedAmqpTestBroker};
 
 /// Default protocol-level credit (prefetch) granted to a subscription.
 pub const DEFAULT_CREDIT: NonZeroU32 = nonzero!(256);
@@ -201,6 +204,18 @@ impl AmqpAddress {
         self.batch_wait
     }
 
+    /// Where a publisher on this broker reaches this subscription again.
+    ///
+    /// One `AMQP` 1.0 node serves both roles: a receiver attaches its source to the address, a
+    /// sender its target. The address is therefore the answer for all three kinds, which is what
+    /// lets the framework's deferred `retry_after` fallback work on this broker without native
+    /// delayed redelivery. On a `queue` terminus the copy competes for consumers like any other
+    /// message, and on a `topic` terminus every subscriber sees it: that is the terminus the
+    /// declaration asked for, not a property of the retry.
+    fn redelivery_target(&self) -> RedeliveryAddress {
+        RedeliveryAddress::new(self.address.clone())
+    }
+
     /// How this descriptor's terminus shares the address's traffic, for the in-process broker.
     ///
     /// `queue` competes, `topic` fans out. A `raw` address declares no capability, so on a server
@@ -249,6 +264,15 @@ impl SubscriptionSource<ConnectedAmqpBroker> for AmqpAddress {
     async fn subscribe(self, connected: &ConnectedAmqpBroker) -> Result<AmqpSubscriber, AmqpError> {
         connected.subscribe_address(self).await
     }
+
+    // The answer is the descriptor's own address, so nothing is asked of the connection and the
+    // call needs no state machine.
+    fn redelivery_address(
+        &self,
+        _connected: &ConnectedAmqpBroker,
+    ) -> impl Future<Output = Result<Option<RedeliveryAddress>, AmqpError>> {
+        ready(Ok(Some(self.redelivery_target())))
+    }
 }
 
 /// The same descriptor resolves against the in-process stand-in, so a handler keeps the
@@ -258,8 +282,8 @@ impl SubscriptionSource<ConnectedAmqpBroker> for AmqpAddress {
 /// What the stand-in reproduces and what it drops is documented on
 /// [`ConnectedAmqpTestBroker::subscribe_address`](crate::testing::ConnectedAmqpTestBroker::subscribe_address).
 #[cfg(feature = "testing")]
-impl SubscriptionSource<crate::testing::ConnectedAmqpTestBroker> for AmqpAddress {
-    type Subscriber = crate::testing::AmqpTestSubscriber;
+impl SubscriptionSource<ConnectedAmqpTestBroker> for AmqpAddress {
+    type Subscriber = AmqpTestSubscriber;
 
     fn name(&self) -> &str {
         self.address()
@@ -267,9 +291,16 @@ impl SubscriptionSource<crate::testing::ConnectedAmqpTestBroker> for AmqpAddress
 
     async fn subscribe(
         self,
-        connected: &crate::testing::ConnectedAmqpTestBroker,
+        connected: &ConnectedAmqpTestBroker,
     ) -> Result<Self::Subscriber, AmqpError> {
         connected.subscribe_address(self).await
+    }
+
+    fn redelivery_address(
+        &self,
+        _connected: &ConnectedAmqpTestBroker,
+    ) -> impl Future<Output = Result<Option<RedeliveryAddress>, AmqpError>> {
+        ready(Ok(Some(self.redelivery_target())))
     }
 }
 

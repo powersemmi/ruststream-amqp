@@ -14,7 +14,10 @@ use fe2o3_amqp::session::{Session, SessionHandle};
 use fe2o3_amqp::{Receiver, Sender};
 use fe2o3_amqp_types::messaging::Source;
 use fe2o3_amqp_types::primitives::{Array, Symbol};
-use ruststream::{Broker, ConnectedBroker, DefaultPublish, DescribeServer, ServerSpec, Subscribe};
+use ruststream::{
+    Broker, ConnectedBroker, DefaultPublish, DescribeServer, RedeliveryAddress, ServerSpec,
+    Subscribe,
+};
 use tokio::sync::{Mutex, OnceCell};
 
 use crate::address::{AmqpAddress, Settle};
@@ -251,33 +254,13 @@ impl Broker for AmqpBroker {
     }
 }
 
-/// Extracts the `host[:port]` part of an `AMQP` URL for `AsyncAPI` metadata.
-///
-/// The userinfo goes with the scheme and the path: a URL of the form `amqp://user:password@host`
-/// would otherwise put the password into a document services publish and share. Never fails,
-/// because metadata must not block startup on a URL the connection itself will reject anyway.
-///
-/// The cuts are ordered. The authority ends at the first `/`, `?` or `#`, so an `@` past that
-/// point belongs to a path or a query and separates nothing: looking for `@` first reads
-/// `amqp://host/a@b` as a host of `b`. Inside the authority the last `@` is the separator, because
-/// a password may contain one.
-fn host_of(url: &str) -> String {
-    let after_scheme = url.split_once("://").map_or(url, |(_, rest)| rest);
-    let authority = after_scheme
-        .split_once(['/', '?', '#'])
-        .map_or(after_scheme, |(authority, _)| authority);
-    authority
-        .rsplit_once('@')
-        .map_or(authority, |(_, host)| host)
-        .to_owned()
-}
-
 /// `DescribeServer` reports the host and port the service connects to, which is what the
 /// `AsyncAPI` document records for it. Credentials in the URL are not part of that coordinate and
-/// do not reach the document.
+/// do not reach the document: `ServerSpec::from_url` drops the userinfo an `amqp://` URL may
+/// carry, so no broker crate has to remember to.
 impl DescribeServer for AmqpBroker {
     fn describe_server(&self) -> ServerSpec {
-        ServerSpec::new(host_of(&self.url), "amqp")
+        ServerSpec::from_url(&self.url, "amqp")
     }
 }
 
@@ -394,6 +377,13 @@ impl Subscribe for ConnectedAmqpBroker {
     async fn subscribe(&self, name: &str) -> Result<Self::Subscriber, Self::Error> {
         self.subscribe_address(AmqpAddress::raw(name)).await
     }
+
+    /// An `AMQP` 1.0 node is one address for both roles: a receiver attaches its source to it, a
+    /// sender its target. A bare name is therefore also where a deferred copy is published to
+    /// reach the subscription again, which is what makes `retry_via` usable on this broker.
+    fn redelivery_address(&self, name: &str) -> Option<RedeliveryAddress> {
+        Some(RedeliveryAddress::new(name.to_owned()))
+    }
 }
 
 impl DefaultPublish for ConnectedAmqpBroker {
@@ -407,26 +397,11 @@ pub(crate) fn is_at_most_once(settle: Settle) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{AmqpBroker, DescribeServer, host_of};
-
-    #[test]
-    fn the_host_survives_a_scheme_userinfo_a_path_and_a_query() {
-        assert_eq!(host_of("amqp://localhost:5672"), "localhost:5672");
-        assert_eq!(host_of("amqp://user:pass@broker:5672"), "broker:5672");
-        assert_eq!(host_of("amqps://broker:5671/vhost"), "broker:5671");
-        assert_eq!(host_of("amqp://broker:5672/?sasl=plain"), "broker:5672");
-        assert_eq!(host_of("broker:5672"), "broker:5672");
-        // A password may contain '@', so inside the authority the split takes the last one.
-        assert_eq!(host_of("amqp://user:p@ss@broker:5672"), "broker:5672");
-        // The authority ends before the path, query and fragment, so an '@' past it separates
-        // nothing. Cutting on '@' before cutting the path reports a host of "b".
-        assert_eq!(host_of("amqp://broker:5672/a@b"), "broker:5672");
-        assert_eq!(host_of("amqp://broker:5672/?token=a@b"), "broker:5672");
-        assert_eq!(host_of("amqp://broker:5672#a@b"), "broker:5672");
-    }
+    use super::{AmqpBroker, DescribeServer};
 
     /// The URL carries the credentials the connection needs, and the description is published in
-    /// the service's `AsyncAPI` document, so the two must not be the same string.
+    /// the service's `AsyncAPI` document, so the two must not be the same string. The parsing is
+    /// the core's (`ServerSpec::from_url`); what this holds is that the broker goes through it.
     #[test]
     fn a_url_carrying_credentials_describes_a_server_without_them() {
         let spec = AmqpBroker::new("amqp://artemis:artemis@broker.example.com:5672/prod")

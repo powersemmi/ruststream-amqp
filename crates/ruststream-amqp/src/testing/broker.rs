@@ -7,7 +7,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 use bytes::Bytes;
 use ruststream::testing::{Coordinator, TestableBroker};
 use ruststream::{
-    Broker, ConnectedBroker, DefaultPublish, HeaderMap, OutgoingMessage, RawMessage, Subscribe,
+    Broker, ConnectedBroker, DefaultPublish, HeaderMap, OutgoingMessage, RawMessage,
+    RedeliveryAddress, Subscribe,
 };
 
 use crate::address::AmqpAddress;
@@ -239,6 +240,13 @@ impl Subscribe for ConnectedAmqpTestBroker {
         // A bare name is a verbatim address on the real broker; it is one here too, so both
         // subscription paths carry the same meaning.
         ready(self.open(&AmqpAddress::raw(name)))
+    }
+
+    /// The real broker's answer: an address is both what a receiver attaches to and what a sender
+    /// publishes to, so a deferred retry reaches the subscription under its own name. A service
+    /// wired with `retry_via` therefore starts in a test wherever it starts in production.
+    fn redelivery_address(&self, name: &str) -> Option<RedeliveryAddress> {
+        Some(RedeliveryAddress::new(name.to_owned()))
     }
 }
 

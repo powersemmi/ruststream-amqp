@@ -70,7 +70,16 @@ pub(crate) fn accepted(outcome: Outcome, address: &str) -> Result<(), AmqpError>
 impl Publisher for AmqpPublisher {
     type Error = AmqpError;
 
-    async fn publish(&self, msg: OutgoingMessage<'_>) -> Result<(), Self::Error> {
+    /// No per-message settings. `AMQP` 1.0 does define fields that would qualify - `durable`,
+    /// `priority` and `ttl` in the `header` section - but this crate publishes no `header` section
+    /// at all, so there is nothing for a call site to adjust and nothing for a policy to default.
+    type Options = ();
+
+    async fn publish(
+        &self,
+        msg: OutgoingMessage<'_>,
+        _options: Option<&Self::Options>,
+    ) -> Result<(), Self::Error> {
         let core = self.core()?;
         let sender = core.sender_for(msg.name()).await?;
         send_message(&sender, msg.name(), to_amqp_message(&msg)).await

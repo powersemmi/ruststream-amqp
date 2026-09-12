@@ -17,7 +17,6 @@ use ruststream::testing::TestApp;
 use ruststream::{AckError, OutgoingMessage, Subscriber};
 use ruststream_amqp::prelude::*;
 use ruststream_amqp::testing::{AmqpTestBroker, AmqpTestMessage};
-use ruststream_amqp::{AmqpError, Settle};
 use serde::{Deserialize, Serialize};
 
 const WAIT: Duration = Duration::from_secs(1);
@@ -200,7 +199,7 @@ async fn competing_queue_subscriptions_share_the_address() {
     let producer = broker.publisher();
     for id in 0..4_u8 {
         producer
-            .publish(OutgoingMessage::new("work", [b'0' + id].as_slice()))
+            .publish(OutgoingMessage::new("work", [b'0' + id].as_slice()), None)
             .await
             .expect("publish failed");
     }
@@ -239,7 +238,10 @@ async fn topic_subscriptions_each_get_a_copy() {
 
     broker
         .publisher()
-        .publish(OutgoingMessage::new("events", b"broadcast".as_slice()))
+        .publish(
+            OutgoingMessage::new("events", b"broadcast".as_slice()),
+            None,
+        )
         .await
         .expect("publish failed");
 

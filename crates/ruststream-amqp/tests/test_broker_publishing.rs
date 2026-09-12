@@ -15,7 +15,6 @@ use std::time::Duration;
 
 use ruststream::testing::TestApp;
 use ruststream::{ConnectedBroker, OutgoingMessage};
-use ruststream_amqp::AmqpError;
 use ruststream_amqp::prelude::*;
 use ruststream_amqp::testing::AmqpTestBroker;
 use serde::{Deserialize, Serialize};
@@ -305,20 +304,20 @@ async fn an_aliasing_publisher_refuses_outside_the_connection() {
     let early = broker.publisher();
 
     let before = early
-        .publish(OutgoingMessage::new("orders", b"early".as_slice()))
+        .publish(OutgoingMessage::new("orders", b"early".as_slice()), None)
         .await
         .expect_err("a publish before connect must not report success");
     assert!(matches!(before, AmqpError::NotConnected), "got {before}");
 
     let connected = broker.connect().await.expect("connect failed");
     early
-        .publish(OutgoingMessage::new("orders", b"live".as_slice()))
+        .publish(OutgoingMessage::new("orders", b"live".as_slice()), None)
         .await
         .expect("the same handle routes once the transport is connected");
 
     connected.shutdown().await.expect("shutdown failed");
     let after = early
-        .publish(OutgoingMessage::new("orders", b"late".as_slice()))
+        .publish(OutgoingMessage::new("orders", b"late".as_slice()), None)
         .await
         .expect_err("a publish after shutdown must not report success");
     assert!(matches!(after, AmqpError::NotConnected), "got {after}");

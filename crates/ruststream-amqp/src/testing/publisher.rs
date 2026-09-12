@@ -58,13 +58,21 @@ impl AmqpTestPublisher {
 impl Publisher for AmqpTestPublisher {
     type Error = AmqpError;
 
+    /// The real publisher's settings type, so a mount that compiles here compiles against a
+    /// server: empty on both.
+    type Options = ();
+
     /// Routes `msg` to every subscription on its address.
     ///
     /// # Errors
     ///
     /// Returns [`AmqpError::NotConnected`] once the broker has shut down, which is what the real
     /// publisher reports for a handle that outlived its connection.
-    fn publish(&self, msg: OutgoingMessage<'_>) -> impl Future<Output = Result<(), Self::Error>> {
+    fn publish(
+        &self,
+        msg: OutgoingMessage<'_>,
+        _options: Option<&Self::Options>,
+    ) -> impl Future<Output = Result<(), Self::Error>> {
         if let Err(err) = self.state.ensure_live() {
             return ready(Err(err));
         }
@@ -212,13 +220,20 @@ impl AmqpTestTxnPublisher {
 impl Publisher for AmqpTestTxnPublisher {
     type Error = AmqpError;
 
+    /// The real transactional publisher's settings type: empty on both.
+    type Options = ();
+
     /// Buffers `msg` while a transaction is open, and routes it straight away otherwise - which is
     /// what the real publisher does with a post outside a transaction.
     ///
     /// # Errors
     ///
     /// Returns [`AmqpError::NotConnected`] once the broker has shut down.
-    fn publish(&self, msg: OutgoingMessage<'_>) -> impl Future<Output = Result<(), Self::Error>> {
+    fn publish(
+        &self,
+        msg: OutgoingMessage<'_>,
+        _options: Option<&Self::Options>,
+    ) -> impl Future<Output = Result<(), Self::Error>> {
         if let Err(err) = self.state.ensure_live() {
             return ready(Err(err));
         }
