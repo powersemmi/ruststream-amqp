@@ -13,7 +13,7 @@
 use ruststream::Name;
 use ruststream::conformance::{capabilities, harness};
 use ruststream_amqp::testing::{AmqpTestBroker, ConnectedAmqpTestBroker};
-use ruststream_amqp::{AmqpAddress, AmqpBroker};
+use ruststream_amqp::{AmqpAddress, AmqpBroker, Sasl};
 
 mod live;
 
@@ -65,6 +65,20 @@ async fn amqp_test_broker_reports_a_redelivery_address_that_arrives() {
         |connected| connected.publisher(),
     )
     .await;
+}
+
+/// The broker describes itself twice - as a server coordinate and as the bindings of its
+/// descriptor - and both halves are published, so neither may carry the password the deployment
+/// configured.
+#[cfg(feature = "asyncapi")]
+#[test]
+fn amqp_broker_describes_itself_without_credentials() {
+    harness::describes_without_credentials(
+        &AmqpBroker::new("amqp://svc:hunter2@broker.example.com:5672")
+            .sasl(Sasl::plain("svc", "hunter2")),
+        &AmqpAddress::queue("orders"),
+        "hunter2",
+    );
 }
 
 /// The in-process request/reply: correlation, reply routing, and the leg nobody answers, which

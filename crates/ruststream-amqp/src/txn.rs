@@ -14,7 +14,12 @@ use fe2o3_amqp::transaction::{
 };
 use fe2o3_amqp_types::definitions::SenderSettleMode;
 use fe2o3_amqp_types::transaction::Coordinator;
+#[cfg(feature = "asyncapi")]
+use ruststream::asyncapi::Bindings;
 use ruststream::{OutgoingMessage, PairError, PublishPolicy, Publisher, TransactionalPublisher};
+
+#[cfg(feature = "asyncapi")]
+use crate::bindings;
 use tokio::sync::Mutex;
 
 use crate::broker::{AmqpCore, ConnectedAmqpBroker};
@@ -46,6 +51,18 @@ impl PublishPolicy<ConnectedAmqpBroker> for AmqpTransactionalPublish {
     ) -> impl Future<Output = Result<Self::Live, PairError>> {
         ready(Ok(connected.transactional_publisher()))
     }
+
+    /// A send here is posted under a broker-side transaction and becomes visible on the commit,
+    /// which is the one thing this operation does differently from a plain publish.
+    #[cfg(feature = "asyncapi")]
+    fn operation_bindings(&self) -> Bindings {
+        bindings::transactional_posting()
+    }
+
+    #[cfg(feature = "asyncapi")]
+    fn reply_address_location(&self) -> Option<&'static str> {
+        Some(bindings::REPLY_ADDRESS_LOCATION)
+    }
 }
 
 /// The transactional policy pairs on the in-process broker as well, into a publisher that buffers
@@ -60,6 +77,18 @@ impl PublishPolicy<crate::testing::ConnectedAmqpTestBroker> for AmqpTransactiona
         connected: &crate::testing::ConnectedAmqpTestBroker,
     ) -> impl Future<Output = Result<Self::Live, PairError>> {
         ready(Ok(connected.transactional_publisher()))
+    }
+
+    /// A send here is posted under a broker-side transaction and becomes visible on the commit,
+    /// which is the one thing this operation does differently from a plain publish.
+    #[cfg(feature = "asyncapi")]
+    fn operation_bindings(&self) -> Bindings {
+        bindings::transactional_posting()
+    }
+
+    #[cfg(feature = "asyncapi")]
+    fn reply_address_location(&self) -> Option<&'static str> {
+        Some(bindings::REPLY_ADDRESS_LOCATION)
     }
 }
 

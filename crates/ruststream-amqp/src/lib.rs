@@ -19,6 +19,8 @@
 #![forbid(unsafe_code)]
 
 mod address;
+#[cfg(feature = "asyncapi")]
+mod bindings;
 mod broker;
 mod config;
 mod error;

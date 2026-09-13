@@ -10,9 +10,14 @@ use std::future::{Future, ready};
 use std::num::NonZeroU32;
 use std::time::Duration;
 
+#[cfg(feature = "asyncapi")]
+use ruststream::asyncapi::Bindings;
 use ruststream::{
     AddressedCopies, RedeliveryAddress, RedeliveryAddressed, SubscriptionSource, nonzero,
 };
+
+#[cfg(feature = "asyncapi")]
+use crate::bindings;
 
 use crate::broker::ConnectedAmqpBroker;
 use crate::error::AmqpError;
@@ -242,6 +247,21 @@ impl AmqpAddress {
         }
     }
 
+    /// What this subscription tells a reader of the generated document: the node it reads, the
+    /// terminus it asked for, and the link it reads over.
+    ///
+    /// One answer serves both brokers, so a document built against the in-process broker says
+    /// what the deployment's does.
+    #[cfg(feature = "asyncapi")]
+    fn describe_channel(&self) -> Bindings {
+        bindings::channel(
+            &self.address,
+            self.capability(),
+            self.credit.get(),
+            self.settle,
+        )
+    }
+
     /// Rejects descriptors that cannot form a subscription, before any I/O.
     ///
     /// Only the address is checked here: the credit is a [`NonZeroU32`], so an unusable one
@@ -270,6 +290,11 @@ impl SubscriptionSource<ConnectedAmqpBroker> for AmqpAddress {
 
     async fn subscribe(self, connected: &ConnectedAmqpBroker) -> Result<AmqpSubscriber, AmqpError> {
         connected.subscribe_address(self).await
+    }
+
+    #[cfg(feature = "asyncapi")]
+    fn channel_bindings(&self) -> Bindings {
+        self.describe_channel()
     }
 }
 
@@ -305,6 +330,11 @@ impl SubscriptionSource<ConnectedAmqpTestBroker> for AmqpAddress {
         connected: &ConnectedAmqpTestBroker,
     ) -> Result<Self::Subscriber, AmqpError> {
         connected.subscribe_address(self).await
+    }
+
+    #[cfg(feature = "asyncapi")]
+    fn channel_bindings(&self) -> Bindings {
+        self.describe_channel()
     }
 }
 

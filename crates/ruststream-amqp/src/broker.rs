@@ -20,6 +20,8 @@ use ruststream::{
 use tokio::sync::{Mutex, OnceCell};
 
 use crate::address::{AmqpAddress, Settle};
+#[cfg(feature = "asyncapi")]
+use crate::bindings;
 use crate::config::Sasl;
 use crate::error::{AmqpError, box_err};
 use crate::publisher::{AmqpPublish, AmqpPublisher};
@@ -154,6 +156,9 @@ impl std::fmt::Debug for AmqpCore {
 
 pub(crate) type CoreCell = Arc<OnceCell<Arc<AmqpCore>>>;
 
+/// The container id a service presents when it names none of its own.
+const DEFAULT_CONTAINER_ID: &str = "ruststream";
+
 /// An `AMQP` 1.0 broker for the `RustStream` messaging framework.
 ///
 /// `new` is synchronous and records only configuration; the runtime dials once at startup via
@@ -210,6 +215,16 @@ impl AmqpBroker {
     pub fn publisher(&self) -> AmqpPublisher {
         AmqpPublisher::new(Arc::clone(&self.cell))
     }
+
+    /// The container this service presents on the connection: the name it set, or the default.
+    fn container(&self) -> &str {
+        self.container_id.as_deref().unwrap_or(DEFAULT_CONTAINER_ID)
+    }
+
+    /// The host and port a client connects to, over the protocol it speaks.
+    fn coordinate(&self) -> ServerSpec {
+        ServerSpec::from_url(&self.url, "amqp1").protocol_version("1.0")
+    }
 }
 
 impl Broker for AmqpBroker {
@@ -217,10 +232,7 @@ impl Broker for AmqpBroker {
     type Connected = ConnectedAmqpBroker;
 
     async fn connect(self) -> Result<Self::Connected, Self::Error> {
-        let container_id = self
-            .container_id
-            .clone()
-            .unwrap_or_else(|| "ruststream".to_owned());
+        let container_id = self.container().to_owned();
         let core = self
             .cell
             .get_or_try_init(async || {
@@ -263,8 +275,17 @@ impl Broker for AmqpBroker {
 /// document nor a tool generating a client from it can tell the two apart from the host, so the
 /// version is spelled out beside the key.
 impl DescribeServer for AmqpBroker {
+    #[cfg(not(feature = "asyncapi"))]
     fn describe_server(&self) -> ServerSpec {
-        ServerSpec::from_url(&self.url, "amqp1").protocol_version("1.0")
+        self.coordinate()
+    }
+
+    /// The server binding carries the container id this service presents on the connection, which
+    /// is how an operator finds its links in the broker's own console.
+    #[cfg(feature = "asyncapi")]
+    fn describe_server(&self) -> ServerSpec {
+        self.coordinate()
+            .bindings(bindings::server(self.container()))
     }
 }
 

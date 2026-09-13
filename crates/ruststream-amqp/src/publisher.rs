@@ -5,7 +5,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use fe2o3_amqp_types::messaging::{Message, Outcome, Properties};
+#[cfg(feature = "asyncapi")]
+use ruststream::asyncapi::Bindings;
 use ruststream::{OutgoingMessage, PairError, PublishPolicy, Publisher, RequestReply};
+
+#[cfg(feature = "asyncapi")]
+use crate::bindings;
 
 use crate::broker::{AmqpCore, ConnectedAmqpBroker, CoreCell, SenderLink};
 use crate::error::{AmqpError, box_err};
@@ -173,6 +178,20 @@ impl PublishPolicy<ConnectedAmqpBroker> for AmqpPublish {
     ) -> impl Future<Output = Result<Self::Live, PairError>> {
         ready(Ok(connected.publisher()))
     }
+
+    /// A publish here waits for the peer's disposition and reports anything but `accepted` as an
+    /// error, which is what a reader of the document needs to know about this operation.
+    #[cfg(feature = "asyncapi")]
+    fn operation_bindings(&self) -> Bindings {
+        bindings::confirmed_posting()
+    }
+
+    /// A request made through this policy carries the `AMQP` `reply-to` property, and a handler
+    /// reads it as the `reply-to` header, so a reply routed per delivery is routed from there.
+    #[cfg(feature = "asyncapi")]
+    fn reply_address_location(&self) -> Option<&'static str> {
+        Some(bindings::REPLY_ADDRESS_LOCATION)
+    }
 }
 
 /// The policy pairs on the in-process broker as well, so a routes file mounts
@@ -188,5 +207,19 @@ impl PublishPolicy<crate::testing::ConnectedAmqpTestBroker> for AmqpPublish {
         connected: &crate::testing::ConnectedAmqpTestBroker,
     ) -> impl Future<Output = Result<Self::Live, PairError>> {
         ready(Ok(connected.publisher()))
+    }
+
+    /// A publish here waits for the peer's disposition and reports anything but `accepted` as an
+    /// error, which is what a reader of the document needs to know about this operation.
+    #[cfg(feature = "asyncapi")]
+    fn operation_bindings(&self) -> Bindings {
+        bindings::confirmed_posting()
+    }
+
+    /// A request made through this policy carries the `AMQP` `reply-to` property, and a handler
+    /// reads it as the `reply-to` header, so a reply routed per delivery is routed from there.
+    #[cfg(feature = "asyncapi")]
+    fn reply_address_location(&self) -> Option<&'static str> {
+        Some(bindings::REPLY_ADDRESS_LOCATION)
     }
 }
