@@ -1,6 +1,6 @@
 //! The production publish policies, mounted on the in-process broker.
 //!
-//! A routes file names policies (`.out(Reply, Publish)`), and a handler body names the capability
+//! A routes file names policies (`.out_reply(Publish)`), and a handler body names the capability
 //! its slot needs. Both spellings must reach the stand-in unchanged, or the wiring a service ships
 //! is not the wiring its tests run. These cases mount each of them through `TestApp` and assert the
 //! behaviour behind them: what a committed transaction publishes, what an aborted one does not, and
@@ -39,7 +39,7 @@ async fn confirm(order: &Order) -> Result<Order, HandlerOutcome> {
 async fn the_production_policy_carries_the_reply() {
     let app =
         RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(AmqpTestBroker::new(), |b| {
-            b.include(confirm).out(Reply, Publish);
+            b.include(confirm).out_reply(Publish);
         });
     let app = TestApp::start(app).await.expect("startup failed");
 

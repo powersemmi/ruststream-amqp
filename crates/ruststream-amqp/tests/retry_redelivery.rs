@@ -48,12 +48,10 @@ async fn from_a_descriptor(order: &Order, ctx: &mut Context<'_>) -> HandlerOutco
 /// so the deferred copy comes back to the handler that asked for the delay.
 #[tokio::test(start_paused = true)]
 async fn a_deferred_retry_comes_back_to_a_descriptor_subscription() {
-    let broker = AmqpTestBroker::new();
-    let retry_publisher = broker.publisher();
-    let app = RustStream::new(AppInfo::new("retry", "0.1.0")).with_broker(broker, |b| {
-        b.retry_via(retry_publisher);
-        b.include(from_a_descriptor);
-    });
+    let app =
+        RustStream::new(AppInfo::new("retry", "0.1.0")).with_broker(AmqpTestBroker::new(), |b| {
+            b.include(from_a_descriptor).out_retry(Publish);
+        });
     let app = TestApp::start(app).await.expect("startup failed");
 
     app.broker::<AmqpTestBroker>()
@@ -87,15 +85,13 @@ async fn from_a_name(order: &Order, ctx: &mut Context<'_>) -> HandlerOutcome {
 }
 
 /// The bare-name answer, which is the connected broker's rather than the descriptor's: a name is a
-/// verbatim address on this broker, so `#[subscriber("name")]` composes with `retry_via` too.
+/// verbatim address on this broker, so `#[subscriber("name")]` takes the retry position too.
 #[tokio::test(start_paused = true)]
 async fn a_deferred_retry_comes_back_to_a_named_subscription() {
-    let broker = AmqpTestBroker::new();
-    let retry_publisher = broker.publisher();
-    let app = RustStream::new(AppInfo::new("retry", "0.1.0")).with_broker(broker, |b| {
-        b.retry_via(retry_publisher);
-        b.include(from_a_name);
-    });
+    let app =
+        RustStream::new(AppInfo::new("retry", "0.1.0")).with_broker(AmqpTestBroker::new(), |b| {
+            b.include(from_a_name).out_retry(Publish);
+        });
     let app = TestApp::start(app).await.expect("startup failed");
 
     app.broker::<AmqpTestBroker>()

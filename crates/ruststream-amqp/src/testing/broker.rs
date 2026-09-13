@@ -243,8 +243,9 @@ impl Subscribe for ConnectedAmqpTestBroker {
     }
 
     /// The real broker's answer: an address is both what a receiver attaches to and what a sender
-    /// publishes to, so a deferred retry reaches the subscription under its own name. A service
-    /// wired with `retry_via` therefore starts in a test wherever it starts in production.
+    /// publishes to, so a deferred retry reaches the subscription under its own name. A
+    /// registration that binds the retry position therefore starts in a test wherever it starts in
+    /// production.
     fn redelivery_address(&self, name: &str) -> Option<RedeliveryAddress> {
         Some(RedeliveryAddress::new(name.to_owned()))
     }
