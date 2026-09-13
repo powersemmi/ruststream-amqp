@@ -257,9 +257,14 @@ impl Broker for AmqpBroker {
 /// `AsyncAPI` document records for it. Credentials in the URL are not part of that coordinate and
 /// do not reach the document: `ServerSpec::from_url` drops the userinfo an `amqp://` URL may
 /// carry, so no broker crate has to remember to.
+///
+/// The protocol is `amqp1`, which is the specification's key for `AMQP` 1.0; `amqp` is the key for
+/// `AMQP` 0.9.1, a different protocol that shares the scheme and the port. Neither a reader of the
+/// document nor a tool generating a client from it can tell the two apart from the host, so the
+/// version is spelled out beside the key.
 impl DescribeServer for AmqpBroker {
     fn describe_server(&self) -> ServerSpec {
-        ServerSpec::from_url(&self.url, "amqp")
+        ServerSpec::from_url(&self.url, "amqp1").protocol_version("1.0")
     }
 }
 
@@ -406,7 +411,8 @@ mod tests {
             .describe_server();
 
         assert_eq!(spec.host.as_deref(), Some("broker.example.com:5672"));
-        assert_eq!(spec.protocol, "amqp");
+        assert_eq!(spec.protocol, "amqp1");
+        assert_eq!(spec.protocol_version.as_deref(), Some("1.0"));
 
         let host = spec.host.expect("a networked broker describes a host");
         assert!(!host.contains("artemis"), "the description leaked {host:?}");
