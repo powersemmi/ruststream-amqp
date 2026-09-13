@@ -26,7 +26,7 @@ policies, the crate's error, and the framework's own prelude.
 
 <div class="grid cards" markdown>
 
-- :material-transit-connection-variant: **[AMQP guide](amqp.md)** - addressing, batches, dispositions, request/reply, transactions, and testing.
+- :material-transit-connection-variant: **[AMQP guide](amqp.md)** - addressing, batches, dispositions, retries, request/reply, transactions, the generated document, and testing.
 - :material-book-open-variant: **[RustStream docs](https://powersemmi.github.io/ruststream/)** - the framework itself: subscribers, publishing, routing, codecs, middleware, observability, and the CLI.
 - :material-language-rust: **[API reference](https://docs.rs/ruststream-amqp)** - every type and method the crate exports.
 

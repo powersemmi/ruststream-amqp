@@ -28,8 +28,9 @@ AMQP 1.0 is an ISO-standard protocol spoken by ActiveMQ Artemis and Classic, Rab
 ## Features
 
 - **Lazy startup contract.** `AmqpBroker::new(url)` is synchronous and does no I/O; the runtime connects once at startup, so the broker composes with `#[ruststream::app]`. SASL (ANONYMOUS, PLAIN, EXTERNAL) and the container id are builder options.
-- **Acknowledgement as dispositions.** `ack` maps to `accept`, `nack(requeue = true)` to `release`, `nack(requeue = false)` to `reject` - the broker's own dead-letter policy applies. At-most-once subscriptions report `AckError::Unsupported` instead of a settlement that never reaches the wire.
-- **Delayed retries have somewhere to land.** The protocol has no delayed redelivery, so `retry_after` is the framework's deferred re-publish, and every subscription here reports the address a publisher reaches it at again. A registration that binds the retry position with `.out_retry(Publish)` therefore starts whichever way the subscription was named.
+- **Acknowledgement as dispositions.** `ack` maps to `accept`, `nack(requeue = true)` to `modified` with `delivery-failed` (so the broker counts the attempt), `nack(requeue = false)` to `reject` - the broker's own dead-letter policy applies. At-most-once subscriptions report `AckError::Unsupported` instead of a settlement that never reaches the wire.
+- **Retries have a cap and somewhere to land.** `b.include(handler).max_attempts(nonzero!(5u32)).dead_letter("orders.dead")` ends a message that never settles, counting the broker's own `delivery-count` where the delivery carries one. The protocol has no delayed redelivery, so `retry_after` is the framework's deferred re-publish, and every subscription here addresses its own copies: one AMQP node is both what a receiver attaches to and what a sender publishes to, so the mount site owes no destination.
+- **A document that names the right protocol** (feature `asyncapi`). The generated AsyncAPI server is `amqp1` with version `1.0`, not the `amqp` that means 0.9.1, and an `x-ruststream-amqp1` extension carries the container id, the node address, its terminus capability, the credit and the settle mode - the specification's own `amqp1` binding objects are reserved and must stay empty.
 - **Explicit addressing.** The protocol standardises the wire, not the meaning of an address: `AmqpAddress::queue` (anycast), `AmqpAddress::topic` (multicast), `AmqpAddress::raw` (verbatim, for deployments with their own convention), plus `credit` (prefetch as protocol-level flow control) and the `settle` guarantee.
 - **Batches.** A handler taking a slice gets batches of the size its mount site names (`.batch(nonzero!(32))`). A transfer carries one message, so the batches are assembled on the client and `batch_wait` caps how long a partial one waits - the mount site reads the same as on a broker that batches on the wire.
 - **Publishers pair at startup.** `AmqpPublish` is declaration only, so it is written anywhere; the runtime pairs it against the connected broker, and a handler slot never holds an unconnected publisher. The crate prelude aliases it to `Publish` (and `AmqpTransactionalPublish` to `TransactionalPublish`), so a mount site reads `.out_reply(Publish)` here exactly as on every other broker in the family.
@@ -50,7 +51,7 @@ serde = { version = "1", features = ["derive"] }
 ruststream-amqp = { version = "0.7", features = ["testing"] }
 ```
 
-Everything else is off by default: `amqps://` endpoints need `rustls` or `native-tls`, and transactional publishing needs `transaction`.
+Everything else is off by default: `amqps://` endpoints need `rustls` or `native-tls`, transactional publishing needs `transaction`, and the AsyncAPI document needs `asyncapi`.
 
 ## Write a service
 

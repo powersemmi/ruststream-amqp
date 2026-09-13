@@ -26,7 +26,7 @@ serde = { version = "1", features = ["derive"] }
 
 <div class="grid cards" markdown>
 
-- :material-transit-connection-variant: **[Руководство по AMQP](amqp.md)** - адресация, пакеты, диспозиции, запрос и ответ, транзакции и тестирование.
+- :material-transit-connection-variant: **[Руководство по AMQP](amqp.md)** - адресация, пакеты, диспозиции, повторы, запрос и ответ, транзакции, сгенерированный документ и тестирование.
 - :material-book-open-variant: **[Документация RustStream](https://powersemmi.github.io/ruststream/)** - сам фреймворк: подписчики, публикация, маршрутизация, кодеки, middleware, наблюдаемость и CLI.
 - :material-language-rust: **[Справочник API](https://docs.rs/ruststream-amqp)** - каждый тип и метод, которые экспортирует крейт.
 

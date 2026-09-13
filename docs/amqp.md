@@ -50,7 +50,7 @@ The framework's optional capability traits, and what this broker implements nati
 | `RequestReply` | yes | [`reply-to`, `correlation-id`, and a dynamic reply link](#requestreply) |
 | `Partitioned` | yes | [the partition key is the `group-id` property](#headers-and-the-partition-key) |
 | `Seekable` and `Positioned` | no | the protocol exposes no position a client could seek to |
-| `DescribeServer` | yes | reports the host and port from the connection URL, without the credentials it may carry |
+| `DescribeServer` | yes | [the host and port from the connection URL under the `amqp1` protocol key, without the credentials the URL may carry](#the-generated-document) |
 | Per-message publish settings | none | [a publish carries no `header` section, so there is nothing for a call site to adjust](#publishing) |
 
 ## The lifecycle
@@ -145,28 +145,68 @@ The handler's outcome is the protocol's disposition:
 | Handler outcome | Disposition | Effect |
 | --- | --- | --- |
 | `HandlerOutcome::ack()` | `accept` | the delivery is done, the broker drops it |
-| `HandlerOutcome::retry()` | `release` | the delivery returns to the broker for redelivery |
+| `HandlerOutcome::retry()` | `modified` with `delivery-failed` | the broker counts the attempt and redelivers |
 | `HandlerOutcome::drop()` | `reject` | terminal; the broker's dead-letter policy decides |
+
+A retry is `modified` rather than `released` because the two say different things about the
+attempt. `released` means the delivery was not acted upon, and the peer leaves `delivery-count`
+where it was; a handler that asked for a retry did act on it and failed. Counting the attempt is
+what lets a cap end a message that never settles.
 
 On an at-most-once subscription the deliveries arrive already settled, so `ack` and `nack` report
 `AckError::Unsupported`.
 
+How many times a message has been delivered is the `delivery-count` field of the AMQP `header`
+section, and the framework reads it to apply a cap. A message this crate published carries no
+`header` section at all, so nothing has counted an attempt for it and the framework's own
+`x-ruststream-retry-count` header decides instead. Both counts start the first delivery at one.
+
+### Capping the retries
+
+A handler that keeps asking for another try circulates its message until an operator intervenes.
+Two steps right after `include` end that, and they read the same on every broker:
+
+```rust
+--8<-- "crates/ruststream-amqp/examples/amqp_retry.rs:declaration"
+```
+
+`max_attempts(n)` is how many deliveries one message gets, counting the first. `dead_letter(name)`
+is the address a spent delivery is published to, as it arrived. A cap with no destination rejects
+the delivery instead, which leaves the broker's own dead-letter policy in play where the deployment
+configured one. A destination with no cap takes over every copy: a handler that asks for a retry
+has its delivery carried away rather than sent back.
+
+### Delayed redelivery
+
 AMQP 1.0 has no delayed redelivery, so `HandlerOutcome::retry_after(delay)` is served by the
-runtime's deferred re-publish. That path needs a publisher of its own, and the mount site names it:
-`b.include(handler).out_retry(Publish)` binds one for that registration. Without it the delay is
-dropped and the delivery is released at once.
+runtime's deferred re-publish: the delivery is dropped and a copy of it is published once the delay
+is over.
+
+```rust
+--8<-- "crates/ruststream-amqp/examples/amqp_retry.rs:handler"
+```
 
 The copy goes to the subscription's own address. One AMQP node is both what a receiver attaches to
-and what a sender publishes to, so a subscription here can always say where a publisher reaches it
-again, and the retry position binds over every subscription this broker opens - the descriptor form
-and the plain `#[subscriber("orders")]` form alike. The copy carries the retry count in the
-`x-ruststream-retry-count` header, so a handler can tell a first delivery from a deferred one. On a
-`queue` address it competes for consumers like any other message; on a `topic` address every
-subscriber sees it.
+and what a sender publishes to, so a subscription here always knows where a publisher reaches it
+again - the descriptor form and the plain `#[subscriber("orders")]` form alike. The mount site is
+left nothing to name, and a transform that names a destination per delivery does not compile on
+this broker. On a `queue` address the copy competes for consumers like any other message; on a
+`topic` address every subscriber sees it. The copy is at-most-once over the delay window: if the
+process exits before the timer fires, it is lost.
 
-That position is an `Out` slot, so it takes the slot steps: `.transform(..)` after `out_retry` runs
-on the copy. The copy has no call site of its own and nothing else on the chain sees it, so a stamp
-that marks a redelivery goes here.
+The publisher that copy leaves through is on every registration already, taken from this broker's
+default policy. Naming one replaces it, once per registration:
+
+```rust
+--8<-- "crates/ruststream-amqp/examples/amqp_retry.rs:customised"
+```
+
+That position is an `Out` slot, so the steps after it are the slot steps. The copy has no call site
+of its own and nothing else on the chain sees it, so a stamp that marks a redelivery goes here:
+
+```rust
+--8<-- "crates/ruststream-amqp/examples/amqp_retry.rs:transform"
+```
 
 ## Publishing
 
@@ -251,6 +291,34 @@ intact.
 The partition key is the `partition-key` header (exported as `PARTITION_KEY_HEADER`), and a
 delivered message implements the `Partitioned` capability.
 
+## The generated document
+
+The `asyncapi` feature forwards the core's, so a service on this broker publishes an AsyncAPI
+document of its own. The specification does have an `amqp1` binding, and it reserves all four of
+its objects: each one must carry no properties. What this crate knows therefore travels in one
+extension object, `x-ruststream-amqp1`, at the level the binding would have sat at.
+
+```json
+--8<-- "crates/ruststream-amqp/tests/asyncapi_excerpt.json"
+```
+
+The server says which protocol it is. `amqp` is the specification's key for AMQP 0.9.1, and the two
+protocols share the scheme and the port, so the key `amqp1` and the version beside it are what tell
+a reader - or a tool generating a client - which one the service speaks. The extension carries the
+container id the service presents on the connection.
+
+A subscription's channel carries the AMQP node's address, the terminus capability it asks for
+(absent on a `raw` address, which asks for none), the link credit, and the delivery guarantee. A
+publisher's send operation says how it posts: `confirmed` waits for the peer's disposition on every
+transfer, `transactional` posts under a broker-side transaction. A reply has no send operation of
+its own, so a reply policy contributes nothing there; what it does contribute is where a client
+reads the address of an answer, `$message.header#/reply-to`, which the document reports wherever
+the mount site names the reply destination per delivery.
+
+None of this is read from a connection: the document is built before anything connects, so a value
+only the live connection knows has no place in it. Neither has a credential, which the conformance
+suite checks by configuring the broker with a password and scanning what it produces.
+
 ## Testing
 
 The `testing` feature ships `AmqpTestBroker`: an in-process transport that reproduces this crate's
@@ -286,8 +354,9 @@ unsound rather than merely imprecise:
 - **No storage.** A message published to an address with no live subscription is logged and
   dropped, where a server would hold it for a consumer that attaches later. Open the subscriptions
   first.
-- **No broker-side redelivery.** A released delivery returns to the subscription that had it, never
-  to a competing consumer, and there is no dead-letter policy behind `nack(requeue = false)`.
+- **No broker-side redelivery.** A requeued delivery returns to the subscription that had it, never
+  to a competing consumer, and there is no dead-letter policy behind `nack(requeue = false)`. The
+  attempt is still counted, so a cap ends a message here as it does on a server.
 - **No durability.** A committed transaction is atomic as far as a handler can observe, but the
   buffer lives in this process: nothing survives a crash, and there is no broker-side transaction
   timeout or fencing.

@@ -24,7 +24,7 @@ serde = { version = "1", features = ["derive"] }
 
 <div class="grid cards" markdown>
 
-- :material-transit-connection-variant: **[AMQP 指南](amqp.md)** - 寻址、批、disposition、请求-响应、事务和测试。
+- :material-transit-connection-variant: **[AMQP 指南](amqp.md)** - 寻址、批、disposition、重试、请求-响应、事务、生成的文档和测试。
 - :material-book-open-variant: **[RustStream 文档](https://powersemmi.github.io/ruststream/)** - 框架本身：订阅者、发布、路由、编解码器、中间件、可观测性和 CLI。
 - :material-language-rust: **[API 参考](https://docs.rs/ruststream-amqp)** - 该 crate 导出的每个类型和方法。
 

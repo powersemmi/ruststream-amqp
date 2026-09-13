@@ -47,7 +47,7 @@ Broker 的 prelude，必须说清是哪个 `Publish`，那时就写它们。
 | `RequestReply` | 是 | [`reply-to`、`correlation-id` 和动态响应链路](#requestreply) |
 | `Partitioned` | 是 | [分区键就是 `group-id` 属性](#headers-and-the-partition-key) |
 | `Seekable` 和 `Positioned` | 否 | 协议没有暴露客户端可以定位过去的位置 |
-| `DescribeServer` | 是 | 报告连接 URL 里的主机和端口，不含它可能带的凭据 |
+| `DescribeServer` | 是 | [以协议键 `amqp1` 报告连接 URL 里的主机和端口，不含它可能带的凭据](#the-generated-document) |
 | 逐条消息的发布设置 | 无 | [发布不带 `header` 段，调用点没有可调整的东西](#publishing) |
 
 ## 生命周期 { #the-lifecycle }
@@ -132,23 +132,60 @@ AMQP 1.0 没有批量拉取：一次 transfer 只投递一条消息，信用额�
 | 处理器结果 | disposition | 效果 |
 | --- | --- | --- |
 | `HandlerOutcome::ack()` | `accept` | 这次投递完成，Broker 将它丢弃 |
-| `HandlerOutcome::retry()` | `release` | 这次投递退回 Broker，等待重新投递 |
+| `HandlerOutcome::retry()` | 带 `delivery-failed` 的 `modified` | Broker 记下这次失败的尝试，然后重新投递 |
 | `HandlerOutcome::drop()` | `reject` | 终态；之后由 Broker 的死信策略决定 |
+
+重试用 `modified` 而不是 `released`，因为两者对这次尝试的说法不同。`released` 表示投递根本没有被
+处理，对端会让 `delivery-count` 保持原值。请求重试的处理器处理过它，只是没有成功。正是这次被记下
+的尝试，让上限能够终结一条永远不结算的消息。
 
 在至多一次的订阅上，投递到达时就已经结算，因此 `ack` 和 `nack` 返回 `AckError::Unsupported`。
 
-AMQP 1.0 没有延迟重新投递，所以 `HandlerOutcome::retry_after(delay)` 由运行时的延后重新发布来完成。
-这条路径需要自己的发布者，由挂载点点名：`b.include(handler).out_retry(Publish)` 为这一处注册
-绑定一个。没有它，延迟会被丢弃，投递立刻退回 Broker。
+一条消息被投递过几次，记在 AMQP `header` 区的 `delivery-count` 字段里，框架读它来施加上限。本
+crate 发布的消息根本没有 `header` 区：没有人为它记过尝试，投递次数改由框架自己的
+`x-ruststream-retry-count` 消息头决定。两个计数都把首次投递记作 1。
+
+### 限制重试次数 { #capping-the-retries }
+
+一个不停请求重试的处理器，会让自己的消息一直转下去，直到有人介入。`include` 之后的两个步骤终结
+这种循环，而且在任何 Broker 上写法都一样：
+
+```rust
+--8<-- "crates/ruststream-amqp/examples/amqp_retry.rs:declaration"
+```
+
+`max_attempts(n)` 是一条消息能得到的投递次数，首次也算在内。`dead_letter(name)` 是耗尽后投递被
+原样发往的地址。只有上限而没有地址时，投递被拒绝，部署里配置过的 Broker 死信策略于是接手。只有
+地址而没有上限时，每一份副本都被它接走：请求重试的处理器，其投递被送走而不是退回。
+
+### 延迟重新投递 { #delayed-redelivery }
+
+AMQP 1.0 没有延迟重新投递，所以 `HandlerOutcome::retry_after(delay)` 由运行时的延后重新发布来完成：
+投递被丢弃，延迟结束后发布它的一份副本。
+
+```rust
+--8<-- "crates/ruststream-amqp/examples/amqp_retry.rs:handler"
+```
 
 副本发往订阅自己的地址。一个 AMQP 节点既是接收方附着的对象，也是发送方发布的目标，因此这里的订阅
-总能说出发布者再次抵达它的地址，重试位也就能绑定到这个 Broker 打开的每一个订阅上：描述符写法和
-纯 `#[subscriber("orders")]` 写法都一样。副本带有 `x-ruststream-retry-count` 消息头，其中记录着
-重试次数，处理器因此能区分首次投递和延迟投递。在 `queue` 地址上，它和其他消息一样参与消费者竞争；
-在 `topic` 地址上，每个订阅者都会看到它。
+总能知道发布者再次抵达它的地址：描述符写法和纯 `#[subscriber("orders")]` 写法都一样。挂载点无需
+点名地址，而逐条投递指定地址的 transform 在这个 Broker 上编译不过。在 `queue` 地址上，副本和其他
+消息一样参与消费者竞争；在 `topic` 地址上，每个订阅者都会看到它。副本至多投递一次：进程在定时器
+触发前退出，它就没了。
 
-这个位置是一个 `Out` 槽位，因此 `out_retry` 之后接的就是槽位的步骤：`.transform(..)` 作用在副本上。
-副本没有自己的调用点，链上也没有别处看得见它，所以标记重新投递的戳记写在这里。
+副本经由的发布者，每一处注册都已经有了，取自这个 Broker 的默认策略。点名一个就替换掉它，每处注册
+一次：
+
+```rust
+--8<-- "crates/ruststream-amqp/examples/amqp_retry.rs:customised"
+```
+
+这个位置是一个 `Out` 槽位，因此后面接的就是槽位的步骤。副本没有自己的调用点，链上也没有别处看得见
+它，所以标记重新投递的戳记写在这里：
+
+```rust
+--8<-- "crates/ruststream-amqp/examples/amqp_retry.rs:transform"
+```
 
 ## 发布 { #publishing }
 
@@ -224,6 +261,30 @@ Broker 上实例化发布者。它也是这个 Broker 的默认策略，因此�
 分区键是 `partition-key` 消息头（导出为 `PARTITION_KEY_HEADER`），投递过来的消息实现了
 `Partitioned` 能力。
 
+## 生成的文档 { #the-generated-document }
+
+`asyncapi` 特性会带上核心的同名特性，这个 Broker 上的服务因此发布自己的 AsyncAPI 文档。规范里确实
+有 `amqp1` 绑定，但它的四个对象都被保留：每一个都不得带任何属性。所以本 crate 知道的东西统统走
+一个扩展对象 `x-ruststream-amqp1`，就放在绑定本该待的那一层。
+
+```json
+--8<-- "crates/ruststream-amqp/tests/asyncapi_excerpt.json"
+```
+
+服务器说明自己讲哪个协议。规范里的 `amqp` 是 AMQP 0.9.1 的键，而两个协议共用 scheme 和端口，因此
+正是 `amqp1` 这个键和旁边的版本，告诉读者（或者据此生成客户端的工具）服务讲的是哪一个。服务器的
+扩展带着服务在连接里自报的 container id。
+
+订阅的通道带着 AMQP 节点的地址、它请求的 terminus 能力（`raw` 地址什么都不请求，因此没有这一项）、
+链路信用和投递保证。发布者的发送操作说明它怎么发布：`confirmed` 在每次 transfer 上等待对端的
+disposition，`transactional` 在 Broker 侧的事务里发布。响应没有自己的发送操作，所以响应策略在那里
+什么也不添；它添的是客户端到哪里读取响应地址 - `$message.header#/reply-to`，只要挂载点逐条投递指定
+响应地址，文档就把它写出来。
+
+这些都不从连接里读：文档在任何东西连上之前就已经构建好，只有活动连接才知道的值在这里没有位置。
+凭据同样没有，conformance 套件会检查这一点：它用一个密码配置 Broker，再扫描 Broker 描述出来的
+内容。
+
 ## 测试 { #testing }
 
 `testing` feature 提供 `AmqpTestBroker`：一个进程内传输，不需要服务器、不走 AMQP 网络，就复现这个
@@ -253,8 +314,9 @@ prelude 的 glob 并列。它遵循与真实 Broker 相同的生命周期阶梯�
 
 - **没有存储。** 发布到没有活动订阅的地址上的消息会被记录下来然后丢弃，而服务器会把它留给之后
   附着上来的消费者。先把订阅打开。
-- **没有 Broker 端的重新投递。** 被释放的投递回到原来那个订阅，绝不会转给竞争消费者，
-  `nack(requeue = false)` 背后也没有死信策略。
+- **没有 Broker 端的重新投递。** 退回的投递回到原来那个订阅，绝不会转给竞争消费者，
+  `nack(requeue = false)` 背后也没有死信策略。这次尝试仍然被记下，所以上限在这里和在服务器上
+  一样能终结一条消息。
 - **没有持久性。** 已提交的事务在处理器能观察到的范围内是原子的，但缓冲就在这个进程里：崩溃之后
   什么都不剩，也没有 Broker 端的事务超时或栅栏机制。
 - **没有流控。** `credit` 在这里没有对应物。像链路那样把消息压住，等于把路由器变成 Broker 端的
