@@ -31,7 +31,7 @@ where they arrive with the broker prefix stripped:
 | `AmqpPublish` | `Publish` |
 | `AmqpTransactionalPublish` (feature `transaction`) | `TransactionalPublish` |
 
-A mount site therefore reads `b.include(handler).out(Reply, Publish)` on every broker, and moving a
+A mount site therefore reads `b.include(handler).out_reply(Publish)` on every broker, and moving a
 service between brokers is a change of one import rather than of every include site. A policy ends
 in `Publish` and the capability trait of its live form ends in `Publisher`, so the two vocabularies
 never share a name. The prefixed originals stay exported too, for a file that globs two broker
@@ -152,16 +152,21 @@ On an at-most-once subscription the deliveries arrive already settled, so `ack` 
 `AckError::Unsupported`.
 
 AMQP 1.0 has no delayed redelivery, so `HandlerOutcome::retry_after(delay)` is served by the
-runtime's deferred re-publish. That path needs a publisher of its own, wired on the scope with
-`retry_via`; without one the delay is dropped and the delivery is released at once.
+runtime's deferred re-publish. That path needs a publisher of its own, and the mount site names it:
+`b.include(handler).out_retry(Publish)` binds one for that registration. Without it the delay is
+dropped and the delivery is released at once.
 
 The copy goes to the subscription's own address. One AMQP node is both what a receiver attaches to
 and what a sender publishes to, so a subscription here can always say where a publisher reaches it
-again, and `retry_via` composes with every subscription this broker opens - the descriptor form and
-the plain `#[subscriber("orders")]` form alike. The copy carries the retry count in the
+again, and the retry position binds over every subscription this broker opens - the descriptor form
+and the plain `#[subscriber("orders")]` form alike. The copy carries the retry count in the
 `x-ruststream-retry-count` header, so a handler can tell a first delivery from a deferred one. On a
 `queue` address it competes for consumers like any other message; on a `topic` address every
 subscriber sees it.
+
+That position is an `Out` slot, so it takes the slot steps: `.transform(..)` after `out_retry` runs
+on the copy. The copy has no call site of its own and nothing else on the chain sees it, so a stamp
+that marks a redelivery goes here.
 
 ## Publishing
 
@@ -170,15 +175,15 @@ where the handler is mounted, and at startup it instantiates the publisher on th
 It is also this broker's default policy, so a `#[subscriber(.., publish)]` handler whose mount site
 names no reply publisher replies through it.
 
-Write `.out(Reply, Publish)` for the reply, and `.out(<marker>, Publish).build()` for an injected
-slot; `Publish` is the policy's [prelude](#the-prelude) name. The policy has no options, so you
-write it bare.
+Write `.out_reply(Publish)` for the reply, `.out_retry(Publish)` for the deferred copy, and
+`.out(<marker>, Publish).build()` for an injected slot; `Publish` is the policy's
+[prelude](#the-prelude) name. The policy has no fields, so you write it bare.
 
-A single publish has no settings of its own either. Some brokers let a call site adjust one message
-- a priority, a time to live - with a step on the publish builder. This one ships no such step,
-because it sends no AMQP `header` section, and that section is where `durable`, `priority` and
-`ttl` live. A handler body therefore keeps `Out<impl Publisher>` and imports nothing from this
-crate.
+A single publish has no settings of its own either: `AmqpPublisher::Options` is `()`. Some brokers
+let a call site adjust one message - a priority, a time to live - with a step on the publish
+builder. This one ships no such step, because it sends no AMQP `header` section, and that section
+is where `durable`, `priority` and `ttl` live. A handler body therefore keeps `Out<impl Publisher>`
+and imports nothing from this crate.
 
 A sender link is attached on first use and kept per address. A publish the broker settles with
 anything other than `accept` (rejected, released, modified) returns an error, so a broker-side
@@ -256,7 +261,7 @@ ladder as the real broker, and it drives the `TestApp` harness. See
 
 The whole production declaration resolves against the test broker, so the test runs the wiring the
 service ships rather than a rewritten copy of it. `#[subscriber(AmqpAddress::queue("orders"))]`
-mounts on `AmqpTestBroker` unchanged, `.out(Reply, Publish)` mounts the production policy, and
+mounts on `AmqpTestBroker` unchanged, `.out_reply(Publish)` mounts the production policy, and
 `AmqpTransactionalPublish` pairs into an in-process publisher that buffers until the commit. There
 is no test-only policy to swap in at the mount site, and no capability that exists on one broker
 and not the other: `RequestReply` and `TransactionalPublisher` are carried over, so a handler that

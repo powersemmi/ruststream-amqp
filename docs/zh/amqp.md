@@ -29,7 +29,7 @@ serde = { version = "1", features = ["derive"] }
 | `AmqpPublish` | `Publish` |
 | `AmqpTransactionalPublish`（feature `transaction`） | `TransactionalPublish` |
 
-因此在任何 Broker 上，挂载点都写成 `b.include(handler).out(Reply, Publish)`，把服务迁到另一个
+因此在任何 Broker 上，挂载点都写成 `b.include(handler).out_reply(Publish)`，把服务迁到另一个
 Broker 改的是一条导入，而不是每一处挂载点。策略的名字以 `Publish` 结尾，它的活动形态所对应的能力
 trait 以 `Publisher` 结尾，两套词汇因此不会重名。带前缀的原名同样导出：有的文件同时 glob 两个
 Broker 的 prelude，必须说清是哪个 `Publish`，那时就写它们。
@@ -138,13 +138,17 @@ AMQP 1.0 没有批量拉取：一次 transfer 只投递一条消息，信用额�
 在至多一次的订阅上，投递到达时就已经结算，因此 `ack` 和 `nack` 返回 `AckError::Unsupported`。
 
 AMQP 1.0 没有延迟重新投递，所以 `HandlerOutcome::retry_after(delay)` 由运行时的延后重新发布来完成。
-这条路径需要自己的发布者，用 `retry_via` 接到作用域上；没有它，延迟会被丢弃，投递立刻退回 Broker。
+这条路径需要自己的发布者，由挂载点点名：`b.include(handler).out_retry(Publish)` 为这一处注册
+绑定一个。没有它，延迟会被丢弃，投递立刻退回 Broker。
 
 副本发往订阅自己的地址。一个 AMQP 节点既是接收方附着的对象，也是发送方发布的目标，因此这里的订阅
-总能说出发布者再次抵达它的地址，`retry_via` 也就适用于这个 Broker 打开的每一个订阅：描述符写法和
+总能说出发布者再次抵达它的地址，重试位也就能绑定到这个 Broker 打开的每一个订阅上：描述符写法和
 纯 `#[subscriber("orders")]` 写法都一样。副本带有 `x-ruststream-retry-count` 消息头，其中记录着
 重试次数，处理器因此能区分首次投递和延迟投递。在 `queue` 地址上，它和其他消息一样参与消费者竞争；
 在 `topic` 地址上，每个订阅者都会看到它。
+
+这个位置是一个 `Out` 槽位，因此 `out_retry` 之后接的就是槽位的步骤：`.transform(..)` 作用在副本上。
+副本没有自己的调用点，链上也没有别处看得见它，所以标记重新投递的戳记写在这里。
 
 ## 发布 { #publishing }
 
@@ -152,12 +156,14 @@ AMQP 1.0 没有延迟重新投递，所以 `HandlerOutcome::retry_after(delay)` 
 Broker 上实例化发布者。它也是这个 Broker 的默认策略，因此挂载点没有点名回复发布者的
 `#[subscriber(.., publish)]` 处理器，就通过它回复。
 
-回复写 `.out(Reply, Publish)`，注入的槽位写 `.out(<marker>, Publish).build()`；`Publish` 是该策略
-在 [prelude](#the-prelude) 中的名字。策略没有选项，所以直接写名字即可。
+回复写 `.out_reply(Publish)`，延后的副本写 `.out_retry(Publish)`，注入的槽位写
+`.out(<marker>, Publish).build()`；`Publish` 是该策略在 [prelude](#the-prelude) 中的名字。策略没有
+字段，所以直接写名字即可。
 
-单次发布同样没有自己的设置。有些 Broker 允许调用点用发布构建器上的一个步骤调整单条消息，比如
-优先级、存活时间。这里没有这样的步骤，因为它不发送 AMQP 的 `header` 段，而 `durable`、`priority`
-和 `ttl` 都放在那一段里。因此处理器主体保留 `Out<impl Publisher>`，不从这个 crate 导入任何东西。
+单次发布同样没有自己的设置：`AmqpPublisher::Options` 就是 `()`。有些 Broker 允许调用点用发布
+构建器上的一个步骤调整单条消息，比如优先级、存活时间。这里没有这样的步骤，因为它不发送 AMQP 的
+`header` 段，而 `durable`、`priority` 和 `ttl` 都放在那一段里。因此处理器主体保留
+`Out<impl Publisher>`，不从这个 crate 导入任何东西。
 
 发送链路在第一次使用时附着，并按地址各留一条。Broker 用 `accept` 以外的方式结算的发布
 （rejected、released、modified）返回错误，Broker 端的拒绝因此不会被当成一次成功的发布。
@@ -227,7 +233,7 @@ prelude 的 glob 并列。它遵循与真实 Broker 相同的生命周期阶梯�
 
 整份生产声明都能在测试 Broker 上解析，因此测试跑的是服务真正交付的那套接线，而不是它的一份改写
 副本。`#[subscriber(AmqpAddress::queue("orders"))]` 原样挂载到 `AmqpTestBroker` 上，
-`.out(Reply, Publish)` 挂载的是生产策略，`AmqpTransactionalPublish` 配出的是一个进程内发布者，
+`.out_reply(Publish)` 挂载的是生产策略，`AmqpTransactionalPublish` 配出的是一个进程内发布者，
 它缓冲到提交为止。挂载点上没有只供测试替换的策略，也没有哪个能力只存在于其中一个 Broker：
 `RequestReply` 和 `TransactionalPublisher` 都被带了过来，因此约束 `Out<impl RequestReply>` 或
 `Out<impl TransactionalPublisher>` 的处理器在进程内同样能挂载。
