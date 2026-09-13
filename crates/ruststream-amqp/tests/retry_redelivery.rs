@@ -11,7 +11,10 @@
 
 use std::time::Duration;
 
-use ruststream::runtime::RETRY_COUNT_HEADER;
+// The derive and the value a transform edits share the name in different namespaces: the
+// derive is the macro `ruststream::Outgoing` the prelude carries, the value is the type
+// `ruststream::runtime::Outgoing`.
+use ruststream::runtime::{Outgoing, RETRY_COUNT_HEADER, SlotContext};
 use ruststream::testing::{Outcome, TestApp};
 use ruststream_amqp::prelude::*;
 use ruststream_amqp::testing::AmqpTestBroker;
@@ -106,5 +109,55 @@ async fn a_deferred_retry_comes_back_to_a_named_subscription() {
             .outcomes(),
         [Outcome::Nack, Outcome::Ack],
         "the deferred copy must reach the handler and settle",
+    );
+}
+
+/// Stamps every copy leaving the position it is mounted on with that position's name. The retry
+/// position is an `Out` slot, so its transforms read a slot's view; the transform sets no
+/// per-message setting, so it stays generic over the options type and mounts on any publisher.
+#[derive(Debug, Clone, Copy)]
+struct DeferredStamp;
+
+impl<Options> PublishTransform<ForSlot, Options> for DeferredStamp {
+    type Destination = Reads;
+
+    fn apply(&self, out: &mut Outgoing<'_>, _options: &mut Option<Options>, cx: &SlotContext<'_>) {
+        out.headers_mut()
+            .insert("x-left-through", cx.slot().to_owned());
+    }
+}
+
+#[subscriber(AmqpAddress::queue("retry.stamped"))]
+async fn from_a_stamped_position(order: &Order, ctx: &mut Context<'_>) -> HandlerOutcome {
+    defer_once(order, ctx.headers())
+}
+
+/// The deferred copy has no call site of its own, so a transform on the retry position is the one
+/// place a service reaches it. The copy still lands on the subscription's own address, stamped.
+#[tokio::test(start_paused = true)]
+async fn a_transform_on_the_retry_position_stamps_the_deferred_copy() {
+    let app =
+        RustStream::new(AppInfo::new("retry", "0.1.0")).with_broker(AmqpTestBroker::new(), |b| {
+            b.include(from_a_stamped_position)
+                .out_retry(Publish)
+                .transform(DeferredStamp);
+        });
+    let app = TestApp::start(app).await.expect("startup failed");
+
+    app.broker::<AmqpTestBroker>()
+        .publish("retry.stamped", &Order { id: 1 })
+        .await
+        .expect("publish failed");
+    app.advance(RETRY_DELAY).await.expect("the run settles");
+
+    app.broker::<AmqpTestBroker>()
+        .published::<Order>("retry.stamped")
+        .with_header("x-left-through", "Retry");
+    assert_eq!(
+        app.broker::<AmqpTestBroker>()
+            .subscriber("retry.stamped")
+            .outcomes(),
+        [Outcome::Nack, Outcome::Ack],
+        "the stamped copy must still reach the handler and settle",
     );
 }
