@@ -53,6 +53,20 @@ async fn amqp_test_broker_passes_lifecycle() {
     .await;
 }
 
+/// The promise an addressing descriptor makes: publish to the address it reports and the
+/// subscription that reported it gets the message. The runtime publishes a deferred `retry_after`
+/// copy exactly like that, so an address reaching nothing would lose every delayed message.
+#[allow(clippy::redundant_closure, clippy::redundant_closure_for_method_calls)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn amqp_test_broker_reports_a_redelivery_address_that_arrives() {
+    harness::redelivery_address(
+        AmqpTestBroker::new,
+        |name| AmqpAddress::queue(name),
+        |connected| connected.publisher(),
+    )
+    .await;
+}
+
 /// The in-process request/reply: correlation, reply routing, and the leg nobody answers, which
 /// must fail once its timeout elapses instead of hanging or resolving with someone else's reply.
 #[allow(clippy::redundant_closure, clippy::redundant_closure_for_method_calls)]
@@ -90,6 +104,20 @@ async fn amqp_test_broker_passes_transactions_suite() {
 async fn amqp_broker_passes_lifecycle() {
     let Some(url) = test_url() else { return };
     harness::lifecycle(
+        || AmqpBroker::new(url.clone()),
+        |name| AmqpAddress::queue(name),
+        |connected| connected.publisher(),
+    )
+    .await;
+}
+
+/// The same promise against a server, where the node the address names is the broker's and not
+/// this process's to arrange.
+#[allow(clippy::redundant_closure, clippy::redundant_closure_for_method_calls)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn amqp_broker_reports_a_redelivery_address_that_arrives() {
+    let Some(url) = test_url() else { return };
+    harness::redelivery_address(
         || AmqpBroker::new(url.clone()),
         |name| AmqpAddress::queue(name),
         |connected| connected.publisher(),

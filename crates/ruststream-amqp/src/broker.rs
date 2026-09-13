@@ -15,8 +15,7 @@ use fe2o3_amqp::{Receiver, Sender};
 use fe2o3_amqp_types::messaging::Source;
 use fe2o3_amqp_types::primitives::{Array, Symbol};
 use ruststream::{
-    Broker, ConnectedBroker, DefaultPublish, DescribeServer, RedeliveryAddress, ServerSpec,
-    Subscribe,
+    AddressedCopies, Broker, ConnectedBroker, DefaultPublish, DescribeServer, ServerSpec, Subscribe,
 };
 use tokio::sync::{Mutex, OnceCell};
 
@@ -374,15 +373,14 @@ impl ConnectedBroker for ConnectedAmqpBroker {
 impl Subscribe for ConnectedAmqpBroker {
     type Subscriber = AmqpSubscriber;
 
-    async fn subscribe(&self, name: &str) -> Result<Self::Subscriber, Self::Error> {
-        self.subscribe_address(AmqpAddress::raw(name)).await
-    }
-
     /// An `AMQP` 1.0 node is one address for both roles: a receiver attaches its source to it, a
     /// sender its target. A bare name is therefore also where a deferred copy is published to
-    /// reach the subscription again, which is what makes `out_retry` usable on this broker.
-    fn redelivery_address(&self, name: &str) -> Option<RedeliveryAddress> {
-        Some(RedeliveryAddress::new(name.to_owned()))
+    /// reach the subscription again, which is what makes `out_retry` usable on this broker without
+    /// the mount site naming a destination.
+    type Copies = AddressedCopies;
+
+    async fn subscribe(&self, name: &str) -> Result<Self::Subscriber, Self::Error> {
+        self.subscribe_address(AmqpAddress::raw(name)).await
     }
 }
 

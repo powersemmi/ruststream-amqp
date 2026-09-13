@@ -14,7 +14,7 @@ use std::time::Duration;
 // The derive and the value a transform edits share the name in different namespaces: the
 // derive is the macro `ruststream::Outgoing` the prelude carries, the value is the type
 // `ruststream::runtime::Outgoing`.
-use ruststream::runtime::{Outgoing, RETRY_COUNT_HEADER, SlotContext};
+use ruststream::runtime::{Outgoing, PublishContext, RETRY_COUNT_HEADER};
 use ruststream::testing::{Outcome, TestApp};
 use ruststream_amqp::prelude::*;
 use ruststream_amqp::testing::AmqpTestBroker;
@@ -112,18 +112,23 @@ async fn a_deferred_retry_comes_back_to_a_named_subscription() {
     );
 }
 
-/// Stamps every copy leaving the position it is mounted on with that position's name. The retry
-/// position is an `Out` slot, so its transforms read a slot's view; the transform sets no
+/// Stamps every copy with the subscription the delivery came from. A transform on the retry
+/// position reads the delivery being retried, the way a reply's does; the transform sets no
 /// per-message setting, so it stays generic over the options type and mounts on any publisher.
 #[derive(Debug, Clone, Copy)]
 struct DeferredStamp;
 
-impl<Options> PublishTransform<ForSlot, Options> for DeferredStamp {
+impl<C, Options> PublishTransform<ForReply<C>, Options> for DeferredStamp {
     type Destination = Reads;
 
-    fn apply(&self, out: &mut Outgoing<'_>, _options: &mut Option<Options>, cx: &SlotContext<'_>) {
+    fn apply(
+        &self,
+        out: &mut Outgoing<'_>,
+        _options: &mut Option<Options>,
+        cx: &PublishContext<'_, C>,
+    ) {
         out.headers_mut()
-            .insert("x-left-through", cx.slot().to_owned());
+            .insert("x-retried-from", cx.name().to_owned());
     }
 }
 
@@ -152,12 +157,125 @@ async fn a_transform_on_the_retry_position_stamps_the_deferred_copy() {
 
     app.broker::<AmqpTestBroker>()
         .published::<Order>("retry.stamped")
-        .with_header("x-left-through", "Retry");
+        .with_header("x-retried-from", "retry.stamped");
     assert_eq!(
         app.broker::<AmqpTestBroker>()
             .subscriber("retry.stamped")
             .outcomes(),
         [Outcome::Nack, Outcome::Ack],
         "the stamped copy must still reach the handler and settle",
+    );
+}
+
+/// A handler that never settles: every delivery asks for another try, so nothing but the
+/// registration's declaration ends the circulation.
+fn never_settles(order: &Order) -> HandlerOutcome {
+    assert_eq!(order.id, 1, "only the capped order is published here");
+    HandlerOutcome::retry_after(RETRY_DELAY)
+}
+
+#[subscriber(AmqpAddress::queue("capped.orders"))]
+async fn capped_from_a_descriptor(order: &Order) -> HandlerOutcome {
+    never_settles(order)
+}
+
+/// The declaration ends a poison message on this broker: three deliveries, then the delivery is
+/// carried to the dead-letter address instead of coming back a fourth time.
+#[tokio::test(start_paused = true)]
+async fn a_capped_registration_dead_letters_the_spent_delivery() {
+    let app =
+        RustStream::new(AppInfo::new("retry", "0.1.0")).with_broker(AmqpTestBroker::new(), |b| {
+            b.include(capped_from_a_descriptor)
+                .max_attempts(nonzero!(3u32))
+                .dead_letter("capped.dead");
+        });
+    let app = TestApp::start(app).await.expect("startup failed");
+
+    app.broker::<AmqpTestBroker>()
+        .publish("capped.orders", &Order { id: 1 })
+        .await
+        .expect("publish failed");
+
+    // Two delays carry the delivery from its first attempt to its third; the third is at the cap,
+    // so it leaves for the dead-letter address at once rather than after another delay.
+    app.advance(RETRY_DELAY).await.expect("the run settles");
+    app.advance(RETRY_DELAY).await.expect("the run settles");
+
+    app.broker::<AmqpTestBroker>()
+        .subscriber("capped.orders")
+        .assert_called(3);
+    app.broker::<AmqpTestBroker>()
+        .published::<Order>("capped.dead")
+        .assert_called_once()
+        .with(&Order { id: 1 });
+
+    // And it stays gone: a fourth delay brings nothing back.
+    app.advance(RETRY_DELAY).await.expect("the run settles");
+    app.broker::<AmqpTestBroker>()
+        .subscriber("capped.orders")
+        .assert_called(3);
+}
+
+#[subscriber("capped.by-name")]
+async fn capped_from_a_name(order: &Order) -> HandlerOutcome {
+    never_settles(order)
+}
+
+/// The bare-name form takes the same declaration: a name is a verbatim address here, so its
+/// copies are this process's to publish and the dead-letter destination is reached the same way.
+#[tokio::test(start_paused = true)]
+async fn a_named_subscription_takes_the_same_declaration() {
+    let app =
+        RustStream::new(AppInfo::new("retry", "0.1.0")).with_broker(AmqpTestBroker::new(), |b| {
+            b.include(capped_from_a_name)
+                .max_attempts(nonzero!(2u32))
+                .dead_letter("capped.dead");
+        });
+    let app = TestApp::start(app).await.expect("startup failed");
+
+    app.broker::<AmqpTestBroker>()
+        .publish("capped.by-name", &Order { id: 1 })
+        .await
+        .expect("publish failed");
+    app.advance(RETRY_DELAY).await.expect("the run settles");
+
+    app.broker::<AmqpTestBroker>()
+        .subscriber("capped.by-name")
+        .assert_called(2);
+    app.broker::<AmqpTestBroker>()
+        .published::<Order>("capped.dead")
+        .assert_called_once()
+        .with(&Order { id: 1 });
+}
+
+#[subscriber(AmqpAddress::queue("rejected.orders"))]
+async fn capped_without_a_destination(order: &Order) -> HandlerOutcome {
+    never_settles(order)
+}
+
+/// A cap with no destination rejects the spent delivery instead of republishing it, which leaves
+/// the broker's own dead-letter policy in play where the deployment configured one.
+#[tokio::test(start_paused = true)]
+async fn a_cap_without_a_destination_stops_the_circulation() {
+    let app =
+        RustStream::new(AppInfo::new("retry", "0.1.0")).with_broker(AmqpTestBroker::new(), |b| {
+            b.include(capped_without_a_destination)
+                .max_attempts(nonzero!(2u32));
+        });
+    let app = TestApp::start(app).await.expect("startup failed");
+
+    app.broker::<AmqpTestBroker>()
+        .publish("rejected.orders", &Order { id: 1 })
+        .await
+        .expect("publish failed");
+    app.advance(RETRY_DELAY).await.expect("the run settles");
+    app.advance(RETRY_DELAY).await.expect("the run settles");
+
+    assert_eq!(
+        app.broker::<AmqpTestBroker>()
+            .subscriber("rejected.orders")
+            .outcomes(),
+        [Outcome::Nack, Outcome::Nack],
+        "the second delivery is at the cap, so it is rejected rather than copied back",
     );
 }

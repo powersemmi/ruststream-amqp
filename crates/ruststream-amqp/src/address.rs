@@ -10,7 +10,9 @@ use std::future::{Future, ready};
 use std::num::NonZeroU32;
 use std::time::Duration;
 
-use ruststream::{RedeliveryAddress, SubscriptionSource, nonzero};
+use ruststream::{
+    AddressedCopies, RedeliveryAddress, RedeliveryAddressed, SubscriptionSource, nonzero,
+};
 
 use crate::broker::ConnectedAmqpBroker;
 use crate::error::AmqpError;
@@ -257,6 +259,11 @@ impl AmqpAddress {
 impl SubscriptionSource<ConnectedAmqpBroker> for AmqpAddress {
     type Subscriber = AmqpSubscriber;
 
+    /// `AMQP` 1.0 has no delayed redelivery and no wire-level way to declare a node with a
+    /// delivery limit and a dead-letter address, so a spent delivery is this process's to move:
+    /// the runtime publishes the copies and this descriptor says where they land.
+    type Copies = AddressedCopies;
+
     fn name(&self) -> &str {
         self.address()
     }
@@ -264,14 +271,16 @@ impl SubscriptionSource<ConnectedAmqpBroker> for AmqpAddress {
     async fn subscribe(self, connected: &ConnectedAmqpBroker) -> Result<AmqpSubscriber, AmqpError> {
         connected.subscribe_address(self).await
     }
+}
 
+impl RedeliveryAddressed<ConnectedAmqpBroker> for AmqpAddress {
     // The answer is the descriptor's own address, so nothing is asked of the connection and the
     // call needs no state machine.
     fn redelivery_address(
         &self,
         _connected: &ConnectedAmqpBroker,
-    ) -> impl Future<Output = Result<Option<RedeliveryAddress>, AmqpError>> {
-        ready(Ok(Some(self.redelivery_target())))
+    ) -> impl Future<Output = Result<RedeliveryAddress, AmqpError>> + Send {
+        ready(Ok(self.redelivery_target()))
     }
 }
 
@@ -285,6 +294,8 @@ impl SubscriptionSource<ConnectedAmqpBroker> for AmqpAddress {
 impl SubscriptionSource<ConnectedAmqpTestBroker> for AmqpAddress {
     type Subscriber = AmqpTestSubscriber;
 
+    type Copies = AddressedCopies;
+
     fn name(&self) -> &str {
         self.address()
     }
@@ -295,12 +306,15 @@ impl SubscriptionSource<ConnectedAmqpTestBroker> for AmqpAddress {
     ) -> Result<Self::Subscriber, AmqpError> {
         connected.subscribe_address(self).await
     }
+}
 
+#[cfg(feature = "testing")]
+impl RedeliveryAddressed<ConnectedAmqpTestBroker> for AmqpAddress {
     fn redelivery_address(
         &self,
         _connected: &ConnectedAmqpTestBroker,
-    ) -> impl Future<Output = Result<Option<RedeliveryAddress>, AmqpError>> {
-        ready(Ok(Some(self.redelivery_target())))
+    ) -> impl Future<Output = Result<RedeliveryAddress, AmqpError>> + Send {
+        ready(Ok(self.redelivery_target()))
     }
 }
 
