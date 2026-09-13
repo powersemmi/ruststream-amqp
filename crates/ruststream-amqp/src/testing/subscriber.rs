@@ -126,8 +126,9 @@ impl Subscriber for Deliveries {
 /// Message handed to handlers from an [`AmqpTestSubscriber`].
 ///
 /// `ack` consumes the handle; `nack(requeue = true)` re-queues the delivery on the owning
-/// subscription's channel so the next handler invocation sees it again; `nack(requeue = false)`
-/// drops it, matching the real subscriber's reject path in effect. On an at-most-once
+/// subscription's channel, with one more failed attempt counted, so the next handler invocation
+/// sees it again and reads the higher count; `nack(requeue = false)` drops it, matching the real
+/// subscriber's reject path in effect. On an at-most-once
 /// subscription the delivery is settled on receipt, so both report
 /// [`AckError::Unsupported`](ruststream::AckError::Unsupported), as
 /// [`AmqpMessage`](crate::AmqpMessage) does.
@@ -182,11 +183,14 @@ impl AmqpTestMessage {
         let Some(sender) = self.requeue.clone() else {
             return Err(AckError::Unsupported);
         };
-        let delivery = self
+        let mut delivery = self
             .delivery
             .take()
             .expect("AmqpTestMessage ack/nack invoked twice");
         if requeue {
+            // The real disposition is `modified` with `delivery-failed`, which is what makes the
+            // broker count the attempt, so the copy that comes back here carries one more.
+            delivery.failed_attempts = Some(delivery.failed_attempts.unwrap_or(0) + 1);
             let sent = sender.send(delivery);
             // The requeue bypasses fanout, so count the re-enqueue here to balance this
             // message's `Drop` decrement. The redelivered copy is consumed in turn.
@@ -207,6 +211,15 @@ impl Partitioned for AmqpTestMessage {
 }
 
 impl IncomingMessage for AmqpTestMessage {
+    /// The same answer the real subscriber gives: a delivery nothing has counted an attempt for
+    /// reports nothing, and the framework's retry-count header carries the attempt instead.
+    fn redelivery_count(&self) -> Option<u64> {
+        self.delivery
+            .as_ref()
+            .and_then(|delivery| delivery.failed_attempts)
+            .map(|count| u64::from(count) + 1)
+    }
+
     fn payload(&self) -> &[u8] {
         self.delivery
             .as_ref()

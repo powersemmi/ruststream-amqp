@@ -113,6 +113,56 @@ async fn nack_with_requeue_redelivers() {
     connected.shutdown().await.expect("shutdown succeeds");
 }
 
+/// What the broker counts, and what it does not. A requeue is `modified` with `delivery-failed`,
+/// so the server counts the attempt and the redelivery carries a `header` section whose
+/// `delivery-count` says so. A message this crate published carries no header section at all, and
+/// a delivery nothing has counted an attempt for reports nothing rather than claiming to be the
+/// first of a series: the framework's own retry-count header is what survives the copy a deferred
+/// retry publishes, and it decides the attempt there.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_requeued_delivery_reports_the_broker_count() {
+    let Some(url) = test_url() else { return };
+    let connected = connect(&url).await;
+
+    let address = unique("counted");
+    let mut subscriber = connected
+        .subscribe_address(AmqpAddress::queue(&address))
+        .await
+        .expect("subscription opens");
+    connected
+        .publisher()
+        .publish(OutgoingMessage::new(&address, b"once".as_slice()), None)
+        .await
+        .expect("publish succeeds");
+
+    let mut stream = pin!(subscriber.stream());
+    let first = tokio::time::timeout(RECV_TIMEOUT, stream.next())
+        .await
+        .expect("delivery arrives")
+        .expect("stream is open")
+        .expect("delivery is ok");
+    assert_eq!(
+        first.redelivery_count(),
+        None,
+        "a message published without a header section reaches the handler uncounted",
+    );
+    first.nack(true).await.expect("the requeue succeeds");
+
+    let second = tokio::time::timeout(RECV_TIMEOUT, stream.next())
+        .await
+        .expect("redelivery arrives")
+        .expect("stream is open")
+        .expect("redelivery is ok");
+    assert_eq!(
+        second.redelivery_count(),
+        Some(2),
+        "the broker counted the failed attempt, so this delivery is the second",
+    );
+    second.ack().await.expect("ack succeeds");
+
+    connected.shutdown().await.expect("shutdown succeeds");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn nack_without_requeue_does_not_redeliver() {
     let Some(url) = test_url() else { return };

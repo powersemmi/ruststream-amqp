@@ -14,9 +14,9 @@ use std::time::Duration;
 
 use futures::{Stream, StreamExt};
 use ruststream::testing::TestApp;
-use ruststream::{AckError, OutgoingMessage, Subscriber};
+use ruststream::{AckError, IncomingMessage, OutgoingMessage, Subscriber};
 use ruststream_amqp::prelude::*;
-use ruststream_amqp::testing::{AmqpTestBroker, AmqpTestMessage};
+use ruststream_amqp::testing::{AmqpTestBroker, AmqpTestMessage, AmqpTestSubscriber};
 use serde::{Deserialize, Serialize};
 
 const WAIT: Duration = Duration::from_secs(1);
@@ -249,4 +249,53 @@ async fn topic_subscriptions_each_get_a_copy() {
     let mut second_stream = Box::pin(second.stream());
     assert_eq!(next_payload(&mut first_stream).await, b"broadcast");
     assert_eq!(next_payload(&mut second_stream).await, b"broadcast");
+}
+
+// The delivery counter is the other option the stand-in reproduces rather than drops. AMQP 1.0
+// counts failed attempts in the `delivery-count` field of a message's `header` section, and a
+// message nothing has counted an attempt for carries no header section at all - which is what a
+// message this crate published looks like. The framework reads that count to apply a
+// registration's cap, so the two brokers have to answer the same way
+// (`integration_amqp.rs::a_requeued_delivery_reports_the_broker_count`).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_requeued_delivery_carries_one_more_counted_attempt() {
+    let broker = AmqpTestBroker::new()
+        .connect()
+        .await
+        .expect("connect failed");
+    let mut subscriber = broker
+        .subscribe_address(AmqpAddress::queue("counted"))
+        .await
+        .expect("subscription opens");
+    broker
+        .publisher()
+        .publish(OutgoingMessage::new("counted", b"once".as_slice()), None)
+        .await
+        .expect("publish failed");
+
+    let first = next_delivery(&mut subscriber).await;
+    assert_eq!(
+        first.redelivery_count(),
+        None,
+        "a fresh delivery carries no count, so the framework's own header decides the attempt",
+    );
+    first.nack(true).await.expect("the requeue succeeds");
+
+    let second = next_delivery(&mut subscriber).await;
+    assert_eq!(
+        second.redelivery_count(),
+        Some(2),
+        "the requeue counted one failed attempt, so this delivery is the second",
+    );
+    second.ack().await.expect("ack succeeds");
+}
+
+/// The next delivery off a subscriber, leaving it free to be polled again.
+async fn next_delivery(subscriber: &mut AmqpTestSubscriber) -> AmqpTestMessage {
+    let mut stream = pin!(subscriber.stream());
+    tokio::time::timeout(WAIT, stream.next())
+        .await
+        .expect("delivery arrives")
+        .expect("stream is open")
+        .expect("delivery is ok")
 }

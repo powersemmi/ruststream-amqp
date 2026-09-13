@@ -37,6 +37,10 @@ pub(crate) struct SubscriptionId(u64);
 pub(crate) struct Delivery {
     pub(crate) payload: Bytes,
     pub(crate) headers: HeaderMap,
+    /// Failed delivery attempts counted so far, the in-process counterpart of the `delivery-count`
+    /// field of the `AMQP` `header` section. A freshly published message carries none, as one
+    /// published by this crate does on a server, and a requeue counts one.
+    pub(crate) failed_attempts: Option<u32>,
 }
 
 pub(crate) type DeliverySender = mpsc::UnboundedSender<Delivery>;
@@ -145,7 +149,11 @@ impl AddressRouter {
             next
         };
 
-        let delivery = Delivery { payload, headers };
+        let delivery = Delivery {
+            payload,
+            headers,
+            failed_attempts: None,
+        };
         for tx in copies {
             if tx.send(delivery.clone()).is_ok()
                 && let Some(coordinator) = coordinator

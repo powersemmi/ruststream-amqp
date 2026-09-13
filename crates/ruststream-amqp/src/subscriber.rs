@@ -14,7 +14,7 @@ use futures::Stream;
 use fe2o3_amqp::link::receiver::CreditMode;
 use fe2o3_amqp::link::{Receiver as FeReceiver, RecvError};
 use fe2o3_amqp::session::SessionHandle;
-use fe2o3_amqp_types::messaging::Body;
+use fe2o3_amqp_types::messaging::{Body, Modified};
 use fe2o3_amqp_types::primitives::Value;
 use ruststream::{AckError, BatchSubscriber, BufferedSubscriber, Subscriber};
 use tokio::sync::mpsc;
@@ -192,14 +192,18 @@ async fn pump(mut p: Pump) {
                     Ok(delivery) => {
                         let (info, message) = delivery.into_parts();
                         let headers = headers_from_amqp(&message);
+                        // Absent where the peer sent no header section, which is what a message
+                        // this crate published looks like; see `AmqpMessage::redelivery_count`.
+                        let delivery_count = message.header.as_ref().map(|h| h.delivery_count);
                         match payload_from_body(message.body, &p.address) {
                             Ok(payload) => {
                                 pending = Some(if p.at_most_once {
-                                    AmqpMessage::settled(payload, headers)
+                                    AmqpMessage::settled(payload, headers, delivery_count)
                                 } else {
                                     AmqpMessage::unsettled(
                                         payload,
                                         headers,
+                                        delivery_count,
                                         p.settle_tx.clone(),
                                         info,
                                     )
@@ -257,7 +261,20 @@ async fn pump(mut p: Pump) {
 async fn apply(receiver: &FeReceiver, cmd: SettleCmd) {
     let result = match cmd.kind {
         SettleKind::Accept => receiver.accept(cmd.info).await,
-        SettleKind::Release => receiver.release(cmd.info).await,
+        SettleKind::Modify => {
+            receiver
+                .modify(
+                    cmd.info,
+                    Modified {
+                        delivery_failed: Some(true),
+                        // The delivery is to come back to this subscription: a retry that
+                        // excluded its own consumer would strand a single-consumer service.
+                        undeliverable_here: Some(false),
+                        message_annotations: None,
+                    },
+                )
+                .await
+        }
         SettleKind::Reject => receiver.reject(cmd.info, None).await,
     };
     let _ = cmd

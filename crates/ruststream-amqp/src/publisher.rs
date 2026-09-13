@@ -133,7 +133,8 @@ impl RequestReply for AmqpPublisher {
                 // anyway: a late reply to an earlier request must not resolve this one.
                 if headers.correlation_id() == Some(correlation_id.as_str()) {
                     let payload = payload_from_body(message.body, "(dynamic)")?;
-                    return Ok(AmqpMessage::settled(payload, headers));
+                    // A reply is a message of its own, with no prior attempt to count.
+                    return Ok(AmqpMessage::settled(payload, headers, None));
                 }
             }
         };
