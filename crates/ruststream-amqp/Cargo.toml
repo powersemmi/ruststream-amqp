@@ -11,6 +11,12 @@ readme = "../../README.md"
 keywords = ["amqp", "amqp10", "messaging", "broker", "ruststream"]
 categories = ["asynchronous", "network-programming"]
 
+# `default` is empty and every module beyond the plain broker is behind a feature, so a default
+# build on docs.rs publishes a reference with the transactional publisher, the in-process test
+# broker and the AsyncAPI bindings missing - the ones the crate overview sends readers to.
+[package.metadata.docs.rs]
+all-features = true
+
 [lints]
 workspace = true
 
