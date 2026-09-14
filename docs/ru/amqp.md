@@ -333,7 +333,7 @@ AMQP, и фреймворк читает его, чтобы применить �
 `use ruststream_amqp::testing::AmqpTestBroker;`, рядом с glob прелюдии. Он проходит ту же
 последовательность переходов жизненного цикла, что и настоящий брокер, и работает с обвязкой
 `TestApp`. См.
-[Юнит-тестирование сервиса через TestApp](https://powersemmi.github.io/ruststream/latest/guides/testing/#unit-testing-a-service-with-testapp).
+[обзор модуля `testing`](https://docs.rs/ruststream/latest/ruststream/testing/index.html#examples).
 
 Против тестового брокера разрешается вся боевая декларация целиком, поэтому тест выполняет то
 связывание, которое поставляет сервис, а не переписанную его копию.

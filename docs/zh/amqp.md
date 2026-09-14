@@ -291,7 +291,7 @@ disposition，`transactional` 在 Broker 侧的事务里发布。响应没有自
 `testing` feature 提供 `AmqpTestBroker`：一个进程内传输，不需要服务器、不走 AMQP 网络，就复现这个
 crate 的行为。测试文件按它自己的路径导入，`use ruststream_amqp::testing::AmqpTestBroker;`，与
 prelude 的 glob 并列。它遵循与真实 Broker 相同的生命周期阶梯，并驱动 `TestApp` 测试套件。参见
-[用 TestApp 对服务做单元测试](https://powersemmi.github.io/ruststream/latest/guides/testing/#unit-testing-a-service-with-testapp)。
+[`testing` 模块概览](https://docs.rs/ruststream/latest/ruststream/testing/index.html#examples)。
 
 整份生产声明都能在测试 Broker 上解析，因此测试跑的是服务真正交付的那套接线，而不是它的一份改写
 副本。`#[subscriber(AmqpAddress::queue("orders"))]` 原样挂载到 `AmqpTestBroker` 上，

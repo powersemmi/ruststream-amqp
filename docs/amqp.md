@@ -327,7 +327,7 @@ The `testing` feature ships `AmqpTestBroker`: an in-process transport that repro
 behaviour with no server and no AMQP wire. A test file imports it by its own path,
 `use ruststream_amqp::testing::AmqpTestBroker;`, alongside the prelude glob. It follows the same
 ladder as the real broker, and it drives the `TestApp` harness. See
-[Unit-testing a service with TestApp](https://powersemmi.github.io/ruststream/latest/guides/testing/#unit-testing-a-service-with-testapp).
+the [`testing` module overview](https://docs.rs/ruststream/latest/ruststream/testing/index.html#examples).
 
 The whole production declaration resolves against the test broker, so the test runs the wiring the
 service ships rather than a rewritten copy of it. `#[subscriber(AmqpAddress::queue("orders"))]`
