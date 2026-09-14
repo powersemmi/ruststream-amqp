@@ -85,7 +85,8 @@ sent verbatim, with no capability, so a server consults its own configuration fo
 Prefer the descriptor wherever the topology matters.
 
 The protocol exposes no position a client could seek to, so this broker implements neither
-`Seekable` nor `Positioned` and `.start_at(..)` does not compile on it.
+`Seekable` nor `Positioned`, and a registration carrying `.start_at(..)` does not compile: the
+error lands on `include` and names the descriptor that cannot open a subscription there.
 
 ## Acknowledgement
 
