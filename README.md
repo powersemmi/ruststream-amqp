@@ -137,7 +137,7 @@ app.broker::<AmqpTestBroker>()
 
 The production wiring is what runs: `AmqpAddress` resolves against the test broker, `.out(DefaultSlot, Publish)` mounts the production policy, and the capabilities come with them - a handler binding `Out<impl RequestReply>` or `Out<impl TransactionalPublisher>` mounts in process too. So does the behaviour behind them: competing consumers on a queue address split the traffic while a topic address copies to each, a transaction publishes nothing before its commit, and a request that nothing answers times out. The framework's conformance suites run against this broker, not only against a server.
 
-What a process cannot hold is left out rather than faked - stored messages for an address with no consumer, broker-side redelivery and dead-lettering, durability across a crash, link credit. Those are covered by the env-gated live suite: `just test-brokers` spins up ActiveMQ Artemis and runs the integration tests plus every conformance suite against it. The [guide](https://powersemmi.github.io/ruststream-amqp/) lists the gaps in full.
+What a process cannot hold is left out rather than faked - stored messages for an address with no consumer, broker-side redelivery and dead-lettering, durability across a crash, link credit. Those are covered by the env-gated live suite: `just test-brokers` spins up ActiveMQ Artemis and runs the integration tests plus every conformance suite against it. The [crate overview](https://docs.rs/ruststream-amqp/latest/ruststream_amqp/index.html#testing) lists the gaps in full.
 
 ## Layout
 
@@ -152,7 +152,7 @@ ruststream-amqp/
 └── Cargo.toml                  workspace
 ```
 
-The AMQP guide, including the request/reply, transaction, and capability coverage, lives at [powersemmi.github.io/ruststream-amqp](https://powersemmi.github.io/ruststream-amqp/). Framework concepts (subscribers, routing, codecs, middleware, the CLI) live in the [RustStream docs](https://powersemmi.github.io/ruststream/).
+The AMQP reference, including the request/reply, transaction, and capability coverage, is the [crate overview](https://docs.rs/ruststream-amqp/latest/ruststream_amqp/index.html); [powersemmi.github.io/ruststream-amqp](https://powersemmi.github.io/ruststream-amqp/) is the entry page. Framework concepts (subscribers, routing, codecs, middleware, the CLI) live in the [RustStream docs](https://powersemmi.github.io/ruststream/).
 
 ## Contributing
 
