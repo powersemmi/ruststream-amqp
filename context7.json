@@ -1,0 +1,14 @@
+{
+  "rules": [
+    "Import `ruststream_amqp::prelude::*` in a routes file; it re-exports the framework prelude, so a service file needs no second glob, and a handler body keeps `ruststream::prelude::*` alone.",
+    "Describe a subscription with `AmqpAddress::queue(name)` for competing consumers, `AmqpAddress::topic(name)` for fan-out, and `AmqpAddress::raw(address)` only for a deployment's own convention; the plain `#[subscriber(\"name\")]` form maps to `raw` and declares no terminus capability.",
+    "Put the link settings on the descriptor: `.credit(nonzero!(n))` for the prefetch, `.settle(Settle::AtMostOnce)` for at-most-once delivery, `.batch_wait(duration)` for the deadline that closes a partial batch.",
+    "Name the publish policy `Publish` at the mount site (`.out_reply(Publish)`, `.out_retry(Publish)`, `.out(marker, Publish).build()`); `AmqpPublish` is also this broker's default policy, so a `publish` handler with no reply publisher named still replies through it.",
+    "There are no per-message publish settings on this broker: `Options` is `()`, no publish-builder step is added, and a handler body binds `Out<impl Publisher>` without importing anything from this crate.",
+    "Cap redeliveries with `.max_attempts(n)` and `.dead_letter(address)` after `include`; AMQP 1.0 declares no delivery limit of its own, so the runtime applies both and a subscription's own address is where a `retry_after` copy is published.",
+    "`HandlerOutcome::retry()` sends `modified` with `delivery-failed` so the broker counts the attempt, `drop()` sends `reject`, and on an at-most-once subscription both report `AckError::Unsupported`.",
+    "Reach the transactional surface only through `TransactionalPublish` (feature `transaction`): the handle carries at most one broker-side transaction, and a second `begin_transaction` or a commit with nothing open is an error.",
+    "Use `request(msg, timeout)` on a `RequestReply` publisher for native request/reply, and answer from a handler through an injected slot with `.to(reply_to)`, since the reply address is new for every request.",
+    "Test with `ruststream::testing::TestApp` over `ruststream_amqp::testing::AmqpTestBroker` (feature `testing`), mounting the production declaration unchanged; storage, broker-side redelivery, durability and flow control are not emulated, so those assertions belong in the live suite."
+  ]
+}
