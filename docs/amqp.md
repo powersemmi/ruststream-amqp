@@ -309,6 +309,8 @@ container id the service presents on the connection.
 
 A subscription's channel carries the AMQP node's address, the terminus capability it asks for
 (absent on a `raw` address, which asks for none), the link credit, and the delivery guarantee. A
+channel a publish reaches carries the address of the AMQP node its sender attaches its target to:
+the reply destination, the name of an `Out` slot, the dead-letter address. A
 publisher's send operation says how it posts: `confirmed` waits for the peer's disposition on every
 transfer, `transactional` posts under a broker-side transaction. A reply has no send operation of
 its own, so a reply policy contributes nothing there; what it does contribute is where a client

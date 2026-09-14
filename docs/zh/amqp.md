@@ -276,7 +276,8 @@ Broker 上实例化发布者。它也是这个 Broker 的默认策略，因此�
 扩展带着服务在连接里自报的 container id。
 
 订阅的通道带着 AMQP 节点的地址、它请求的 terminus 能力（`raw` 地址什么都不请求，因此没有这一项）、
-链路信用和投递保证。发布者的发送操作说明它怎么发布：`confirmed` 在每次 transfer 上等待对端的
+链路信用和投递保证。被发布到的通道带着发送者把自己的 target 附着上去的那个 AMQP 节点地址：响应
+的目的地、`Out` 槽位的名字、死信地址。发布者的发送操作说明它怎么发布：`confirmed` 在每次 transfer 上等待对端的
 disposition，`transactional` 在 Broker 侧的事务里发布。响应没有自己的发送操作，所以响应策略在那里
 什么也不添；它添的是客户端到哪里读取响应地址 - `$message.header#/reply-to`，只要挂载点逐条投递指定
 响应地址，文档就把它写出来。

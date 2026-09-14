@@ -141,6 +141,21 @@ fn the_dead_letter_destination_says_how_a_spent_delivery_is_posted() {
     assert_eq!(operation["x-ruststream-amqp1"]["posting"], "confirmed");
 }
 
+/// A channel a publish policy reaches names the node the sender attaches its target to. The reply
+/// here is routed per delivery, so the channel reports no address of its own and the extension is
+/// the only place the declared target is written down; the dead-letter destination is the same
+/// policy on a name of its own.
+#[test]
+fn a_publish_destination_names_the_node_its_sender_attaches_to() {
+    let document = document();
+    let reply = &document["channels"]["receipts"]["bindings"]["x-ruststream-amqp1"];
+    let dead_letter = &document["channels"]["orders.dead"]["bindings"]["x-ruststream-amqp1"];
+
+    assert!(document["channels"]["receipts"]["address"].is_null());
+    assert_eq!(reply["address"], "receipts");
+    assert_eq!(dead_letter["address"], "orders.dead");
+}
+
 /// With a transform naming the reply per delivery, the channel carries no fixed address and the
 /// document says where a client reads the one that applies.
 #[test]

@@ -45,6 +45,14 @@ struct Channel<'a> {
     settle_mode: &'static str,
 }
 
+/// What a publish says about the node it sends to.
+#[derive(Debug, Serialize)]
+struct Target<'a> {
+    /// The node address a sender attaches its target to: the destination the document reports
+    /// for this channel.
+    address: &'a str,
+}
+
 /// How a send through one publish policy reaches the node.
 #[derive(Debug, Serialize)]
 struct Operation {
@@ -74,6 +82,15 @@ pub(crate) fn channel(
             Settle::AtMostOnce => "at-most-once",
         },
     })
+}
+
+/// The channel object of a publish policy sending to `address`.
+///
+/// A policy carries no destination of its own: the runtime hands it the name the document
+/// reports, so a reply, an `Out` slot and a dead-letter destination each name the node their
+/// own sender attaches to.
+pub(crate) fn target(address: &str) -> Bindings {
+    extension(&Target { address })
 }
 
 /// The send operation of a publisher that waits for the peer's disposition on every transfer.

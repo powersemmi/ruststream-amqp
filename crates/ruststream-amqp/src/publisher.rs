@@ -179,10 +179,18 @@ impl PublishPolicy<ConnectedAmqpBroker> for AmqpPublish {
         ready(Ok(connected.publisher()))
     }
 
-    /// A publish here waits for the peer's disposition and reports anything but `accepted` as an
-    /// error, which is what a reader of the document needs to know about this operation.
+    /// The sender link this policy attaches puts its target on the destination the document
+    /// reports, and the extension names that node address.
     #[cfg(feature = "asyncapi")]
-    fn operation_bindings(&self) -> Bindings {
+    fn channel_bindings(&self, channel: &str) -> Bindings {
+        bindings::target(channel)
+    }
+
+    /// A publish here waits for the peer's disposition and reports anything but `accepted` as an
+    /// error, which is what a reader of the document needs to know about this operation. How the
+    /// send is posted does not vary with the destination, so the name is not read here.
+    #[cfg(feature = "asyncapi")]
+    fn operation_bindings(&self, _channel: &str) -> Bindings {
         bindings::confirmed_posting()
     }
 
@@ -209,10 +217,18 @@ impl PublishPolicy<crate::testing::ConnectedAmqpTestBroker> for AmqpPublish {
         ready(Ok(connected.publisher()))
     }
 
-    /// A publish here waits for the peer's disposition and reports anything but `accepted` as an
-    /// error, which is what a reader of the document needs to know about this operation.
+    /// The sender link this policy attaches puts its target on the destination the document
+    /// reports, and the extension names that node address.
     #[cfg(feature = "asyncapi")]
-    fn operation_bindings(&self) -> Bindings {
+    fn channel_bindings(&self, channel: &str) -> Bindings {
+        bindings::target(channel)
+    }
+
+    /// A publish here waits for the peer's disposition and reports anything but `accepted` as an
+    /// error, which is what a reader of the document needs to know about this operation. How the
+    /// send is posted does not vary with the destination, so the name is not read here.
+    #[cfg(feature = "asyncapi")]
+    fn operation_bindings(&self, _channel: &str) -> Bindings {
         bindings::confirmed_posting()
     }
 
