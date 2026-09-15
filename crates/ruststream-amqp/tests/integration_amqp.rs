@@ -490,3 +490,61 @@ async fn an_explicit_sasl_profile_authenticates_and_a_wrong_password_is_refused(
         .expect_err("a wrong password must not open a connection");
     assert!(matches!(refused, AmqpError::Connect(_)), "got {refused}");
 }
+
+/// The partition key rides the `AMQP` `group-id` property, and a group is not a label: a broker
+/// that reads it keeps one group on one consumer, which is what makes the key worth setting. The
+/// mapping alone would round-trip just as well through any other header, so this is the case that
+/// says the property was the right one to pick.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_partition_key_keeps_one_group_on_one_consumer() {
+    let Some(url) = test_url() else { return };
+    let connected = connect(&url).await;
+
+    let address = unique("grouped");
+    let mut first = connected
+        .subscribe_address(AmqpAddress::queue(&address))
+        .await
+        .expect("the first subscription opens");
+    let mut second = connected
+        .subscribe_address(AmqpAddress::queue(&address))
+        .await
+        .expect("the second subscription opens");
+
+    let mut headers = HeaderMap::new();
+    headers.insert(PARTITION_KEY_HEADER, "user-42");
+    let publisher = connected.publisher();
+    for payload in [b"g0", b"g1", b"g2", b"g3"] {
+        publisher
+            .publish(
+                OutgoingMessage::new(&address, payload.as_slice()).with_headers(headers.clone()),
+                None,
+            )
+            .await
+            .expect("publish succeeds");
+    }
+
+    let mut first_stream = pin!(first.stream());
+    let mut second_stream = pin!(second.stream());
+    let mut from_first = 0_usize;
+    let mut from_second = 0_usize;
+    for _ in 0..4 {
+        let message = tokio::time::timeout(RECV_TIMEOUT, async {
+            tokio::select! {
+                item = first_stream.next() => { from_first += 1; item }
+                item = second_stream.next() => { from_second += 1; item }
+            }
+        })
+        .await
+        .expect("every message of the group arrives")
+        .expect("the stream is open")
+        .expect("the delivery is ok");
+        assert_eq!(message.partition_key(), Some(b"user-42".as_slice()));
+        message.ack().await.expect("ack succeeds");
+    }
+    assert!(
+        from_first == 0 || from_second == 0,
+        "one group belongs to one consumer, got {from_first} and {from_second}",
+    );
+
+    connected.shutdown().await.expect("shutdown succeeds");
+}
