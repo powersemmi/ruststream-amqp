@@ -31,7 +31,9 @@ async fn settle(orders: &[Order]) -> HandlerOutcome {
 fn app() -> impl App {
     RustStream::new(AppInfo::new("billing", "0.1.0")).with_broker(
         AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
-        |b| b.include(settle.batch(nonzero!(32))),
+        |b| {
+            b.include(settle.batch(nonzero!(32)));
+        },
     )
 }
 // --8<-- [end:app]

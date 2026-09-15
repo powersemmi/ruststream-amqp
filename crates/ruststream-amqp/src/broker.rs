@@ -14,10 +14,14 @@ use fe2o3_amqp::session::{Session, SessionHandle};
 use fe2o3_amqp::{Receiver, Sender};
 use fe2o3_amqp_types::messaging::Source;
 use fe2o3_amqp_types::primitives::{Array, Symbol};
-use ruststream::{Broker, ConnectedBroker, DefaultPublish, DescribeServer, ServerSpec, Subscribe};
+use ruststream::{
+    AddressedCopies, Broker, ConnectedBroker, DefaultPublish, DescribeServer, ServerSpec, Subscribe,
+};
 use tokio::sync::{Mutex, OnceCell};
 
 use crate::address::{AmqpAddress, Settle};
+#[cfg(feature = "asyncapi")]
+use crate::bindings;
 use crate::config::Sasl;
 use crate::error::{AmqpError, box_err};
 use crate::publisher::{AmqpPublish, AmqpPublisher};
@@ -152,6 +156,9 @@ impl std::fmt::Debug for AmqpCore {
 
 pub(crate) type CoreCell = Arc<OnceCell<Arc<AmqpCore>>>;
 
+/// The container id a service presents when it names none of its own.
+const DEFAULT_CONTAINER_ID: &str = "ruststream";
+
 /// An `AMQP` 1.0 broker for the `RustStream` messaging framework.
 ///
 /// `new` is synchronous and records only configuration; the runtime dials once at startup via
@@ -208,6 +215,16 @@ impl AmqpBroker {
     pub fn publisher(&self) -> AmqpPublisher {
         AmqpPublisher::new(Arc::clone(&self.cell))
     }
+
+    /// The container this service presents on the connection: the name it set, or the default.
+    fn container(&self) -> &str {
+        self.container_id.as_deref().unwrap_or(DEFAULT_CONTAINER_ID)
+    }
+
+    /// The host and port a client connects to, over the protocol it speaks.
+    fn coordinate(&self) -> ServerSpec {
+        ServerSpec::from_url(&self.url, "amqp1").protocol_version("1.0")
+    }
 }
 
 impl Broker for AmqpBroker {
@@ -215,10 +232,7 @@ impl Broker for AmqpBroker {
     type Connected = ConnectedAmqpBroker;
 
     async fn connect(self) -> Result<Self::Connected, Self::Error> {
-        let container_id = self
-            .container_id
-            .clone()
-            .unwrap_or_else(|| "ruststream".to_owned());
+        let container_id = self.container().to_owned();
         let core = self
             .cell
             .get_or_try_init(async || {
@@ -251,14 +265,27 @@ impl Broker for AmqpBroker {
     }
 }
 
+/// `DescribeServer` reports the host and port the service connects to, which is what the
+/// `AsyncAPI` document records for it. Credentials in the URL are not part of that coordinate and
+/// do not reach the document: `ServerSpec::from_url` drops the userinfo an `amqp://` URL may
+/// carry, so no broker crate has to remember to.
+///
+/// The protocol is `amqp1`, which is the specification's key for `AMQP` 1.0; `amqp` is the key for
+/// `AMQP` 0.9.1, a different protocol that shares the scheme and the port. Neither a reader of the
+/// document nor a tool generating a client from it can tell the two apart from the host, so the
+/// version is spelled out beside the key.
 impl DescribeServer for AmqpBroker {
+    #[cfg(not(feature = "asyncapi"))]
     fn describe_server(&self) -> ServerSpec {
-        ServerSpec::new(
-            self.url
-                .trim_start_matches("amqps://")
-                .trim_start_matches("amqp://"),
-            "amqp",
-        )
+        self.coordinate()
+    }
+
+    /// The server binding carries the container id this service presents on the connection, which
+    /// is how an operator finds its links in the broker's own console.
+    #[cfg(feature = "asyncapi")]
+    fn describe_server(&self) -> ServerSpec {
+        self.coordinate()
+            .bindings(bindings::server(self.container()))
     }
 }
 
@@ -372,6 +399,12 @@ impl ConnectedBroker for ConnectedAmqpBroker {
 impl Subscribe for ConnectedAmqpBroker {
     type Subscriber = AmqpSubscriber;
 
+    /// An `AMQP` 1.0 node is one address for both roles: a receiver attaches its source to it, a
+    /// sender its target. A bare name is therefore also where a deferred copy is published to
+    /// reach the subscription again, which is what makes `out_retry` usable on this broker without
+    /// the mount site naming a destination.
+    type Copies = AddressedCopies;
+
     async fn subscribe(&self, name: &str) -> Result<Self::Subscriber, Self::Error> {
         self.subscribe_address(AmqpAddress::raw(name)).await
     }
@@ -384,4 +417,26 @@ impl DefaultPublish for ConnectedAmqpBroker {
 // Re-exported for the subscriber module without making Settle a broker concern.
 pub(crate) fn is_at_most_once(settle: Settle) -> bool {
     matches!(settle, Settle::AtMostOnce)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AmqpBroker, DescribeServer};
+
+    /// The URL carries the credentials the connection needs, and the description is published in
+    /// the service's `AsyncAPI` document, so the two must not be the same string. The parsing is
+    /// the core's (`ServerSpec::from_url`); what this holds is that the broker goes through it.
+    #[test]
+    fn a_url_carrying_credentials_describes_a_server_without_them() {
+        let spec = AmqpBroker::new("amqp://artemis:artemis@broker.example.com:5672/prod")
+            .describe_server();
+
+        assert_eq!(spec.host.as_deref(), Some("broker.example.com:5672"));
+        assert_eq!(spec.protocol, "amqp1");
+        assert_eq!(spec.protocol_version.as_deref(), Some("1.0"));
+
+        let host = spec.host.expect("a networked broker describes a host");
+        assert!(!host.contains("artemis"), "the description leaked {host:?}");
+        assert!(!host.contains('@'), "the description leaked {host:?}");
+    }
 }

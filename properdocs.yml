@@ -73,6 +73,13 @@ hooks:
 
 plugins:
   - search
+  # The guide the site used to host is now the crate overview on docs.rs, beside the code it
+  # describes. Every old URL keeps working and lands on the section that took the topic over.
+  - redirects:
+      redirect_maps:
+        amqp.md: https://docs.rs/ruststream-amqp/latest/ruststream_amqp/index.html
+        ru/amqp.md: https://docs.rs/ruststream-amqp/latest/ruststream_amqp/index.html
+        zh/amqp.md: https://docs.rs/ruststream-amqp/latest/ruststream_amqp/index.html
   # Versioned docs are published with `mike` (see the Docs workflow and the version switcher).
   # Each translation is a tree under `docs/<locale>/`, mirroring the English paths; a file outside
   # a locale folder is English. `fallback_to_default` serves the English text for a page with no
@@ -92,7 +99,6 @@ plugins:
           build: true
           nav_translations:
             Home: Главная
-            Guide: Руководство
             RustStream docs: Документация RustStream
             API reference: Справочник API
         - locale: zh
@@ -100,7 +106,6 @@ plugins:
           build: true
           nav_translations:
             Home: 首页
-            Guide: 指南
             RustStream docs: RustStream 文档
             API reference: API 参考
 
@@ -113,7 +118,5 @@ extra:
 
 nav:
   - Home: index.md
-  - Guide:
-      - amqp.md
   - RustStream docs: https://powersemmi.github.io/ruststream/
   - API reference: https://docs.rs/ruststream-amqp

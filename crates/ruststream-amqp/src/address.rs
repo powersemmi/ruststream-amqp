@@ -6,16 +6,27 @@
 //! matching terminus capability (`"queue"` / `"topic"`), which is how `ActiveMQ` Artemis and other
 //! products disambiguate; `raw` sends the address verbatim with no capability.
 
+use std::future::{Future, ready};
+use std::num::NonZeroU32;
 use std::time::Duration;
 
-use ruststream::SubscriptionSource;
+#[cfg(feature = "asyncapi")]
+use ruststream::asyncapi::Bindings;
+use ruststream::{
+    AddressedCopies, RedeliveryAddress, RedeliveryAddressed, SubscriptionSource, nonzero,
+};
+
+#[cfg(feature = "asyncapi")]
+use crate::bindings;
 
 use crate::broker::ConnectedAmqpBroker;
 use crate::error::AmqpError;
 use crate::subscriber::AmqpSubscriber;
+#[cfg(feature = "testing")]
+use crate::testing::{AmqpTestSubscriber, ConnectedAmqpTestBroker};
 
 /// Default protocol-level credit (prefetch) granted to a subscription.
-pub const DEFAULT_CREDIT: u32 = 256;
+pub const DEFAULT_CREDIT: NonZeroU32 = nonzero!(256);
 
 /// Default deadline closing a partial batch on a batch subscription.
 pub const DEFAULT_BATCH_WAIT: Duration = Duration::from_millis(10);
@@ -39,14 +50,29 @@ enum Kind {
     Raw,
 }
 
+/// How the subscriptions on one address share its traffic: the terminus capability seen from the
+/// consuming end.
+///
+/// This is the difference between a work queue and a broadcast, so the in-process broker
+/// reproduces it instead of handing every message to everyone and hoping the deployment agrees.
+#[cfg(feature = "testing")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Routing {
+    /// Competing consumers: each message goes to exactly one of the subscriptions.
+    Anycast,
+    /// Fan-out: every subscription gets its own copy.
+    Multicast,
+}
+
 /// A subscription descriptor for an `AMQP` 1.0 address.
 ///
 /// Implements [`SubscriptionSource`], so it can sit inline in the `#[subscriber(..)]` decorator:
 ///
 /// ```
+/// use ruststream::nonzero;
 /// use ruststream_amqp::AmqpAddress;
 ///
-/// let source = AmqpAddress::queue("orders").credit(64);
+/// let source = AmqpAddress::queue("orders").credit(nonzero!(64));
 /// # let _ = source;
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,7 +80,7 @@ enum Kind {
 pub struct AmqpAddress {
     address: String,
     kind: Kind,
-    credit: u32,
+    credit: NonZeroU32,
     settle: Settle,
     batch_wait: Duration,
 }
@@ -112,7 +138,30 @@ impl AmqpAddress {
 
     /// Sets the protocol-level credit (prefetch): how many unsettled deliveries the broker may
     /// have in flight to this subscription. Defaults to [`DEFAULT_CREDIT`].
-    pub fn credit(mut self, credit: u32) -> Self {
+    ///
+    /// The count is a [`NonZeroU32`] because a subscription granted no credit receives nothing:
+    /// zero is not a quieter setting but a stalled subscription, so it is unrepresentable here.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ruststream::nonzero;
+    /// use ruststream_amqp::AmqpAddress;
+    ///
+    /// let source = AmqpAddress::queue("orders").credit(nonzero!(64));
+    /// # let _ = source;
+    /// ```
+    ///
+    /// A zero is rejected while the service is compiled, not when the subscription opens:
+    ///
+    /// ```compile_fail
+    /// use ruststream::nonzero;
+    /// use ruststream_amqp::AmqpAddress;
+    ///
+    /// let source = AmqpAddress::queue("orders").credit(nonzero!(0));
+    /// # let _ = source;
+    /// ```
+    pub fn credit(mut self, credit: NonZeroU32) -> Self {
         self.credit = credit;
         self
     }
@@ -151,7 +200,7 @@ impl AmqpAddress {
     }
 
     pub(crate) fn credit_value(&self) -> u32 {
-        self.credit
+        self.credit.get()
     }
 
     pub(crate) fn settle_value(&self) -> Settle {
@@ -160,6 +209,33 @@ impl AmqpAddress {
 
     pub(crate) fn batch_wait_value(&self) -> Duration {
         self.batch_wait
+    }
+
+    /// Where a publisher on this broker reaches this subscription again.
+    ///
+    /// One `AMQP` 1.0 node serves both roles: a receiver attaches its source to the address, a
+    /// sender its target. The address is therefore the answer for all three kinds, which is what
+    /// lets the framework's deferred `retry_after` fallback work on this broker without native
+    /// delayed redelivery. On a `queue` terminus the copy competes for consumers like any other
+    /// message, and on a `topic` terminus every subscriber sees it: that is the terminus the
+    /// declaration asked for, not a property of the retry.
+    fn redelivery_target(&self) -> RedeliveryAddress {
+        RedeliveryAddress::new(self.address.clone())
+    }
+
+    /// How this descriptor's terminus shares the address's traffic, for the in-process broker.
+    ///
+    /// `queue` competes, `topic` fans out. A `raw` address declares no capability, so on a server
+    /// the peer's own configuration decides; in process there is no configuration to consult, and
+    /// the stand-in delivers each message once rather than inventing a fan-out the deployment may
+    /// not have. A service that wants the broadcast asserted says `topic`, which is also what the
+    /// products needing the capability have to be told.
+    #[cfg(feature = "testing")]
+    pub(crate) fn routing(&self) -> Routing {
+        match self.kind {
+            Kind::Topic => Routing::Multicast,
+            Kind::Queue | Kind::Raw => Routing::Anycast,
+        }
     }
 
     /// The terminus capability this descriptor advertises, when one applies.
@@ -171,16 +247,29 @@ impl AmqpAddress {
         }
     }
 
+    /// What this subscription tells a reader of the generated document: the node it reads, the
+    /// terminus it asked for, and the link it reads over.
+    ///
+    /// One answer serves both brokers, so a document built against the in-process broker says
+    /// what the deployment's does.
+    #[cfg(feature = "asyncapi")]
+    fn describe_channel(&self) -> Bindings {
+        bindings::channel(
+            &self.address,
+            self.capability(),
+            self.credit.get(),
+            self.settle,
+        )
+    }
+
     /// Rejects descriptors that cannot form a subscription, before any I/O.
+    ///
+    /// Only the address is checked here: the credit is a [`NonZeroU32`], so an unusable one
+    /// cannot reach this point.
     pub(crate) fn validate(&self) -> Result<(), AmqpError> {
         if self.address.is_empty() {
             return Err(AmqpError::InvalidAddress(
                 "address must be non-empty".into(),
-            ));
-        }
-        if self.credit == 0 {
-            return Err(AmqpError::InvalidAddress(
-                "credit must be at least 1".into(),
             ));
         }
         Ok(())
@@ -190,12 +279,72 @@ impl AmqpAddress {
 impl SubscriptionSource<ConnectedAmqpBroker> for AmqpAddress {
     type Subscriber = AmqpSubscriber;
 
+    /// `AMQP` 1.0 has no delayed redelivery and no wire-level way to declare a node with a
+    /// delivery limit and a dead-letter address, so a spent delivery is this process's to move:
+    /// the runtime publishes the copies and this descriptor says where they land.
+    type Copies = AddressedCopies;
+
     fn name(&self) -> &str {
         self.address()
     }
 
     async fn subscribe(self, connected: &ConnectedAmqpBroker) -> Result<AmqpSubscriber, AmqpError> {
         connected.subscribe_address(self).await
+    }
+
+    #[cfg(feature = "asyncapi")]
+    fn channel_bindings(&self) -> Bindings {
+        self.describe_channel()
+    }
+}
+
+impl RedeliveryAddressed<ConnectedAmqpBroker> for AmqpAddress {
+    // The answer is the descriptor's own address, so nothing is asked of the connection and the
+    // call needs no state machine.
+    fn redelivery_address(
+        &self,
+        _connected: &ConnectedAmqpBroker,
+    ) -> impl Future<Output = Result<RedeliveryAddress, AmqpError>> + Send {
+        ready(Ok(self.redelivery_target()))
+    }
+}
+
+/// The same descriptor resolves against the in-process stand-in, so a handler keeps the
+/// declaration it runs in production when it is mounted on
+/// [`AmqpTestBroker`](crate::testing::AmqpTestBroker).
+///
+/// What the stand-in reproduces and what it drops is documented on
+/// [`ConnectedAmqpTestBroker::subscribe_address`](crate::testing::ConnectedAmqpTestBroker::subscribe_address).
+#[cfg(feature = "testing")]
+impl SubscriptionSource<ConnectedAmqpTestBroker> for AmqpAddress {
+    type Subscriber = AmqpTestSubscriber;
+
+    type Copies = AddressedCopies;
+
+    fn name(&self) -> &str {
+        self.address()
+    }
+
+    async fn subscribe(
+        self,
+        connected: &ConnectedAmqpTestBroker,
+    ) -> Result<Self::Subscriber, AmqpError> {
+        connected.subscribe_address(self).await
+    }
+
+    #[cfg(feature = "asyncapi")]
+    fn channel_bindings(&self) -> Bindings {
+        self.describe_channel()
+    }
+}
+
+#[cfg(feature = "testing")]
+impl RedeliveryAddressed<ConnectedAmqpTestBroker> for AmqpAddress {
+    fn redelivery_address(
+        &self,
+        _connected: &ConnectedAmqpTestBroker,
+    ) -> impl Future<Output = Result<RedeliveryAddress, AmqpError>> + Send {
+        ready(Ok(self.redelivery_target()))
     }
 }
 
@@ -211,12 +360,17 @@ mod tests {
         ));
     }
 
+    /// `credit(0)` does not compile: `nonzero!(0)` fails const evaluation, and a runtime zero
+    /// cannot be built either. What is left to pin is that the default is the one that applies.
     #[test]
-    fn zero_credit_is_rejected_before_io() {
-        assert!(matches!(
-            AmqpAddress::queue("orders").credit(0).validate(),
-            Err(AmqpError::InvalidAddress(_))
-        ));
+    fn the_credit_defaults_and_takes_an_override() {
+        assert_eq!(AmqpAddress::queue("orders").credit_value(), 256);
+        assert_eq!(
+            AmqpAddress::queue("orders")
+                .credit(nonzero!(64))
+                .credit_value(),
+            64
+        );
     }
 
     #[test]

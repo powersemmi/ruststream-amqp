@@ -27,8 +27,14 @@ pub const PARTITION_KEY_HEADER: &str = "partition-key";
 pub(crate) enum SettleKind {
     /// Accept the delivery (ack).
     Accept,
-    /// Release the delivery back to the broker for redelivery (nack with requeue).
-    Release,
+    /// Hand the delivery back for redelivery and count the attempt as failed (nack with requeue).
+    ///
+    /// The disposition is `modified` with `delivery-failed`, not `released`. `released` is the
+    /// protocol's way of saying the delivery was not acted upon at all, and the peer leaves
+    /// `delivery-count` where it was; a handler that answered `retry()` did act on it and failed,
+    /// so the attempt has to be counted. Without that the registration's `max_attempts(..)` cap
+    /// reads the same count on every redelivery and a poison message circulates forever.
+    Modify,
     /// Reject the delivery as undeliverable (nack without requeue); the broker's dead-letter
     /// policy decides what happens next.
     Reject,
@@ -46,13 +52,17 @@ pub(crate) type SettleSender = mpsc::UnboundedSender<SettleCmd>;
 
 /// A message delivered by an [`AmqpSubscriber`](crate::AmqpSubscriber).
 ///
-/// `ack` maps to the `accept` disposition, `nack(requeue = true)` to `release`, and
+/// `ack` maps to the `accept` disposition, `nack(requeue = true)` to `modified` with
+/// `delivery-failed` set (so the broker counts the attempt and redelivers), and
 /// `nack(requeue = false)` to `reject` (terminal; the broker's dead-letter policy applies).
 /// Deliveries received on an at-most-once subscription are already settled, so `ack`/`nack`
 /// report [`AckError::Unsupported`] instead of pretending.
 pub struct AmqpMessage {
     payload: Bytes,
     headers: HeaderMap,
+    /// The `delivery-count` of the delivery's `header` section, or `None` where it carries no
+    /// header section at all. See [`AmqpMessage::redelivery_count`](IncomingMessage::redelivery_count).
+    delivery_count: Option<u32>,
     /// `None` when the delivery is already settled (at-most-once, request/reply replies).
     settle: Option<SettleHandle>,
 }
@@ -66,6 +76,7 @@ impl std::fmt::Debug for AmqpMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AmqpMessage")
             .field("payload_len", &self.payload.len())
+            .field("delivery_count", &self.delivery_count)
             .field("settled", &self.settle.is_none())
             .finish_non_exhaustive()
     }
@@ -75,20 +86,25 @@ impl AmqpMessage {
     pub(crate) fn unsettled(
         payload: Bytes,
         headers: HeaderMap,
+        delivery_count: Option<u32>,
         tx: SettleSender,
         info: DeliveryInfo,
     ) -> Self {
         Self {
             payload,
             headers,
+            delivery_count,
             settle: Some(SettleHandle { tx, info }),
         }
     }
 
-    pub(crate) fn settled(payload: Bytes, headers: HeaderMap) -> Self {
+    /// A delivery that arrived already settled: an at-most-once subscription, which still carries
+    /// whatever the broker counted, and a request/reply answer, which counts nothing.
+    pub(crate) fn settled(payload: Bytes, headers: HeaderMap, delivery_count: Option<u32>) -> Self {
         Self {
             payload,
             headers,
+            delivery_count,
             settle: None,
         }
     }
@@ -128,11 +144,23 @@ impl IncomingMessage for AmqpMessage {
 
     async fn nack(self, requeue: bool) -> Result<(), AckError> {
         let kind = if requeue {
-            SettleKind::Release
+            SettleKind::Modify
         } else {
             SettleKind::Reject
         };
         self.settle(kind).await
+    }
+
+    /// The broker's own count of deliveries of this message, from the `delivery-count` field of
+    /// the `AMQP` `header` section, counting this delivery.
+    ///
+    /// A delivery with no `header` section answers `None`, which is what a message this crate
+    /// published looks like: nothing has counted an attempt for it, and the framework's
+    /// retry-count header carries the attempt instead. That is the answer a deferred `retry_after`
+    /// copy needs, because the copy is a new message to the broker and its `delivery-count` starts
+    /// over while the framework's header does not.
+    fn redelivery_count(&self) -> Option<u64> {
+        self.delivery_count.map(|count| u64::from(count) + 1)
     }
 
     fn partition_key(&self) -> Option<&[u8]> {
