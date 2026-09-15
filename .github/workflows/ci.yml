@@ -214,6 +214,8 @@ jobs:
           cargo test -p ruststream-amqp --all-features
           --test integration_amqp
           --test conformance_amqp
+          --test live_descriptor
+          --test live_retry
           -- --test-threads=1
 
       - name: Cleanup
