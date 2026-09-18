@@ -14,7 +14,12 @@ use fe2o3_amqp::transaction::{
 };
 use fe2o3_amqp_types::definitions::SenderSettleMode;
 use fe2o3_amqp_types::transaction::Coordinator;
+#[cfg(feature = "asyncapi")]
+use ruststream::asyncapi::Bindings;
 use ruststream::{OutgoingMessage, PairError, PublishPolicy, Publisher, TransactionalPublisher};
+
+#[cfg(feature = "asyncapi")]
+use crate::bindings;
 use tokio::sync::Mutex;
 
 use crate::broker::{AmqpCore, ConnectedAmqpBroker};
@@ -45,6 +50,61 @@ impl PublishPolicy<ConnectedAmqpBroker> for AmqpTransactionalPublish {
         connected: &ConnectedAmqpBroker,
     ) -> impl Future<Output = Result<Self::Live, PairError>> {
         ready(Ok(connected.transactional_publisher()))
+    }
+
+    /// The sender link this policy attaches puts its target on the destination the document
+    /// reports, and the extension names that node address.
+    #[cfg(feature = "asyncapi")]
+    fn channel_bindings(&self, channel: &str) -> Bindings {
+        bindings::target(channel)
+    }
+
+    /// A send here is posted under a broker-side transaction and becomes visible on the commit,
+    /// which is the one thing this operation does differently from a plain publish. How the send
+    /// is posted does not vary with the destination, so the name is not read here.
+    #[cfg(feature = "asyncapi")]
+    fn operation_bindings(&self, _channel: &str) -> Bindings {
+        bindings::transactional_posting()
+    }
+
+    #[cfg(feature = "asyncapi")]
+    fn reply_address_location(&self) -> Option<&'static str> {
+        Some(bindings::REPLY_ADDRESS_LOCATION)
+    }
+}
+
+/// The transactional policy pairs on the in-process broker as well, into a publisher that buffers
+/// until the commit. The split is preserved there: this policy is still the only way to reach a
+/// transactional surface, so a mount that compiles against the stand-in compiles against a server.
+#[cfg(feature = "testing")]
+impl PublishPolicy<crate::testing::ConnectedAmqpTestBroker> for AmqpTransactionalPublish {
+    type Live = crate::testing::AmqpTestTxnPublisher;
+
+    fn pair(
+        self,
+        connected: &crate::testing::ConnectedAmqpTestBroker,
+    ) -> impl Future<Output = Result<Self::Live, PairError>> {
+        ready(Ok(connected.transactional_publisher()))
+    }
+
+    /// The sender link this policy attaches puts its target on the destination the document
+    /// reports, and the extension names that node address.
+    #[cfg(feature = "asyncapi")]
+    fn channel_bindings(&self, channel: &str) -> Bindings {
+        bindings::target(channel)
+    }
+
+    /// A send here is posted under a broker-side transaction and becomes visible on the commit,
+    /// which is the one thing this operation does differently from a plain publish. How the send
+    /// is posted does not vary with the destination, so the name is not read here.
+    #[cfg(feature = "asyncapi")]
+    fn operation_bindings(&self, _channel: &str) -> Bindings {
+        bindings::transactional_posting()
+    }
+
+    #[cfg(feature = "asyncapi")]
+    fn reply_address_location(&self) -> Option<&'static str> {
+        Some(bindings::REPLY_ADDRESS_LOCATION)
     }
 }
 
@@ -86,7 +146,15 @@ impl AmqpTxnPublisher {
 impl Publisher for AmqpTxnPublisher {
     type Error = AmqpError;
 
-    async fn publish(&self, msg: OutgoingMessage<'_>) -> Result<(), Self::Error> {
+    /// The same empty settings as the plain publisher: a transactional post carries the message
+    /// and the transactional state, and this crate adds no `header` section to either.
+    type Options = ();
+
+    async fn publish(
+        &self,
+        msg: OutgoingMessage<'_>,
+        _options: Option<&Self::Options>,
+    ) -> Result<(), Self::Error> {
         self.core.ensure_open()?;
         let sender = self.core.sender_for(msg.name()).await?;
         let message = to_amqp_message(&msg);

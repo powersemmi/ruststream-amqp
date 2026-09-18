@@ -5,7 +5,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use fe2o3_amqp_types::messaging::{Message, Outcome, Properties};
+#[cfg(feature = "asyncapi")]
+use ruststream::asyncapi::Bindings;
 use ruststream::{OutgoingMessage, PairError, PublishPolicy, Publisher, RequestReply};
+
+#[cfg(feature = "asyncapi")]
+use crate::bindings;
 
 use crate::broker::{AmqpCore, ConnectedAmqpBroker, CoreCell, SenderLink};
 use crate::error::{AmqpError, box_err};
@@ -70,7 +75,16 @@ pub(crate) fn accepted(outcome: Outcome, address: &str) -> Result<(), AmqpError>
 impl Publisher for AmqpPublisher {
     type Error = AmqpError;
 
-    async fn publish(&self, msg: OutgoingMessage<'_>) -> Result<(), Self::Error> {
+    /// No per-message settings. `AMQP` 1.0 does define fields that would qualify - `durable`,
+    /// `priority` and `ttl` in the `header` section - but this crate publishes no `header` section
+    /// at all, so there is nothing for a call site to adjust and nothing for a policy to default.
+    type Options = ();
+
+    async fn publish(
+        &self,
+        msg: OutgoingMessage<'_>,
+        _options: Option<&Self::Options>,
+    ) -> Result<(), Self::Error> {
         let core = self.core()?;
         let sender = core.sender_for(msg.name()).await?;
         send_message(&sender, msg.name(), to_amqp_message(&msg)).await
@@ -124,7 +138,8 @@ impl RequestReply for AmqpPublisher {
                 // anyway: a late reply to an earlier request must not resolve this one.
                 if headers.correlation_id() == Some(correlation_id.as_str()) {
                     let payload = payload_from_body(message.body, "(dynamic)")?;
-                    return Ok(AmqpMessage::settled(payload, headers));
+                    // A reply is a message of its own, with no prior attempt to count.
+                    return Ok(AmqpMessage::settled(payload, headers, None));
                 }
             }
         };
@@ -162,5 +177,65 @@ impl PublishPolicy<ConnectedAmqpBroker> for AmqpPublish {
         connected: &ConnectedAmqpBroker,
     ) -> impl Future<Output = Result<Self::Live, PairError>> {
         ready(Ok(connected.publisher()))
+    }
+
+    /// The sender link this policy attaches puts its target on the destination the document
+    /// reports, and the extension names that node address.
+    #[cfg(feature = "asyncapi")]
+    fn channel_bindings(&self, channel: &str) -> Bindings {
+        bindings::target(channel)
+    }
+
+    /// A publish here waits for the peer's disposition and reports anything but `accepted` as an
+    /// error, which is what a reader of the document needs to know about this operation. How the
+    /// send is posted does not vary with the destination, so the name is not read here.
+    #[cfg(feature = "asyncapi")]
+    fn operation_bindings(&self, _channel: &str) -> Bindings {
+        bindings::confirmed_posting()
+    }
+
+    /// A request made through this policy carries the `AMQP` `reply-to` property, and a handler
+    /// reads it as the `reply-to` header, so a reply routed per delivery is routed from there.
+    #[cfg(feature = "asyncapi")]
+    fn reply_address_location(&self) -> Option<&'static str> {
+        Some(bindings::REPLY_ADDRESS_LOCATION)
+    }
+}
+
+/// The policy pairs on the in-process broker as well, so a routes file mounts
+/// `.out_reply(Publish)` on either broker with no test-only policy standing in for this one. It
+/// carries no settings, so nothing is silently dropped in the crossing; the live form differs, and
+/// [`AmqpTestPublisher`](crate::testing::AmqpTestPublisher) documents what it reproduces.
+#[cfg(feature = "testing")]
+impl PublishPolicy<crate::testing::ConnectedAmqpTestBroker> for AmqpPublish {
+    type Live = crate::testing::AmqpTestPublisher;
+
+    fn pair(
+        self,
+        connected: &crate::testing::ConnectedAmqpTestBroker,
+    ) -> impl Future<Output = Result<Self::Live, PairError>> {
+        ready(Ok(connected.publisher()))
+    }
+
+    /// The sender link this policy attaches puts its target on the destination the document
+    /// reports, and the extension names that node address.
+    #[cfg(feature = "asyncapi")]
+    fn channel_bindings(&self, channel: &str) -> Bindings {
+        bindings::target(channel)
+    }
+
+    /// A publish here waits for the peer's disposition and reports anything but `accepted` as an
+    /// error, which is what a reader of the document needs to know about this operation. How the
+    /// send is posted does not vary with the destination, so the name is not read here.
+    #[cfg(feature = "asyncapi")]
+    fn operation_bindings(&self, _channel: &str) -> Bindings {
+        bindings::confirmed_posting()
+    }
+
+    /// A request made through this policy carries the `AMQP` `reply-to` property, and a handler
+    /// reads it as the `reply-to` header, so a reply routed per delivery is routed from there.
+    #[cfg(feature = "asyncapi")]
+    fn reply_address_location(&self) -> Option<&'static str> {
+        Some(bindings::REPLY_ADDRESS_LOCATION)
     }
 }

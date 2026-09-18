@@ -1,0 +1,26 @@
+{
+  "servers": {
+    "amqp": {
+      "host": "broker.example.com:5672",
+      "protocol": "amqp1",
+      "protocolVersion": "1.0",
+      "bindings": {
+        "x-ruststream-amqp1": {
+          "containerId": "billing-svc"
+        }
+      }
+    }
+  },
+  "channels": {
+    "orders": {
+      "bindings": {
+        "x-ruststream-amqp1": {
+          "address": "orders",
+          "capability": "queue",
+          "credit": 64,
+          "settleMode": "at-least-once"
+        }
+      }
+    }
+  }
+}
