@@ -159,8 +159,10 @@ impl Publisher for AmqpTxnPublisher {
         _options: Option<&Self::Options>,
     ) -> Result<(), Self::Error> {
         self.core.ensure_open()?;
-        let sender = self.core.sender_for(msg.name()).await?;
-        let message = to_amqp_message(&msg);
+        // The destination is the caller's string and outlives the message the conversion takes.
+        let address = msg.name();
+        let sender = self.core.sender_for(address).await?;
+        let message = to_amqp_message(msg);
 
         let txn = self.txn.lock().await;
         if let Some(txn) = txn.as_ref() {
@@ -169,15 +171,15 @@ impl Publisher for AmqpTxnPublisher {
                     txn.post(sender, message)
                         .await
                         .map_err(|e| AmqpError::Publish {
-                            address: msg.name().to_owned(),
+                            address: address.to_owned(),
                             source: box_err(e),
                         })
                 })
                 .await?;
-            accepted(outcome, msg.name())
+            accepted(outcome, address)
         } else {
             drop(txn);
-            crate::publisher::send_message(&sender, msg.name(), message).await
+            crate::publisher::send_message(&sender, address, message).await
         }
     }
 }
