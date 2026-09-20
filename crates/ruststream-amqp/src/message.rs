@@ -11,7 +11,7 @@ use fe2o3_amqp_types::messaging::{
     ApplicationProperties, Body, Data, Message, MessageId, Properties,
 };
 use fe2o3_amqp_types::primitives::{Binary, SimpleValue, Symbol, Value};
-use ruststream::{AckError, HeaderMap, IncomingMessage, OutgoingMessage, Partitioned};
+use ruststream::{AckError, HeaderMap, IncomingMessage, OutgoingMessage, Partitioned, Str};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::error::AmqpError;
@@ -224,20 +224,25 @@ pub(crate) fn to_amqp_message(msg: &OutgoingMessage<'_>) -> Message<Data> {
 pub(crate) fn headers_from_amqp<B>(message: &Message<B>) -> HeaderMap {
     let mut headers = HeaderMap::new();
     if let Some(properties) = &message.properties {
+        // Every well-known key is a lowercase literal, so the map takes it as a shared static and
+        // this path copies no key text per delivery.
         if let Some(content_type) = &properties.content_type {
-            headers.insert("content-type", content_type.to_string());
+            headers.insert(Str::from_static("content-type"), content_type.to_string());
         }
         if let Some(correlation_id) = &properties.correlation_id {
-            headers.insert("correlation-id", message_id_text(correlation_id));
+            headers.insert(
+                Str::from_static("correlation-id"),
+                message_id_text(correlation_id),
+            );
         }
         if let Some(reply_to) = &properties.reply_to {
-            headers.insert("reply-to", reply_to.clone());
+            headers.insert(Str::from_static("reply-to"), reply_to.clone());
         }
         if let Some(message_id) = &properties.message_id {
-            headers.insert("message-id", message_id_text(message_id));
+            headers.insert(Str::from_static("message-id"), message_id_text(message_id));
         }
         if let Some(group_id) = &properties.group_id {
-            headers.insert(PARTITION_KEY_HEADER, group_id.clone());
+            headers.insert(Str::from_static(PARTITION_KEY_HEADER), group_id.clone());
         }
     }
     if let Some(application) = &message.application_properties {
