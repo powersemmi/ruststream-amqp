@@ -23,7 +23,7 @@ this page publishes what it produced here.
 
 ## The numbers
 
-Medians over interleaved rounds, with the observed spread in parentheses. Higher is better.
+The best of three interleaved rounds, with the slowest round in parentheses. Higher is better.
 
 <div id="benchmark-results" data-benchmark-labels='{"loading": "Loading the published results...", "scenario": "Scenario", "raw": "Raw client", "adapter": "Adapter", "framework": "RustStream", "adapterOverhead": "Adapter cost", "overhead": "Total cost", "indistinguishable": "indistinguishable", "brokerBound": "broker-bound", "machine": "Machine", "os": "OS", "broker": "Broker", "build": "Build", "roundTrip": "Round trip", "versions": "Versions", "measured": "Measured", "unavailable": "No results could be read. They are published at {url}.", "unknownSchema": "The published results declare schema {schema}, which this page does not render."}'></div>
 

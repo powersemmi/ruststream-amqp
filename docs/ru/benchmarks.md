@@ -23,7 +23,7 @@
 
 ## Числа {#the-numbers}
 
-Медианы по чередующимся раундам, в скобках наблюдавшийся разброс. Больше значит лучше.
+Лучший из трёх чередующихся раундов, в скобках худший из них. Больше значит лучше.
 
 <div id="benchmark-results" data-benchmark-results="../../benchmarks/results.json" data-benchmark-labels='{"loading": "Загрузка опубликованных результатов...", "scenario": "Сценарий", "raw": "Сырой клиент", "adapter": "Адаптер", "framework": "RustStream", "adapterOverhead": "Цена адаптера", "overhead": "Цена целиком", "indistinguishable": "неразличимо", "brokerBound": "упирается в брокер", "machine": "Машина", "os": "ОС", "broker": "Брокер", "build": "Сборка", "roundTrip": "Круговой обход", "versions": "Версии", "measured": "Измерено", "unavailable": "Результаты не удалось прочитать. Они публикуются по адресу {url}.", "unknownSchema": "Опубликованные результаты объявляют схему {schema}, которую эта страница не отображает."}'></div>
 
