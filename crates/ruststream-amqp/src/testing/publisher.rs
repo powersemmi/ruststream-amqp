@@ -78,10 +78,8 @@ impl Publisher for AmqpTestPublisher {
         if let Err(err) = self.state.ensure_live() {
             return ready(Err(err));
         }
-        let address = msg.name();
-        let headers = msg.headers().clone();
-        self.state
-            .publish(address, msg.into_payload().freeze(), headers);
+        let (address, payload, headers) = msg.into_parts();
+        self.state.publish(address, payload.freeze(), headers);
         ready(Ok(()))
     }
 }
@@ -107,9 +105,9 @@ impl RequestReply for AmqpTestPublisher {
         timeout: Duration,
     ) -> impl Future<Output = Result<Self::Reply, Self::Error>> + Send {
         let state = Arc::clone(&self.state);
-        let address = msg.name().to_owned();
-        let mut headers = msg.headers().clone();
-        let payload = msg.into_payload().freeze();
+        let (address, payload, mut headers) = msg.into_parts();
+        let address = address.to_owned();
+        let payload = payload.freeze();
         async move {
             state.ensure_live()?;
             let reply_to = state.next_reply_address();
@@ -240,9 +238,8 @@ impl Publisher for AmqpTestTxnPublisher {
         if let Err(err) = self.state.ensure_live() {
             return ready(Err(err));
         }
-        let address = msg.name();
-        let headers = msg.headers().clone();
-        let payload = msg.into_payload().freeze();
+        let (address, payload, headers) = msg.into_parts();
+        let payload = payload.freeze();
         let mut buffer = self.buffer();
         if let Some(open) = buffer.as_mut() {
             open.push((address.to_owned(), payload, headers));
