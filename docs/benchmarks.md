@@ -37,12 +37,17 @@ the two is the runtime's share over this broker, and it is published here becaus
 the two meet - how the subscription's stream yields, how deliveries arrive, how back-pressure
 reaches the loop - and not only on the runtime itself.
 
-A negative cost means the column was faster than the raw client, and on this transport both of
-them are. A hand-written loop holds one delivery at a time: while it decodes and settles, nothing is
-reading the socket. This crate's subscription reads ahead instead, into a buffer bounded by the same
-link credit, so the next transfer is already in hand when the loop asks for it; the runtime adds
-another step of the same kind. What the columns measure here is therefore not a tax but the
-difference between a loop that waits and a pipeline that does not.
+A negative cost means the column was faster than the raw client. A hand-written loop holds one
+delivery at a time: while it decodes and settles, nothing is reading the socket. This crate's
+subscription reads ahead instead, into a buffer bounded by the same link credit, so the next
+transfer is already in hand when the loop asks for it; the runtime adds another step of the same
+kind. What the columns measure here is therefore not a tax but the difference between a loop that
+waits and a pipeline that does not.
+
+The row above predates the socket this crate now opens for itself. It was measured when every loop
+alike waited on a delayed acknowledgement per settlement, which is most of what it reports: a run
+since puts all three loops around 160,000 messages a second and indistinguishable from each other.
+The figures want a re-measurement under the published procedure before they are read again.
 
 The row is a consumer and nothing else: a delivery arrives, the body decodes, a field is read, and
 the delivery is accepted. The producer is hand-written in all three loops, so the only side that
