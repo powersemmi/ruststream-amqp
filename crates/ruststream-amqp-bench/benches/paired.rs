@@ -78,6 +78,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use fe2o3_amqp::connection::{Connection, ConnectionHandle};
 use fe2o3_amqp::link::delivery::Sendable;
 use fe2o3_amqp::link::receiver::CreditMode;
+use fe2o3_amqp::sasl_profile::SaslProfile;
 use fe2o3_amqp::session::{Session, SessionHandle};
 use fe2o3_amqp::{Receiver, Sender};
 use fe2o3_amqp_types::messaging::{Body, Data, Message, Outcome, Source};
@@ -87,9 +88,11 @@ use ruststream::{ConnectedBroker, Subscriber, SubscriptionSource};
 use ruststream_amqp::prelude::*;
 use ruststream_amqp::{AmqpSubscriber, ConnectedAmqpBroker};
 use serde::Deserialize;
+use tokio::net::TcpStream;
 use tokio::runtime::{Builder, Runtime};
 use tokio::sync::Notify;
 use tokio::time::{sleep, timeout};
+use url::Url;
 
 // A benchmark measures what ships. With the framework's harness feature compiled in, every
 // delivery records what the handler saw and every handler call runs inside a task-local scope, so
@@ -344,11 +347,38 @@ struct Client {
 }
 
 impl Client {
+    /// Opens a connection the way this crate opens one, down to the socket.
+    ///
+    /// The client's own `open` leaves Nagle's algorithm on, and a consumer that settles every
+    /// delivery writes exactly what that algorithm holds back. The crate sets `TCP_NODELAY`, so a
+    /// raw loop that did not would be a different transport rather than the same one without the
+    /// crate, and the row would report a socket option as this crate's cost.
     async fn open(url: &str, role: &str) -> Self {
         let container = format!("amqp-bench-{role}-{}", stamp());
-        let mut connection = Connection::builder()
+        let parsed = Url::parse(url).expect("the benchmark URL parses");
+        let addresses = parsed
+            .socket_addrs(|| Some(5672))
+            .expect("the URL names a reachable address");
+        let stream = TcpStream::connect(&*addresses)
+            .await
+            .expect("the AMQP peer accepts a socket");
+        stream
+            .set_nodelay(true)
+            .expect("the socket takes TCP_NODELAY");
+        let mut builder = Connection::builder()
             .container_id(container.clone())
-            .open(url)
+            .scheme(parsed.scheme());
+        if let Some(hostname) = parsed.host_str() {
+            builder = builder.hostname(hostname).sasl_hostname(hostname);
+        }
+        if let Some(domain) = parsed.domain() {
+            builder = builder.domain(domain);
+        }
+        if let Ok(profile) = SaslProfile::try_from(&parsed) {
+            builder = builder.sasl_profile(profile);
+        }
+        let mut connection = builder
+            .open_with_stream(stream)
             .await
             .expect("the AMQP peer accepts a connection");
         let session = Session::begin(&mut connection)
