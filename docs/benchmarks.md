@@ -5,12 +5,12 @@ every message: this crate, which turns a link into a subscription and a message 
 and the framework's runtime, which dispatches that delivery to a handler. This page measures both,
 separately, against the same work written by hand on the client.
 
-One process runs each scenario three times over, as three loops that differ in one thing each:
+One process runs the scenario three times over, as three loops that differ in one thing each:
 
 - **Raw client** drives `fe2o3-amqp` directly: receive, decode, read a field, accept.
-- **Adapter** drives this crate's own consumer and publisher - the broker, the address descriptor,
-  the subscription's stream, the delivery's `ack` - from a loop written here, with no service
-  around it.
+- **Adapter** drives this crate's own consumer - the broker, the address descriptor, the
+  subscription's stream, the delivery's `ack` - from a loop written here, with no service around
+  it.
 - **RustStream** is the whole service a user writes: a `#[subscriber]` handler, the app, the
   runtime.
 
@@ -30,22 +30,30 @@ Medians over interleaved rounds, with the observed spread in parentheses. Higher
 The table is read in your browser from the document the last run wrote, so nothing on this page is
 a copy that could have gone stale.
 
-`Adapter cost` is the adapter against the raw client: what this crate's own consumer and publisher
-cost over the client they wrap, and the figure this repository answers for. `Total cost` is the
+`Adapter cost` is the adapter against the raw client: what this crate's own consumer costs over the
+client it wraps, and the figure this repository answers for. `Total cost` is the
 service against the raw client, which adds what the runtime spends on top. The difference between
 the two is the runtime's share over this broker, and it is published here because it depends on how
 the two meet - how the subscription's stream yields, how deliveries arrive, how back-pressure
 reaches the loop - and not only on the runtime itself.
 
-The queue row is a consumer and nothing else: a delivery arrives, the body decodes, a field is
-read, and the delivery is accepted. The request/reply row adds the publish path to the same
-delivery: the responder answers on the address the request named and waits for the broker to accept
-the reply. In both rows the requester and the producer are hand-written on all three loops, so the
-only side that changes is the consuming one.
+A negative cost means the column was faster than the raw client, and on this transport both of
+them are. A hand-written loop holds one delivery at a time: while it decodes and settles, nothing is
+reading the socket. This crate's subscription reads ahead instead, into a buffer bounded by the same
+link credit, so the next transfer is already in hand when the loop asks for it; the runtime adds
+another step of the same kind. What the columns measure here is therefore not a tax but the
+difference between a loop that waits and a pipeline that does not.
+
+The row is a consumer and nothing else: a delivery arrives, the body decodes, a field is read, and
+the delivery is accepted. The producer is hand-written in all three loops, so the only side that
+changes is the consuming one.
 
 A row reported as `indistinguishable` is one whose two halves differ by less than the spread between
-runs of either. That is the honest outcome wherever the protocol costs far more than the code above
-it, and a figure below the run-to-run noise would read as precision that was never measured.
+runs of either, and whose rounds did not all come out the same way round. That is the honest outcome
+wherever the protocol costs far more than the code above it, and a figure below the run-to-run noise
+would read as precision that was never measured. The second half of the rule matters here: the
+faster a column is on this transport, the wider its own spread, and a difference every round agrees
+on is a result rather than noise.
 
 The machine-readable form of the same run, which the framework's site reads to build its
 cross-broker table, is at
@@ -57,10 +65,11 @@ cross-broker table, is at
 
 `Round trip` is the transport's own latency, measured outside every loop: a send whose disposition
 the client waits for, taken tens of thousands of times over one connection. A row is marked
-`broker-bound` when the round trips one delivery makes - none for a plain delivery, one for a reply
-that waits to be accepted - account for at least half of what that delivery costs. The mark means
-the transport paced the run and the figures beside it are a lower bound on the code's cost rather
-than a measurement of it.
+`broker-bound` when the round trips one delivery makes account for at least half of what that
+delivery costs. A delivery here makes none: transfers arrive against credit the subscription
+replenishes in the background, and an accept is written without an answer being waited for. The
+mark means the transport paced the run and the figures beside it are a lower bound on the code's
+cost rather than a measurement of it.
 
 The build flags are published with the numbers because they change them: a binary built with
 `-C target-cpu=native` produces a figure no other machine can reproduce, so the recipe clears the
@@ -74,13 +83,22 @@ a row published for another broker: the transports do different work per message
 AMQP 1.0 broker would move all three figures of a row together, which is why the image is published
 with them.
 
+Only the consuming side is measured. A second scenario for the publish path - a responder answering
+every delivery on the address the request named - was written and thrown away, because it measured
+a TCP timer rather than any code: `fe2o3-amqp` never sets `TCP_NODELAY`, and a reply that waits for
+its disposition on a connection that is also writing dispositions sits in Nagle's buffer until the
+peer's delayed acknowledgement releases it. The same exchange takes fifty microseconds on an idle
+connection and tens of milliseconds inside that loop, in every loop alike. What a publish costs on
+this crate is therefore still unpublished, and a service that answers a request per delivery should
+know that the delay above is the transport's, not the framework's.
+
 The window a run measures opens at the first delivery and closes when the last one's work ends, in
 every loop alike. The settlement follows that point, so one disposition out of the hundreds of
 thousands a run carries sits outside the number everywhere.
 
-The load is published pre-settled, in every loop and in both scenarios. A producer that waited for
-a disposition per message would make the row a measurement of how fast this broker confirms a send,
-and the consumer under test would spend the run idle.
+The load is published pre-settled, in every loop. A producer that waited for a disposition per
+message would make the row a measurement of how fast this broker confirms a send, and the consumer
+under test would spend the run idle.
 
 The numbers are a snapshot of one machine on one day. They are re-measured on demand, never in CI:
 a shared runner's noise is larger than the difference this page is about.
@@ -91,7 +109,7 @@ a shared runner's noise is larger than the difference this page is about.
 just bench
 ```
 
-The recipe starts the stand from `docker-compose.test.yml`, runs both scenarios, stops the stand
-and rewrites `docs/benchmarks/results.json` with what it measured. It takes about half an hour and
-wants the machine to itself. The message count is not fixed: a probe run sets it so that every
+The recipe starts the stand from `docker-compose.test.yml`, runs the scenario, stops the stand and
+rewrites `docs/benchmarks/results.json` with what it measured. It takes about ten minutes and wants
+the machine to itself. The message count is not fixed: a probe run sets it so that every
 measured run lasts at least five seconds on whatever machine it is taken on.
