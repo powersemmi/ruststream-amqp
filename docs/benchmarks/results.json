@@ -17,31 +17,31 @@
     "profile": "bench, inheriting release (opt-level = 3, lto = false, codegen-units = 16)",
     "features": "ruststream-amqp default (none), ruststream macros,json",
     "rustflags": "none (the recipe clears RUSTFLAGS, so the numbers are not tied to this CPU)",
-    "round_trip": "52 us (median of 20000 sends waiting for their disposition)"
+    "round_trip": "53 us (median of 20000 sends waiting for their disposition)"
   },
   "scenarios": [
     {
       "name": "queue, 512 B JSON, accept each",
       "unit": "msg/s",
-      "messages": 36235,
+      "messages": 35053,
       "pairs": 11,
       "raw": {
-        "median": 5594,
-        "min": 5551,
-        "max": 5708
+        "median": 5604,
+        "min": 5509,
+        "max": 5687
       },
       "adapter": {
-        "median": 6838,
-        "min": 6000,
-        "max": 9030
+        "median": 7260,
+        "min": 6284,
+        "max": 7943
       },
       "framework": {
-        "median": 8273,
-        "min": 7206,
-        "max": 11424
+        "median": 8126,
+        "min": 7315,
+        "max": 10950
       },
-      "overhead_percent": -47.9,
-      "adapter_overhead_percent": -22.2,
+      "overhead_percent": -45.0,
+      "adapter_overhead_percent": -29.6,
       "verdict": "measured",
       "broker_bound": false
     }
