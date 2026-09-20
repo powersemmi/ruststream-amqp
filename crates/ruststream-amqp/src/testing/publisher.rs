@@ -15,7 +15,7 @@ use std::time::Duration;
 use bytes::Bytes;
 #[cfg(feature = "transaction")]
 use ruststream::TransactionalPublisher;
-use ruststream::{HeaderMap, IncomingMessage, OutgoingMessage, Publisher, RequestReply};
+use ruststream::{HeaderMap, IncomingMessage, OutgoingFor, Publisher, RequestReply, Take};
 
 use crate::address::Routing;
 use crate::error::AmqpError;
@@ -56,6 +56,8 @@ impl AmqpTestPublisher {
 }
 
 impl Publisher for AmqpTestPublisher {
+    /// The real publisher's form: the in-process router keeps the payload as well.
+    type Payload = Take;
     type Error = AmqpError;
 
     /// The real publisher's settings type, so a mount that compiles here compiles against a
@@ -70,7 +72,7 @@ impl Publisher for AmqpTestPublisher {
     /// publisher reports for a handle that outlived its connection.
     fn publish(
         &self,
-        msg: OutgoingMessage<'_>,
+        msg: OutgoingFor<'_, Take>,
         _options: Option<&Self::Options>,
     ) -> impl Future<Output = Result<(), Self::Error>> {
         if let Err(err) = self.state.ensure_live() {
@@ -102,7 +104,7 @@ impl RequestReply for AmqpTestPublisher {
 
     fn request(
         &self,
-        msg: OutgoingMessage<'_>,
+        msg: OutgoingFor<'_, Take>,
         timeout: Duration,
     ) -> impl Future<Output = Result<Self::Reply, Self::Error>> + Send {
         let state = Arc::clone(&self.state);
@@ -218,6 +220,8 @@ impl AmqpTestTxnPublisher {
 
 #[cfg(feature = "transaction")]
 impl Publisher for AmqpTestTxnPublisher {
+    /// The real publisher's form: the in-process router keeps the payload as well.
+    type Payload = Take;
     type Error = AmqpError;
 
     /// The real transactional publisher's settings type: empty on both.
@@ -231,7 +235,7 @@ impl Publisher for AmqpTestTxnPublisher {
     /// Returns [`AmqpError::NotConnected`] once the broker has shut down.
     fn publish(
         &self,
-        msg: OutgoingMessage<'_>,
+        msg: OutgoingFor<'_, Take>,
         _options: Option<&Self::Options>,
     ) -> impl Future<Output = Result<(), Self::Error>> {
         if let Err(err) = self.state.ensure_live() {

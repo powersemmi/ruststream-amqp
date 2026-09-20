@@ -7,7 +7,7 @@ use std::time::Duration;
 use fe2o3_amqp_types::messaging::{Message, Outcome, Properties};
 #[cfg(feature = "asyncapi")]
 use ruststream::asyncapi::Bindings;
-use ruststream::{OutgoingMessage, PairError, PublishPolicy, Publisher, RequestReply};
+use ruststream::{OutgoingFor, PairError, PublishPolicy, Publisher, RequestReply, Take};
 
 #[cfg(feature = "asyncapi")]
 use crate::bindings;
@@ -73,6 +73,9 @@ pub(crate) fn accepted(outcome: Outcome, address: &str) -> Result<(), AmqpError>
 }
 
 impl Publisher for AmqpPublisher {
+    /// The `AMQP` 1.0 body owns its bytes: the `data` section is a `Binary`, which is a vector
+    /// the client keeps until the transfer is settled.
+    type Payload = Take;
     type Error = AmqpError;
 
     /// No per-message settings. `AMQP` 1.0 does define fields that would qualify - `durable`,
@@ -82,7 +85,7 @@ impl Publisher for AmqpPublisher {
 
     async fn publish(
         &self,
-        msg: OutgoingMessage<'_>,
+        msg: OutgoingFor<'_, Take>,
         _options: Option<&Self::Options>,
     ) -> Result<(), Self::Error> {
         let core = self.core()?;
@@ -96,7 +99,7 @@ impl RequestReply for AmqpPublisher {
 
     async fn request(
         &self,
-        msg: OutgoingMessage<'_>,
+        msg: OutgoingFor<'_, Take>,
         timeout: Duration,
     ) -> Result<Self::Reply, Self::Error> {
         let core = self.core()?;

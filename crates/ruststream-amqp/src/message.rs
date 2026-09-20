@@ -11,7 +11,7 @@ use fe2o3_amqp_types::messaging::{
     ApplicationProperties, Body, Data, Message, MessageId, Properties,
 };
 use fe2o3_amqp_types::primitives::{Binary, SimpleValue, Symbol, Value};
-use ruststream::{AckError, HeaderMap, IncomingMessage, OutgoingMessage, Partitioned, Str};
+use ruststream::{AckError, HeaderMap, IncomingMessage, OutgoingFor, Partitioned, Str, Take};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::error::AmqpError;
@@ -169,7 +169,7 @@ impl IncomingMessage for AmqpMessage {
 }
 
 /// Builds the `AMQP` message for an outgoing publish.
-pub(crate) fn to_amqp_message(msg: &OutgoingMessage<'_>) -> Message<Data> {
+pub(crate) fn to_amqp_message(msg: &OutgoingFor<'_, Take>) -> Message<Data> {
     let headers = msg.headers();
     let mut properties = Properties::default();
     let mut has_properties = false;
@@ -332,6 +332,8 @@ pub(crate) fn payload_from_body(body: Body<Value>, address: &str) -> Result<Byte
 
 #[cfg(test)]
 mod tests {
+    use ruststream::OutgoingMessage;
+
     use super::*;
 
     #[test]

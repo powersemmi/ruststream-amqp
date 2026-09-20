@@ -16,7 +16,7 @@ use fe2o3_amqp_types::definitions::SenderSettleMode;
 use fe2o3_amqp_types::transaction::Coordinator;
 #[cfg(feature = "asyncapi")]
 use ruststream::asyncapi::Bindings;
-use ruststream::{OutgoingMessage, PairError, PublishPolicy, Publisher, TransactionalPublisher};
+use ruststream::{OutgoingFor, PairError, PublishPolicy, Publisher, Take, TransactionalPublisher};
 
 #[cfg(feature = "asyncapi")]
 use crate::bindings;
@@ -144,6 +144,9 @@ impl AmqpTxnPublisher {
 }
 
 impl Publisher for AmqpTxnPublisher {
+    /// The `AMQP` 1.0 body owns its bytes: the `data` section is a `Binary`, which is a vector
+    /// the client keeps until the transfer is settled.
+    type Payload = Take;
     type Error = AmqpError;
 
     /// The same empty settings as the plain publisher: a transactional post carries the message
@@ -152,7 +155,7 @@ impl Publisher for AmqpTxnPublisher {
 
     async fn publish(
         &self,
-        msg: OutgoingMessage<'_>,
+        msg: OutgoingFor<'_, Take>,
         _options: Option<&Self::Options>,
     ) -> Result<(), Self::Error> {
         self.core.ensure_open()?;
