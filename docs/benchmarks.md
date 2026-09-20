@@ -85,12 +85,12 @@ with them.
 
 Only the consuming side is measured. A second scenario for the publish path - a responder answering
 every delivery on the address the request named - was written and thrown away, because it measured
-a TCP timer rather than any code: `fe2o3-amqp` never sets `TCP_NODELAY`, and a reply that waits for
-its disposition on a connection that is also writing dispositions sits in Nagle's buffer until the
-peer's delayed acknowledgement releases it. The same exchange takes fifty microseconds on an idle
-connection and tens of milliseconds inside that loop, in every loop alike. What a publish costs on
-this crate is therefore still unpublished, and a service that answers a request per delivery should
-know that the delay above is the transport's, not the framework's.
+a TCP timer rather than any code: the socket the client opened was left with Nagle's algorithm on,
+and a reply that waits for its disposition on a connection that is also writing dispositions sat in
+the kernel's buffer until the peer's delayed acknowledgement released it. This crate now opens that
+socket itself and sets `TCP_NODELAY` on it, which takes one request/reply round trip against the
+Artemis stand from 140 ms to 2 ms. The scenario has not been rewritten yet, so what a publish costs
+on this crate is still unpublished.
 
 The window a run measures opens at the first delivery and closes when the last one's work ends, in
 every loop alike. The settlement follows that point, so one disposition out of the hundreds of

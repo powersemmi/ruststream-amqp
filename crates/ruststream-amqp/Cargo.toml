@@ -44,6 +44,9 @@ futures.workspace = true
 serde = { version = "1", features = ["derive"], optional = true }
 thiserror.workspace = true
 tokio.workspace = true
+# Reads the broker URL this crate opens the connection's socket from, the way the client's own
+# `open` reads it.
+url.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
