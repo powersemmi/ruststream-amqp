@@ -896,6 +896,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "ruststream-amqp-bench"
+version = "0.7.0"
+dependencies = [
+ "fe2o3-amqp",
+ "fe2o3-amqp-types",
+ "futures",
+ "ruststream",
+ "ruststream-amqp",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "ruststream-macros"
 version = "0.7.0-rc.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
