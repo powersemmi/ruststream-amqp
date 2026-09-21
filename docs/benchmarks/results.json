@@ -1,9 +1,9 @@
 {
-  "schema": 1,
+  "schema": 3,
   "crate": "ruststream-amqp",
   "crate_version": "0.7.0",
-  "core_version": "0.7.0-rc.7",
-  "measured_at": "2026-09-20",
+  "core_version": "0.7.0-rc.9",
+  "measured_at": "2026-09-21",
   "environment": {
     "cpu": "AMD Ryzen 9 7900X 12-Core Processor",
     "architecture": "x86_64",
@@ -23,26 +23,23 @@
     {
       "name": "queue, 512 B JSON, accept each",
       "unit": "msg/s",
-      "messages": 35053,
-      "pairs": 11,
+      "messages": 578337,
+      "pairs": 3,
       "raw": {
-        "median": 5604,
-        "min": 5509,
-        "max": 5687
+        "best": 174617,
+        "worst": 166077
       },
       "adapter": {
-        "median": 7260,
-        "min": 6284,
-        "max": 7943
+        "best": 172759,
+        "worst": 168391
       },
       "framework": {
-        "median": 8126,
-        "min": 7315,
-        "max": 10950
+        "best": 170316,
+        "worst": 164476
       },
-      "overhead_percent": -45.0,
-      "adapter_overhead_percent": -29.6,
-      "verdict": "measured",
+      "overhead_percent": 2.5,
+      "adapter_overhead_percent": 1.1,
+      "verdict": "indistinguishable",
       "broker_bound": false
     }
   ]
