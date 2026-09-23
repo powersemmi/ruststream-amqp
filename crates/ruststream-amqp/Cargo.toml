@@ -51,6 +51,8 @@ url.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+# The code-cost benchmarks (`benches/`): callgrind and DHAT through the runner the core pins.
+gungraun = "=0.19.4"
 # The conformance harness drives the testing-feature broker; macros + json power the runnable
 # amqp_* examples, and serde decodes their message types.
 ruststream = { workspace = true, features = ["conformance", "testing", "macros", "json"] }
@@ -63,3 +65,20 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "ti
 [[example]]
 name = "amqp_transaction"
 required-features = ["transaction"]
+
+# The code-cost benchmarks: one scenario per binary, each a service on the in-process transport.
+# `just bench-code` runs them under valgrind; `benches/common` is the shared setup.
+[[bench]]
+name = "consume"
+harness = false
+required-features = ["testing"]
+
+[[bench]]
+name = "reply"
+harness = false
+required-features = ["testing"]
+
+[[bench]]
+name = "batch"
+harness = false
+required-features = ["testing"]
