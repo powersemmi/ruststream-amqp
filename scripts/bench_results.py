@@ -11,7 +11,7 @@ https://powersemmi.github.io/ruststream/latest/benchmarks/#publishing-results: s
 loop of the comparison as its best, median and worst round, and the `code` section.
 
 `--code` reads the other run instead: the summary `cargo bench -- --output-format=json` writes for
-the code-cost benches under `crates/ruststream-amqp/benches`, one JSON object per benchmark.
+the code-cost benches under `crates/ruststream-amqp-bench/benches`, one JSON object per benchmark.
 It writes the `code` section, one entry per scenario with instructions and allocations per
 message plus what starting the service cost once, by the core's method: every scenario is
 measured over one delivery, over MESSAGES and over twice MESSAGES, the slope between the last two
@@ -138,7 +138,7 @@ CODE_COLD_FLOOR = 1_000
 # whether the benchmark's hard limit holds its allocation floor.
 CODE_SCENARIOS = [
     ("queue, JSON decode into a small struct, accept each", "consume/service", True),
-    ("reply through this crate's default publish policy", "reply/service", True),
+    ("reply through this crate's publisher, accepted by the broker", "reply/service", True),
     ("queue in batches of 64, assembled on the client", "batch/service", True),
 ]
 
