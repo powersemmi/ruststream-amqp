@@ -80,7 +80,8 @@ plugins:
         amqp.md: https://docs.rs/ruststream-amqp/latest/ruststream_amqp/index.html
         ru/amqp.md: https://docs.rs/ruststream-amqp/latest/ruststream_amqp/index.html
         zh/amqp.md: https://docs.rs/ruststream-amqp/latest/ruststream_amqp/index.html
-  # Versioned docs are published with `mike` (see the Docs workflow and the version switcher).
+  # Versioned docs are published with `mike` (see the Deploy docs workflow and the version
+  # switcher).
   # Each translation is a tree under `docs/<locale>/`, mirroring the English paths; a file outside
   # a locale folder is English. `fallback_to_default` serves the English text for a page with no
   # translation yet, so translations can land page by page.

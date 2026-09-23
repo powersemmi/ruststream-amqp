@@ -2,7 +2,7 @@ name: Deploy docs
 
 on:
   # Deliberately not on push to main: publishing a merged docs change immediately would document
-  # unreleased API to readers on the current version. `docs.yml` still checks every docs PR.
+  # unreleased API to readers on the current version. The CI workflow still checks every docs PR.
   release:
     types: [published]
   # The escape hatch between releases, run against the tag it belongs to.
