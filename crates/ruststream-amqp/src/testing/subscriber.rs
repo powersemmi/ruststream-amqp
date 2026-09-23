@@ -46,13 +46,16 @@ impl AmqpTestSubscriber {
         // An at-most-once subscription settles its deliveries on receipt, so they get no channel
         // back: that absence is what makes their settlement report `Unsupported`, which is what a
         // server-side subscription does.
-        let requeue = (!is_at_most_once(address.settle_value())).then_some(requeue);
+        let settlement = (!is_at_most_once(address.settle_value())).then(|| Settlement {
+            requeue,
+            state: Arc::clone(&state),
+        });
         Self {
             state,
             id,
             deliveries: BufferedSubscriber::new(Deliveries {
                 rx,
-                requeue,
+                settlement,
                 coordinator,
             })
             .max_wait(address.batch_wait_value()),
@@ -88,12 +91,20 @@ impl BatchSubscriber for AmqpTestSubscriber {
     }
 }
 
+/// What settling a delivery reaches: the channel a released delivery goes back on, and the
+/// transport, which has to still be connected for a settlement to land.
+#[derive(Clone)]
+pub(crate) struct Settlement {
+    requeue: DeliverySender,
+    state: Arc<TestState>,
+}
+
 /// The routed stream under the buffer: one delivery per item, off the subscription's channel.
 struct Deliveries {
     rx: DeliveryReceiver,
-    /// The channel a released delivery goes back on, or `None` on an at-most-once subscription,
-    /// where a delivery is settled before the handler ever sees it.
-    requeue: Option<DeliverySender>,
+    /// `None` on an at-most-once subscription, where a delivery is settled before the handler
+    /// ever sees it.
+    settlement: Option<Settlement>,
     /// A clone of the broker's harness coordinator, threaded into each yielded message so a
     /// requeue re-counts and a consumed delivery decrements. `None` outside a harness run.
     coordinator: Option<Coordinator>,
@@ -104,7 +115,7 @@ impl Subscriber for Deliveries {
     type Error = AmqpError;
 
     fn stream(&mut self) -> impl Stream<Item = Result<Self::Message, Self::Error>> + Send + '_ {
-        let requeue = self.requeue.clone();
+        let settlement = self.settlement.clone();
         let coordinator = self.coordinator.clone();
         // Poll the receiver in place rather than wrapping it in an owning stream, so `stream`
         // can be called again after the returned stream is dropped (the runtime and the
@@ -114,7 +125,7 @@ impl Subscriber for Deliveries {
                 next.map(|delivery| {
                     Ok(AmqpTestMessage::new(
                         delivery,
-                        requeue.clone(),
+                        settlement.clone(),
                         coordinator.clone(),
                     ))
                 })
@@ -134,8 +145,8 @@ impl Subscriber for Deliveries {
 /// [`AmqpMessage`](crate::AmqpMessage) does.
 pub struct AmqpTestMessage {
     delivery: Option<Delivery>,
-    /// `None` when the delivery arrived already settled; see [`Deliveries::requeue`].
-    requeue: Option<DeliverySender>,
+    /// `None` when the delivery arrived already settled; see [`Deliveries::settlement`].
+    settlement: Option<Settlement>,
     /// A clone of the broker's harness coordinator. When set, this delivery is counted in
     /// flight and is decremented exactly once when the message is consumed or dropped.
     coordinator: Option<Coordinator>,
@@ -160,12 +171,12 @@ impl std::fmt::Debug for AmqpTestMessage {
 impl AmqpTestMessage {
     pub(crate) fn new(
         delivery: Delivery,
-        requeue: Option<DeliverySender>,
+        settlement: Option<Settlement>,
         coordinator: Option<Coordinator>,
     ) -> Self {
         Self {
             delivery: Some(delivery),
-            requeue,
+            settlement,
             coordinator,
         }
     }
@@ -179,10 +190,22 @@ impl AmqpTestMessage {
     /// Settles the delivery, returning it to the subscription's queue when `requeue`. Accepting
     /// and rejecting are one act in process: the delivery is dropped, and there is no broker-side
     /// dead-letter policy behind it to tell the two apart.
+    ///
+    /// After the broker has shut down the settlement fails, as it does on the real subscriber,
+    /// whose shutdown ends the session a disposition would travel on.
     fn settle(&mut self, requeue: bool) -> Result<(), AckError> {
-        let Some(sender) = self.requeue.clone() else {
+        let Some(Settlement {
+            requeue: sender,
+            state,
+        }) = self.settlement.clone()
+        else {
             return Err(AckError::Unsupported);
         };
+        if state.ensure_live().is_err() {
+            return Err(AckError::Broker(Box::from(
+                "the subscription's pump task has shut down",
+            )));
+        }
         let mut delivery = self
             .delivery
             .take()
