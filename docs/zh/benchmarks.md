@@ -18,9 +18,9 @@
 
 ## 数字 { #the-numbers }
 
-三个交错轮次中的最佳值，括号里是最差的一轮。越大越好。
+三个交错轮次中的最佳值，括号里是中位的一轮。越大越好。
 
-<div id="benchmark-results" data-benchmark-results="../../benchmarks/results.json" data-benchmark-labels='{"loading": "正在加载公布的结果...", "scenario": "场景", "raw": "裸客户端", "adapter": "适配器", "framework": "RustStream", "adapterOverhead": "适配器开销", "overhead": "总开销", "indistinguishable": "无法区分", "brokerBound": "受 Broker 限制", "machine": "机器", "os": "操作系统", "broker": "Broker", "build": "构建", "roundTrip": "往返", "versions": "版本", "measured": "测量于", "unavailable": "读不到结果。它们公布在 {url}。", "unknownSchema": "公布的结果声明的 schema 是 {schema}，这一页不渲染它。"}'></div>
+<div id="benchmark-results" data-benchmark-results="../../benchmarks/results.json" data-benchmark-labels='{"loading": "正在加载公布的结果...", "scenario": "场景", "raw": "裸客户端", "adapter": "适配器", "framework": "RustStream", "adapterOverhead": "适配器开销", "overhead": "总开销", "indistinguishable": "无法区分", "brokerBound": "受 Broker 限制", "machine": "机器", "os": "操作系统", "broker": "Broker", "build": "构建", "roundTrip": "往返", "versions": "版本", "measured": "测量于", "instructions": "每条消息的指令数", "allocations": "每条消息的内存分配次数", "cold": "冷启动（指令 / 分配）", "unavailable": "读不到结果。它们公布在 {url}。", "unknownSchema": "公布的结果声明的 schema 是 {schema}，这一页不渲染它。"}'></div>
 
 表格由浏览器从上一次运行写下的文档读出，所以这一页上没有任何会过期的副本。
 
@@ -50,6 +50,32 @@
 [`benchmarks/results.json`](https://powersemmi.github.io/ruststream-amqp/latest/benchmarks/results.json)，
 框架的站点用它拼出跨 Broker 的汇总表。
 
+## crate 自身的代码 { #the-crates-own-code }
+
+<div id="benchmark-code"></div>
+
+第二张表是本 crate 自身在每条消息上的开销，是数出来的，不是计时得来的：指令数由 callgrind 统计，
+内存分配次数由 DHAT 统计。每个场景都是用户会写的那种服务，跑在本 crate 的进程内传输
+`AmqpTestBroker` 上，所以数字里既没有套接字，也没有服务器。这个传输解析本 crate 的地址描述符，
+连同它的 terminus 路由和结算模式；它从本 crate 的默认发布策略得到自己的发布者；它和连接真实
+Broker 的订阅者用同一个客户端缓冲区组批。其上是框架的分发。`fe2o3-amqp` 消息与本 crate 消息之间
+的转换不在这些数字里，上面的对比测的正是它。
+
+指令数和分配次数都是稳态下每条消息的值：1000 次投递的运行和 2000 次投递的运行之间的斜率。最后一列
+是启动服务并处理第一次投递一次性付出的开销。这些数字是绝对值，框架自身的开销也算在内；框架单独的开
+销由核心库在它的[基准测试页面](https://powersemmi.github.io/ruststream/latest/zh/benchmarks/)上公布。
+
+有两行里的内存分配，是连接真实 Broker 的服务不会做的。回复那一行的五次分配里，有四次属于进程内
+传输自己：它为测试断言记下的每条消息、它在相互竞争的消费者之间的轮转，以及把交给它的消息体转成
+共享缓冲区。第五次是编码好的回复，连接真实 Broker 的发布者会把它原样交给客户端。批那一行的两次
+分配来自框架的测试钩子，`testing` 特性会把它们和传输一起编译进来：不论有没有在跑测试，它们都会
+为测试套件的记录复制批里每一条消息的载荷。
+
+同一个二进制文件多次运行，计数相差不到千分之一，所以本 crate 热路径上的任何改动都会在其中显出来，
+不论多小。批那一行会浮动千分之几，因为它最后那个不满的批要等一个计时器。
+`just bench-code` 在分配次数超过场景声明的下限时失败，加上 `--baseline=main` 时，指令数多出百分之
+二以上也算失败；改变开销的合并请求要附上自己的数字。
+
 ## 机器 { #the-machine }
 
 <div id="benchmark-environment"></div>
@@ -74,7 +100,7 @@
 而一个要等自己 disposition 的回复，写在一条同时还在写 disposition 的连接上，就会卡在内核的缓冲
 里，直到对端延迟的确认把它放出来。现在这个 crate 自己打开那个套接字，并在上面设置 `TCP_NODELAY`：
 与 Artemis 测试台之间的一次「请求-响应」往返，从 140 毫秒降到 2 毫秒。这个场景还没有重写，所以
-这个 crate 的发布要花多少，目前仍未公布。
+这里的对比只覆盖接收的一侧；发布路径在进程内传输上的开销，由代码表里回复那一行统计。
 
 一次运行的测量窗口从第一次投递开始，到最后一次投递的活干完为止，三个循环都是这样。结算在这个
 时刻之后发生，所以一次运行携带的几十万个 disposition 里的这一个，在哪个循环里都落在数字之外。
@@ -94,3 +120,10 @@ just bench
 这条 recipe 从 `docker-compose.test.yml` 起停测试台，跑完这个场景，然后把测到的结果写回
 `docs/benchmarks/results.json`。它要花十分钟左右，并且需要整台机器。消息条数不是固定的：一次
 试探运行会把它定下来，使得每一次被测量的运行在所在机器上都不短于五秒。
+
+```bash
+just bench-code
+```
+
+这条 recipe 在 valgrind 下统计代码表，并重写同一份文档里的 `code` 部分。它只需几秒，不需要测试台，
+只要有 valgrind 和基准测试运行器：`cargo install --locked gungraun-runner --version =0.19.4`。
