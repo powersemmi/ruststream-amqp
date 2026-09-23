@@ -2,7 +2,7 @@ name: Deploy docs
 
 on:
   # Deliberately not on push to main: publishing a merged docs change immediately would document
-  # unreleased API to readers on the current version. `docs.yml` still checks every docs PR.
+  # unreleased API to readers on the current version. The CI workflow still checks every docs PR.
   release:
     types: [published]
   # The escape hatch between releases, run against the tag it belongs to.
@@ -71,5 +71,9 @@ jobs:
       - name: Squash gh-pages history and push
         run: |
           git checkout gh-pages
-          git reset --hard "$(git commit-tree -m 'docs: deploy' 'HEAD^{tree}')"
+          # The llms.txt convention looks for the file at the site root, which mike leaves to the
+          # version directories, so the root carries a copy of the latest one.
+          cp latest/llms.txt llms.txt
+          git add llms.txt
+          git reset --hard "$(git commit-tree -m 'docs: deploy' "$(git write-tree)")"
           git push --force origin gh-pages
