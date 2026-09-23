@@ -26,7 +26,7 @@ ruststream = { version = ">=0.7.0-rc.9, <0.8.0", default-features = false }
 # so the pair stays on 0.17 until the client catches up.
 fe2o3-amqp = "0.17"
 fe2o3-amqp-types = "0.17"
-bytes = "1"
+bytes = "1.2"
 futures = "0.3"
 thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time"] }
