@@ -3,7 +3,7 @@
   "crate": "ruststream-amqp",
   "crate_version": "0.7.0",
   "core_version": "0.7.0-rc.9",
-  "measured_at": "2026-09-21",
+  "measured_at": "2026-09-23",
   "environment": {
     "cpu": "AMD Ryzen 9 7900X 12-Core Processor",
     "architecture": "x86_64",
@@ -17,30 +17,76 @@
     "profile": "bench, inheriting release (opt-level = 3, lto = false, codegen-units = 16)",
     "features": "ruststream-amqp default (none), ruststream macros,json",
     "rustflags": "none (the recipe clears RUSTFLAGS, so the numbers are not tied to this CPU)",
-    "round_trip": "53 us (median of 20000 sends waiting for their disposition)"
+    "round_trip": "54 us (median of 20000 sends waiting for their disposition)",
+    "valgrind": "3.25.1"
   },
   "scenarios": [
     {
       "name": "queue, 512 B JSON, accept each",
       "unit": "msg/s",
-      "messages": 578337,
+      "messages": 595760,
       "pairs": 3,
       "raw": {
-        "best": 174617,
-        "worst": 166077
+        "best": 167723,
+        "median": 164801,
+        "worst": 161723
       },
       "adapter": {
-        "best": 172759,
-        "worst": 168391
+        "best": 164367,
+        "median": 163325,
+        "worst": 159164
       },
       "framework": {
-        "best": 170316,
-        "worst": 164476
+        "best": 163903,
+        "median": 161911,
+        "worst": 154002
       },
-      "overhead_percent": 2.5,
-      "adapter_overhead_percent": 1.1,
+      "overhead_percent": 2.3,
+      "adapter_overhead_percent": 2.0,
+      "adapter_verdict": "indistinguishable",
       "verdict": "indistinguishable",
       "broker_bound": false
+    }
+  ],
+  "code": [
+    {
+      "name": "queue, JSON decode into a small struct, accept each",
+      "messages": 1000,
+      "framework": {
+        "instructions": 1916.2,
+        "allocations": 0.0
+      },
+      "cold": {
+        "instructions": 18836,
+        "allocations": 24
+      },
+      "gated": true
+    },
+    {
+      "name": "reply through this crate's default publish policy",
+      "messages": 1000,
+      "framework": {
+        "instructions": 4995.0,
+        "allocations": 5.0
+      },
+      "cold": {
+        "instructions": 23080,
+        "allocations": 32
+      },
+      "gated": true
+    },
+    {
+      "name": "queue in batches of 64, assembled on the client",
+      "messages": 1000,
+      "framework": {
+        "instructions": 2592.9,
+        "allocations": 2.0
+      },
+      "cold": {
+        "instructions": 28543,
+        "allocations": 33
+      },
+      "gated": true
     }
   ]
 }
