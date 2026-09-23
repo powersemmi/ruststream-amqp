@@ -19,7 +19,7 @@ use common::{Latch, MESSAGES, Order, Pending};
 use gungraun::{library_benchmark, library_benchmark_group, main};
 use ruststream_amqp::prelude::*;
 
-#[subscriber(AmqpAddress::queue("orders"))]
+#[subscriber(AmqpAddress::queue(common::input()))]
 async fn consume(orders: &[Order], ctx: &mut Context<'_, (), Latch>) -> HandlerOutcome {
     for order in orders {
         black_box((order.id, order.quantity));
@@ -34,10 +34,8 @@ fn app(messages: usize) -> Pending {
     })
 }
 
-// Two allocations per delivery are the framework's test hooks, which copy every payload of a
-// batch for the harness's record whether a harness runs or not, and three more come per batch.
-// A thousand deliveries do not divide into whole batches, so the floor is stated over a thousand.
-#[library_benchmark(config = common::config_every(2_048, 1_000, 29))]
+// The longest run allocated 36,436 to 36,437 blocks over five runs of this tree.
+#[library_benchmark(config = common::config(common::floor(36_437)))]
 #[bench::first(app(1))]
 #[bench::base(app(MESSAGES))]
 #[bench::twice(app(2 * MESSAGES))]

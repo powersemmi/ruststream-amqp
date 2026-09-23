@@ -9,8 +9,8 @@
     clippy::needless_pass_by_value
 )]
 //! Replying: the handler returns a value, the runtime encodes it and hands it to the publisher
-//! this crate's default policy, `AmqpPublish`, pairs into, for the address the reply type
-//! declares.
+//! this crate's default policy, `AmqpPublish`, pairs into, which sends it to the address the reply
+//! type declares and waits for the broker to accept it.
 
 mod common;
 
@@ -28,7 +28,7 @@ struct Confirmation {
     id: u64,
 }
 
-#[subscriber(AmqpAddress::queue("orders"), publish)]
+#[subscriber(AmqpAddress::queue(common::input()), publish)]
 async fn confirm(order: &Order, ctx: &mut Context<'_, (), Latch>) -> Confirmation {
     ctx.state().arrived();
     Confirmation {
@@ -42,10 +42,8 @@ fn app(messages: usize) -> Pending {
     })
 }
 
-// One of the five allocations is the encoded body, which the production publisher hands to the
-// client as it is. The other four are the in-process transport's: the freeze of that body, and
-// the strings the router keeps for its record of the message and for the consumer rotation.
-#[library_benchmark(config = common::config(5, 37))]
+// The longest run allocated 86,471 to 86,475 blocks over five runs of this tree.
+#[library_benchmark(config = common::config(common::floor(86_475)))]
 #[bench::first(app(1))]
 #[bench::base(app(MESSAGES))]
 #[bench::twice(app(2 * MESSAGES))]

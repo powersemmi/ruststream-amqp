@@ -19,7 +19,7 @@ use common::{Latch, MESSAGES, Order, Pending};
 use gungraun::{library_benchmark, library_benchmark_group, main};
 use ruststream_amqp::prelude::*;
 
-#[subscriber(AmqpAddress::queue("orders"))]
+#[subscriber(AmqpAddress::queue(common::input()))]
 async fn consume(order: &Order, ctx: &mut Context<'_, (), Latch>) -> HandlerOutcome {
     black_box((order.id, order.quantity));
     ctx.state().arrived();
@@ -32,7 +32,8 @@ fn app(messages: usize) -> Pending {
     })
 }
 
-#[library_benchmark(config = common::config(0, 25))]
+// The longest run allocated 36,414 to 36,415 blocks over five runs of this tree.
+#[library_benchmark(config = common::config(common::floor(36_415)))]
 #[bench::first(app(1))]
 #[bench::base(app(MESSAGES))]
 #[bench::twice(app(2 * MESSAGES))]
