@@ -630,10 +630,7 @@ async fn start_consume(url: &str, run: Run) -> RunningApp {
 /// Stops the service, printing a teardown fault instead of failing the run.
 ///
 /// The measured window closed with the last delivery's work, so nothing that happens here can
-/// reach a number. What can happen is that the connection's teardown races the subscription's own:
-/// the crate's pump task detaches its receiver and ends its session after the connected form has
-/// already closed the connection, and the broker answers a frame arriving after a close by
-/// dropping the socket.
+/// reach a number, and a run is not thrown away over its goodbye.
 async fn report_app_shutdown(app: RunningApp) {
     if let Err(err) = app.shutdown().await {
         eprintln!("the service reported a teardown fault: {err}");

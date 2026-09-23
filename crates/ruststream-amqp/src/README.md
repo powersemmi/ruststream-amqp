@@ -533,9 +533,11 @@ Each subscription runs on its own `AMQP` session and the publishers share one se
 because flow-control windows are per session: a slow consumer cannot starve the publishers or
 another subscription. Link names are unique per connection, derived from the container id.
 
-Shutdown runs inwards, links then session then connection, because each layer has to still route
-the peer's answer to the one inside it. Every step runs even after an earlier one fails, and the
-error reported is the innermost one.
+Shutdown runs inwards: the subscriptions' sessions, then the publisher links, then their session,
+then the connection, because each layer has to still route the peer's answer to the one inside it.
+The connection closes only after every subscription session has ended, including those of
+subscriptions still open at shutdown, so a clean stop reports no error. Every step runs even after
+an earlier one fails, and the error reported is the innermost one.
 
 Known gaps: no per-message settings, no positions and no seeking, transactions cover publishing
 only, and a batch is assembled on the client rather than pulled. A delivery whose body is an
