@@ -55,10 +55,10 @@ starts the Compose stand, runs the whole suite against Artemis with the live tes
 stops the stand.
 
 `just bench` measures what this crate and the framework's runtime cost over the raw `fe2o3-amqp`
-client on the same stand and rewrites `docs/benchmarks/results.json`. It takes minutes and wants
-the machine to itself. `just bench-code` counts what this crate's own code costs per message, in
-instructions and allocations over the in-process transport, and rewrites the code table of the
-same document; it takes seconds.
+client on the same stand and rewrites `docs/benchmarks/results.json`. It takes about a minute and
+wants the machine to itself. `just bench-code` counts what a service on this crate costs per message
+on its own thread, in instructions and allocations against the same stand, and rewrites the code
+table of the same document; it takes about half a minute.
 
 ## Testing against a local core
 
