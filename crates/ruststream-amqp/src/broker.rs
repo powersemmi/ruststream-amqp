@@ -136,12 +136,12 @@ impl AmqpCore {
 /// One sender link on the shared publisher session, held in a slot the connection can empty.
 ///
 /// Why the slot, and why the connection owns the link at all: the client detaches a link from
-/// its `Drop`, which cannot await, so it fires a closing detach and destroys the link's relay in
-/// the same breath. The peer's echoing detach then has nowhere to go, and the session answers an
-/// unroutable handle by ending itself with an error - taking down every other publisher's links
-/// with it. Emptying the slot instead hands the link to `close`, which awaits that echo while
-/// the relay is still alive, and leaves a publish that raced the teardown with an empty slot to
-/// report `NotConnected` against rather than a link the peer has already forgotten.
+/// its `Drop`, which cannot await, so a dropped link only queues its closing detach. Shutdown
+/// closes every link and waits for the peer's answer before it ends the session carrying them,
+/// and that takes the link itself rather than a handle that may already be gone. Emptying the
+/// slot hands the link to `close`, which awaits that answer, and leaves a publish that raced the
+/// teardown with an empty slot to report `NotConnected` against rather than a link the peer has
+/// already forgotten.
 pub(crate) struct SenderLink(Mutex<Option<Sender>>);
 
 impl SenderLink {
