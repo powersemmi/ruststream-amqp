@@ -64,31 +64,26 @@ cross-broker table, is at
 <div id="benchmark-code"></div>
 
 The second table is this crate's own cost per message, counted rather than timed: instructions
-under callgrind and allocations under DHAT. Each scenario is the service a user writes, started on
-`AmqpTestBroker`, the crate's in-process transport, so no socket and no server are in the number.
-The transport resolves the crate's address descriptor with its terminus routing and its settle
-mode, pairs the crate's default publish policy into its publisher, and batches through the same
-client-side buffer as the production subscriber, with the framework's dispatch above them. The
-conversion between an `fe2o3-amqp` message and the crate's own is not in it; the comparison above
-measures that.
+under callgrind and allocations under DHAT. Each scenario is the service a user writes, built on
+`AmqpBroker` and connected to the same Artemis stand, on a single-threaded runtime. What is counted
+is everything that runs on the service's thread: the framework's dispatch, this crate's
+subscription, message and publisher, and the `fe2o3-amqp` client's framing and decoding, which run
+there as the connection's tasks. The broker is another process, and none of its work is in the
+number. The queue is filled before the drain starts, over another connection on another thread,
+and that thread is not counted either.
 
 Instructions and allocations are per message in the steady state: the slope between a run of 1000
-deliveries and a run of 2000. The last column is what starting the service and taking the first
-delivery cost once. The numbers are absolute, the framework's own cost included; the core publishes
-that cost alone on its [benchmarks page](https://powersemmi.github.io/ruststream/latest/benchmarks/).
+deliveries and a run of 2000. The last column is what connecting the service, attaching its
+subscription and taking the first delivery cost once. The numbers are absolute, the framework's and
+the client's cost included; the core publishes the framework's cost alone on its
+[benchmarks page](https://powersemmi.github.io/ruststream/latest/benchmarks/).
 
-Two rows carry allocations a production service does not make. Four of the reply's five are the
-in-process transport's own: its record of every message for a test to assert on, its rotation among
-competing consumers, and the freeze of the body it is handed. The fifth is the encoded reply, which
-the production publisher hands to the client as it is. The batch row's two are the framework's test
-hooks, which the `testing` feature compiles in with the transport: they copy every payload of a
-batch for the harness's record, whether a test runs or not.
-
-A count repeats within a tenth of a percent between runs of one binary, so a change to the crate's
-hot path shows in it however small. The batch row moves by a few tenths, because its last partial
-batch waits on a timer. `just bench-code` fails on an allocation above the floor a scenario
-declares, and with `--baseline=main` on more than two percent more instructions, and a pull request
-that changes the cost cites its numbers.
+The socket is real, so a count moves a little between runs of one binary. Over five runs the
+instructions per message stayed within two tenths of a percent and the cold start within one
+percent, and the longest run's allocations moved by up to four blocks in two thousand deliveries.
+`just bench-code` fails when a run allocates more than the floor its scenario declares, which is
+the highest count seen plus a tenth of a percent. With `--baseline=main` it also fails on more than
+two percent more instructions. A pull request that changes the cost cites its numbers.
 
 ## The machine
 
@@ -121,8 +116,8 @@ and a reply that waits for its disposition on a connection that is also writing 
 the kernel's buffer until the peer's delayed acknowledgement released it. This crate now opens that
 socket itself and sets `TCP_NODELAY` on it, which takes one request/reply round trip against the
 Artemis stand from 140 ms to 2 ms. The scenario has not been rewritten yet, so this comparison
-covers the consuming side; the reply row of the code table counts the publish path over the
-in-process transport.
+covers the consuming side; the reply row of the code table counts what a publish costs on the
+service's thread.
 
 The window a run measures opens at the first delivery and closes when the last one's work ends, in
 every loop alike. The settlement follows that point, so one disposition out of the hundreds of
@@ -150,6 +145,6 @@ measured run lasts at least five seconds on whatever machine it is taken on.
 just bench-code
 ```
 
-The recipe counts the code table under valgrind and rewrites the `code` section of the same
-document. It takes seconds and needs no stand, only valgrind and the benchmark runner:
-`cargo install --locked gungraun-runner --version =0.19.4`.
+The recipe starts the same stand, counts the code table under valgrind, stops the stand and rewrites
+the `code` section of the same document. It takes about half a minute and needs valgrind and the benchmark
+runner: `cargo install --locked gungraun-runner --version =0.19.4`.
