@@ -44,11 +44,6 @@ transfer is already in hand when the loop asks for it; the runtime adds another 
 kind. What the columns measure here is therefore not a tax but the difference between a loop that
 waits and a pipeline that does not.
 
-The row above predates the socket this crate now opens for itself. It was measured when every loop
-alike waited on a delayed acknowledgement per settlement, which is most of what it reports: a run
-since puts all three loops around 160,000 messages a second and indistinguishable from each other.
-The figures want a re-measurement under the published procedure before they are read again.
-
 The row is a consumer and nothing else: a delivery arrives, the body decodes, a field is read, and
 the delivery is accepted. The producer is hand-written in all three loops, so the only side that
 changes is the consuming one.
@@ -147,7 +142,7 @@ just bench
 ```
 
 The recipe starts the stand from `docker-compose.test.yml`, runs the scenario, stops the stand and
-rewrites `docs/benchmarks/results.json` with what it measured. It takes about ten minutes and wants
+rewrites `docs/benchmarks/results.json` with what it measured. It takes about a minute and wants
 the machine to itself. The message count is not fixed: a probe run sets it so that every
 measured run lasts at least five seconds on whatever machine it is taken on.
 
