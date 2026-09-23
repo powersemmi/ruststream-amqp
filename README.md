@@ -144,8 +144,9 @@ What a process cannot hold is left out rather than faked - stored messages for a
 ```
 ruststream-amqp/
 ├── crates/
-│   └── ruststream-amqp/        the published crate
-│       └── examples/           runnable amqp_* examples (docs-site snippet sources)
+│   ├── ruststream-amqp/        the published crate
+│   │   └── examples/           runnable amqp_* examples (docs-site snippet sources)
+│   └── ruststream-amqp-bench/  the paired raw-versus-framework benchmark, never published
 ├── docs/                       the documentation site (properdocs + Material)
 ├── docker-compose.test.yml     ActiveMQ Artemis for the live suite
 ├── properdocs.yml              docs site config
@@ -160,6 +161,7 @@ The AMQP reference, including the request/reply, transaction, and capability cov
 just check          # fmt, clippy, feature checks
 just test           # in-process tests; the live suites skip without AMQP_TEST_URL
 just test-brokers   # live integration + conformance against ActiveMQ Artemis
+just bench          # the paired benchmark against the stand; rewrites the published results
 ```
 
 ## License

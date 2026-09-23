@@ -15,7 +15,7 @@ use std::time::Duration;
 use bytes::Bytes;
 #[cfg(feature = "transaction")]
 use ruststream::TransactionalPublisher;
-use ruststream::{HeaderMap, IncomingMessage, OutgoingMessage, Publisher, RequestReply};
+use ruststream::{HeaderMap, IncomingMessage, OutgoingFor, Publisher, RequestReply, Take};
 
 use crate::address::Routing;
 use crate::error::AmqpError;
@@ -56,6 +56,8 @@ impl AmqpTestPublisher {
 }
 
 impl Publisher for AmqpTestPublisher {
+    /// The real publisher's form: the in-process router keeps the payload as well.
+    type Payload = Take;
     type Error = AmqpError;
 
     /// The real publisher's settings type, so a mount that compiles here compiles against a
@@ -70,17 +72,14 @@ impl Publisher for AmqpTestPublisher {
     /// publisher reports for a handle that outlived its connection.
     fn publish(
         &self,
-        msg: OutgoingMessage<'_>,
+        msg: OutgoingFor<'_, Take>,
         _options: Option<&Self::Options>,
     ) -> impl Future<Output = Result<(), Self::Error>> {
         if let Err(err) = self.state.ensure_live() {
             return ready(Err(err));
         }
-        self.state.publish(
-            msg.name(),
-            Bytes::copy_from_slice(msg.payload()),
-            msg.headers().clone(),
-        );
+        let (address, payload, headers) = msg.into_parts();
+        self.state.publish(address, payload.freeze(), headers);
         ready(Ok(()))
     }
 }
@@ -102,13 +101,13 @@ impl RequestReply for AmqpTestPublisher {
 
     fn request(
         &self,
-        msg: OutgoingMessage<'_>,
+        msg: OutgoingFor<'_, Take>,
         timeout: Duration,
     ) -> impl Future<Output = Result<Self::Reply, Self::Error>> + Send {
         let state = Arc::clone(&self.state);
-        let address = msg.name().to_owned();
-        let payload = Bytes::copy_from_slice(msg.payload());
-        let mut headers = msg.headers().clone();
+        let (address, payload, mut headers) = msg.into_parts();
+        let address = address.to_owned();
+        let payload = payload.freeze();
         async move {
             state.ensure_live()?;
             let reply_to = state.next_reply_address();
@@ -218,6 +217,8 @@ impl AmqpTestTxnPublisher {
 
 #[cfg(feature = "transaction")]
 impl Publisher for AmqpTestTxnPublisher {
+    /// The real publisher's form: the in-process router keeps the payload as well.
+    type Payload = Take;
     type Error = AmqpError;
 
     /// The real transactional publisher's settings type: empty on both.
@@ -231,20 +232,20 @@ impl Publisher for AmqpTestTxnPublisher {
     /// Returns [`AmqpError::NotConnected`] once the broker has shut down.
     fn publish(
         &self,
-        msg: OutgoingMessage<'_>,
+        msg: OutgoingFor<'_, Take>,
         _options: Option<&Self::Options>,
     ) -> impl Future<Output = Result<(), Self::Error>> {
         if let Err(err) = self.state.ensure_live() {
             return ready(Err(err));
         }
-        let payload = Bytes::copy_from_slice(msg.payload());
+        let (address, payload, headers) = msg.into_parts();
+        let payload = payload.freeze();
         let mut buffer = self.buffer();
         if let Some(open) = buffer.as_mut() {
-            open.push((msg.name().to_owned(), payload, msg.headers().clone()));
+            open.push((address.to_owned(), payload, headers));
         } else {
             drop(buffer);
-            self.state
-                .publish(msg.name(), payload, msg.headers().clone());
+            self.state.publish(address, payload, headers);
         }
         ready(Ok(()))
     }

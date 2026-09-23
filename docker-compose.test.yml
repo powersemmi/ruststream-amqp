@@ -6,6 +6,11 @@ services:
     environment:
       ARTEMIS_USER: artemis
       ARTEMIS_PASSWORD: artemis
+      # Netty holds every in-flight AMQP frame in direct memory, and with no ceiling of its own the
+      # JVM derives one from the 2G heap the broker ships with. A benchmark run keeps enough
+      # deliveries in flight to cross it, and the broker then exits mid-run. The ceiling is a
+      # limit, not a reservation: raising it costs nothing until the memory is used.
+      JAVA_ARGS_APPEND: -XX:MaxDirectMemorySize=4G
     healthcheck:
       test:
         [

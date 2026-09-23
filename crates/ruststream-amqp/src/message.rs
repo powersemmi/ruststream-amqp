@@ -11,7 +11,7 @@ use fe2o3_amqp_types::messaging::{
     ApplicationProperties, Body, Data, Message, MessageId, Properties,
 };
 use fe2o3_amqp_types::primitives::{Binary, SimpleValue, Symbol, Value};
-use ruststream::{AckError, HeaderMap, IncomingMessage, OutgoingMessage, Partitioned};
+use ruststream::{AckError, HeaderMap, IncomingMessage, OutgoingFor, Partitioned, Str, Take};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::error::AmqpError;
@@ -169,8 +169,8 @@ impl IncomingMessage for AmqpMessage {
 }
 
 /// Builds the `AMQP` message for an outgoing publish.
-pub(crate) fn to_amqp_message(msg: &OutgoingMessage<'_>) -> Message<Data> {
-    let headers = msg.headers();
+pub(crate) fn to_amqp_message(msg: OutgoingFor<'_, Take>) -> Message<Data> {
+    let (_, payload, headers) = msg.into_parts();
     let mut properties = Properties::default();
     let mut has_properties = false;
     let mut application: Option<ApplicationProperties> = None;
@@ -217,27 +217,32 @@ pub(crate) fn to_amqp_message(msg: &OutgoingMessage<'_>) -> Message<Data> {
     if let Some(application) = application {
         builder = builder.application_properties(application);
     }
-    builder.data(Binary::from(msg.payload().to_vec())).build()
+    builder.data(Binary::from(Vec::from(payload))).build()
 }
 
 /// Extracts `RustStream` headers from a delivered `AMQP` message.
 pub(crate) fn headers_from_amqp<B>(message: &Message<B>) -> HeaderMap {
     let mut headers = HeaderMap::new();
     if let Some(properties) = &message.properties {
+        // Every well-known key is a lowercase literal, so the map takes it as a shared static and
+        // this path copies no key text per delivery.
         if let Some(content_type) = &properties.content_type {
-            headers.insert("content-type", content_type.to_string());
+            headers.insert(Str::from_static("content-type"), content_type.to_string());
         }
         if let Some(correlation_id) = &properties.correlation_id {
-            headers.insert("correlation-id", message_id_text(correlation_id));
+            headers.insert(
+                Str::from_static("correlation-id"),
+                message_id_text(correlation_id),
+            );
         }
         if let Some(reply_to) = &properties.reply_to {
-            headers.insert("reply-to", reply_to.clone());
+            headers.insert(Str::from_static("reply-to"), reply_to.clone());
         }
         if let Some(message_id) = &properties.message_id {
-            headers.insert("message-id", message_id_text(message_id));
+            headers.insert(Str::from_static("message-id"), message_id_text(message_id));
         }
         if let Some(group_id) = &properties.group_id {
-            headers.insert(PARTITION_KEY_HEADER, group_id.clone());
+            headers.insert(Str::from_static(PARTITION_KEY_HEADER), group_id.clone());
         }
     }
     if let Some(application) = &message.application_properties {
@@ -327,7 +332,27 @@ pub(crate) fn payload_from_body(body: Body<Value>, address: &str) -> Result<Byte
 
 #[cfg(test)]
 mod tests {
+    use ruststream::{BytesMut, OutgoingMessage};
+
     use super::*;
+
+    /// Content equality cannot tell a hand-over from a copy, so the buffer the framework wrote is
+    /// identified by its address.
+    #[test]
+    fn the_data_body_keeps_the_buffer_the_framework_wrote() {
+        let payload = BytesMut::from(&br#"{"id":1}"#[..]);
+        let written = payload.as_ptr();
+        let outgoing: OutgoingFor<'_, Take> = OutgoingMessage::produced("orders", payload);
+
+        let message = to_amqp_message(outgoing);
+
+        assert_eq!(
+            message.body.0.as_ptr(),
+            written,
+            "the client keeps the body until the transfer settles, so the buffer is handed over \
+             rather than copied"
+        );
+    }
 
     #[test]
     fn well_known_headers_ride_the_properties_section() {
@@ -340,7 +365,7 @@ mod tests {
         headers.insert("x-custom", "value");
         let outgoing = OutgoingMessage::new("orders", b"{}".as_slice()).with_headers(headers);
 
-        let message = to_amqp_message(&outgoing);
+        let message = to_amqp_message(outgoing);
         let properties = message.properties.as_ref().expect("properties set");
         assert_eq!(
             properties.content_type.as_ref().map(Symbol::as_str),
@@ -373,7 +398,7 @@ mod tests {
         let outgoing =
             OutgoingMessage::new("orders", b"{}".as_slice()).with_headers(headers.clone());
 
-        let restored = headers_from_amqp(&to_amqp_message(&outgoing));
+        let restored = headers_from_amqp(&to_amqp_message(outgoing));
         assert_eq!(restored.get_str("content-type"), Some("application/json"));
         assert_eq!(restored.get_str("correlation-id"), Some("corr-1"));
         assert_eq!(restored.get_str(PARTITION_KEY_HEADER), Some("user-42"));
@@ -383,7 +408,7 @@ mod tests {
     #[test]
     fn data_body_yields_payload_bytes() {
         let outgoing = OutgoingMessage::new("orders", b"payload".as_slice());
-        let message = to_amqp_message(&outgoing);
+        let message = to_amqp_message(outgoing);
         let body = Body::<Value>::Data(vec![message.body].into());
         let payload = payload_from_body(body, "orders").expect("data body decodes");
         assert_eq!(payload.as_ref(), b"payload");

@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use fe2o3_amqp::connection::{Connection, ConnectionHandle};
+use fe2o3_amqp::sasl_profile::SaslProfile;
 use fe2o3_amqp::session::{Session, SessionHandle};
 use fe2o3_amqp::{Receiver, Sender};
 use fe2o3_amqp_types::messaging::Source;
@@ -17,7 +18,9 @@ use fe2o3_amqp_types::primitives::{Array, Symbol};
 use ruststream::{
     AddressedCopies, Broker, ConnectedBroker, DefaultPublish, DescribeServer, ServerSpec, Subscribe,
 };
+use tokio::net::TcpStream;
 use tokio::sync::{Mutex, OnceCell};
+use url::Url;
 
 use crate::address::{AmqpAddress, Settle};
 #[cfg(feature = "asyncapi")]
@@ -26,6 +29,39 @@ use crate::config::Sasl;
 use crate::error::{AmqpError, box_err};
 use crate::publisher::{AmqpPublish, AmqpPublisher};
 use crate::subscriber::AmqpSubscriber;
+
+/// The AMQP ports a URL that names none falls back to, as the specification assigns them.
+const AMQP_PORT: u16 = 5672;
+const AMQPS_PORT: u16 = 5671;
+
+/// Connects the socket the connection will run on, with Nagle's algorithm off.
+///
+/// The client opens a socket of its own when given a URL, and leaves that option at the kernel's
+/// default. AMQP is small-write-then-wait on both sides - a publish waits for its disposition, a
+/// reply waits for the request - which is the pattern Nagle's algorithm holds back until the
+/// peer's delayed acknowledgement arrives. That is tens of milliseconds per exchange on an idle
+/// local network, and nothing in a log names it. So the socket is opened here and handed over
+/// configured.
+///
+/// # Errors
+///
+/// Returns [`AmqpError::Connect`] when the URL names no reachable address, when the connection is
+/// refused, or when the option cannot be set on the socket.
+async fn open_socket(url: &Url) -> Result<TcpStream, AmqpError> {
+    let addresses = url
+        .socket_addrs(|| match url.scheme() {
+            "amqps" => Some(AMQPS_PORT),
+            _ => Some(AMQP_PORT),
+        })
+        .map_err(|e| AmqpError::Connect(box_err(e)))?;
+    let stream = TcpStream::connect(&*addresses)
+        .await
+        .map_err(|e| AmqpError::Connect(box_err(e)))?;
+    stream
+        .set_nodelay(true)
+        .map_err(|e| AmqpError::Connect(box_err(e)))?;
+    Ok(stream)
+}
 
 /// The live connection state shared by the connected form and every handle derived from it.
 ///
@@ -236,12 +272,30 @@ impl Broker for AmqpBroker {
         let core = self
             .cell
             .get_or_try_init(async || {
-                let mut builder = Connection::builder().container_id(container_id.clone());
+                let url =
+                    Url::parse(self.url.as_str()).map_err(|e| AmqpError::Connect(box_err(e)))?;
+                let stream = open_socket(&url).await?;
+
+                // The client's own `open` reads these off the URL; opening the socket here means
+                // reading them here, and the order is the client's: an explicit profile first,
+                // the URL's credentials over it.
+                let mut builder = Connection::builder()
+                    .container_id(container_id.clone())
+                    .scheme(url.scheme());
+                if let Some(hostname) = url.host_str() {
+                    builder = builder.hostname(hostname).sasl_hostname(hostname);
+                }
+                if let Some(domain) = url.domain() {
+                    builder = builder.domain(domain);
+                }
                 if let Some(sasl) = &self.sasl {
                     builder = builder.sasl_profile(sasl.profile.clone());
                 }
+                if let Ok(profile) = SaslProfile::try_from(&url) {
+                    builder = builder.sasl_profile(profile);
+                }
                 let mut conn = builder
-                    .open(self.url.as_str())
+                    .open_with_stream(stream)
                     .await
                     .map_err(|e| AmqpError::Connect(box_err(e)))?;
                 let session = Session::begin(&mut conn)
