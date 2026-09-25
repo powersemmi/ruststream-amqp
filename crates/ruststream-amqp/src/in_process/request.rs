@@ -42,8 +42,11 @@ pub(crate) async fn request(
         .insert("correlation-id", correlation_id.clone());
 
     // The private reply address carries one consumer, this request.
-    let (id, mut replies) = bus.subscribe(reply_to, Routing::Anycast);
-    bus.route(address, &delivery);
+    let (id, mut replies) = bus.subscribe(reply_to, Routing::Anycast)?;
+    if let Err(err) = bus.route(address, &delivery) {
+        bus.unsubscribe(id);
+        return Err(err);
+    }
 
     let reply = tokio::time::timeout(timeout, async {
         loop {

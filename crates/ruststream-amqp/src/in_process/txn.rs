@@ -51,7 +51,7 @@ impl TxnBuffer {
             buffer.push((address.to_owned(), delivery));
         } else {
             drop(open);
-            self.bus.route(address, &delivery);
+            self.bus.route(address, &delivery)?;
         }
         Ok(())
     }
@@ -82,7 +82,7 @@ impl TxnBuffer {
         // The discharge cannot reach a closed connection, as on the live publisher.
         self.bus.ensure_live()?;
         for (address, delivery) in buffered {
-            self.bus.route(&address, &delivery);
+            self.bus.route(&address, &delivery)?;
         }
         Ok(())
     }

@@ -82,7 +82,7 @@ pub(crate) fn check_url(url: &str) -> Result<(), AmqpError> {
 /// Returns [`AmqpError::NotConnected`] once the connection has shut down.
 pub(crate) fn subscribe(bus: &Arc<Bus>, address: &AmqpAddress) -> Result<BusDeliveries, AmqpError> {
     bus.ensure_live()?;
-    let (id, receiver) = bus.subscribe(address.address().to_owned(), address.routing());
+    let (id, receiver) = bus.subscribe(address.address().to_owned(), address.routing())?;
     Ok(BusDeliveries::new(
         Arc::clone(bus),
         id,
@@ -102,8 +102,7 @@ pub(crate) fn publish(bus: &Bus, msg: OutgoingFor<'_, Take>) -> Result<(), AmqpE
     bus.ensure_live()?;
     let address = msg.name();
     ensure_node(address)?;
-    bus.route(address, &frame(msg));
-    Ok(())
+    bus.route(address, &frame(msg))
 }
 
 /// Refuses a message to the empty address, as the peer does: a sender with no target address is
@@ -124,8 +123,7 @@ pub(crate) fn inject(bus: &Bus, msg: &OutgoingMessage<'_>) -> Result<(), AmqpErr
     bus.ensure_live()?;
     ensure_node(msg.name())?;
     let message = build_message(msg.headers(), msg.payload().to_vec());
-    bus.route(msg.name(), &delivered(message));
-    Ok(())
+    bus.route(msg.name(), &delivered(message))
 }
 
 /// The delivery a live subscription would read for `msg`: the message this crate sends for it,

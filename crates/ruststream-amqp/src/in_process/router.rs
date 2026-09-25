@@ -56,6 +56,9 @@ struct RouterState {
     /// Whose turn it is among the competing consumers of an address, so a work queue spreads its
     /// traffic instead of always picking the same one.
     anycast_turn: HashMap<String, usize>,
+    /// Set by `close` under the lock, so a subscribe or a publish either lands before the
+    /// shutdown or is refused.
+    closed: bool,
 }
 
 /// In-memory exact-address router.
@@ -77,12 +80,16 @@ impl AddressRouter {
         &self,
         address: String,
         routing: Routing,
-    ) -> (SubscriptionId, DeliveryReceiver) {
+    ) -> Option<(SubscriptionId, DeliveryReceiver)> {
         // Unbounded on purpose: link credit keeps messages on the broker rather than dropping or
         // blocking them, and a bounded channel would be the wrong shape for that.
         let (sender, receiver) = mpsc::unbounded_channel();
         let id = SubscriptionId(self.next_id.fetch_add(1, Ordering::Relaxed));
-        self.state().subscriptions.insert(
+        let mut state = self.state();
+        if state.closed {
+            return None;
+        }
+        state.subscriptions.insert(
             id,
             Subscription {
                 address,
@@ -90,7 +97,23 @@ impl AddressRouter {
                 sender,
             },
         );
-        (id, receiver)
+        drop(state);
+        Some((id, receiver))
+    }
+
+    /// How many queue and topic subscriptions are attached to `address` now.
+    pub(crate) fn termini(&self, address: &str) -> (usize, usize) {
+        let state = self.state();
+        let on = || {
+            state
+                .subscriptions
+                .values()
+                .filter(|sub| sub.address == address)
+        };
+        let anycast = on().filter(|sub| sub.routing == Routing::Anycast).count();
+        let multicast = on().filter(|sub| sub.routing == Routing::Multicast).count();
+        drop(state);
+        (anycast, multicast)
     }
 
     /// Removes a subscription. No-op if the id is unknown (the transport already closed).
@@ -106,10 +129,13 @@ impl AddressRouter {
         address: &str,
         delivery: &Delivery,
         coordinator: Option<&Coordinator>,
-    ) {
+    ) -> bool {
         let snapshot = RawMessage::new(address.to_owned(), delivery.payload.clone())
             .with_headers(delivery.headers.clone());
         let mut state = self.state();
+        if state.closed {
+            return false;
+        }
         state
             .log
             .entry(address.to_owned())
@@ -122,6 +148,7 @@ impl AddressRouter {
         }
         hand_to_one(&mut state, address, delivery, coordinator);
         drop(state);
+        true
     }
 
     /// Returns a released delivery to the subscription that had it, or, when that one is gone, to
@@ -152,6 +179,7 @@ impl AddressRouter {
     /// The log stays readable.
     pub(crate) fn close(&self) {
         let mut state = self.state();
+        state.closed = true;
         state.subscriptions.clear();
         state.anycast_turn.clear();
     }
@@ -190,9 +218,14 @@ fn hand_to_one(
 
 /// Sends one delivery, counting it with the harness when it was taken.
 fn send(sender: &DeliverySender, delivery: Delivery, coordinator: Option<&Coordinator>) -> bool {
-    let sent = sender.send(delivery).is_ok();
-    if sent && let Some(coordinator) = coordinator {
+    // Counted before the send: a consumer on another task may settle the delivery, and release
+    // its count, before `send` returns here.
+    if let Some(coordinator) = coordinator {
         coordinator.enqueued();
+    }
+    let sent = sender.send(delivery).is_ok();
+    if !sent && let Some(coordinator) = coordinator {
+        coordinator.consumed();
     }
     sent
 }
