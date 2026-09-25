@@ -150,6 +150,9 @@ struct Pump {
 }
 
 /// A `RecvError` that poisons only one delivery; the link keeps going.
+///
+/// An oversized delivery is one of them: the client has already rejected it with
+/// `amqp:link:message-size-exceeded` and left the link attached.
 fn is_per_message(err: &RecvError) -> bool {
     matches!(
         err,
@@ -157,6 +160,7 @@ fn is_per_message(err: &RecvError) -> bool {
             | RecvError::DeliveryIdIsNone
             | RecvError::DeliveryTagIsNone
             | RecvError::InconsistentFieldInMultiFrameDelivery
+            | RecvError::MessageSizeExceeded(_)
     )
 }
 
@@ -280,4 +284,31 @@ async fn apply(receiver: &FeReceiver, cmd: SettleCmd) {
     let _ = cmd
         .done
         .send(result.map_err(|e| AckError::Broker(box_err(e))));
+}
+
+#[cfg(test)]
+mod tests {
+    use fe2o3_amqp::link::{MessageSizeExceeded, RecvError};
+
+    use super::is_per_message;
+
+    /// The client rejects a delivery larger than the link's `max-message-size` itself, with
+    /// `amqp:link:message-size-exceeded`, and keeps the link attached. The subscription reports
+    /// that delivery and keeps receiving; ending it would stop a service over one message.
+    #[test]
+    fn an_oversized_delivery_does_not_end_the_subscription() {
+        let oversized = RecvError::MessageSizeExceeded(MessageSizeExceeded {
+            size: 2048,
+            max_size: 1024,
+        });
+
+        assert!(is_per_message(&oversized));
+    }
+
+    /// A peer that sends past the credit it was given breaks the link's flow control, which no
+    /// single delivery explains, so the subscription ends.
+    #[test]
+    fn a_transfer_beyond_the_credit_ends_the_subscription() {
+        assert!(!is_per_message(&RecvError::TransferLimitExceeded));
+    }
 }
