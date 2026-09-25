@@ -447,15 +447,25 @@ impl InProcess for AmqpBroker {
     fn connect_in_process(
         self,
     ) -> impl Future<Output = Result<Self::Connected, Self::Error>> + Send {
-        let connected = in_process::check_url(&self.url).map(|()| {
+        let connected = in_process::check_url(&self.url).and_then(|()| {
             let fresh = Link::InProcess(Arc::new(Bus::default()));
             // A clone of this broker connected earlier filled the cell already; its handles and
-            // this connected form then share that transport, as they share a connection.
+            // this connected form then share that transport, as they share a connection. A clone
+            // connected live filled it with a connection the harness cannot drive.
             let link = match self.cell.set(fresh.clone()) {
                 Ok(()) => fresh,
-                Err(_) => self.cell.get().cloned().unwrap_or(fresh),
+                Err(_) => match self.cell.get().cloned() {
+                    Some(Link::Amqp(_)) => {
+                        return Err(AmqpError::Connect(Box::from(
+                            "a clone of this broker is connected to a server already, so it \
+                             cannot connect in process",
+                        )));
+                    }
+                    Some(link) => link,
+                    None => fresh,
+                },
             };
-            ConnectedAmqpBroker::new(link, self.cell)
+            Ok(ConnectedAmqpBroker::new(link, self.cell))
         });
         ready(connected)
     }
@@ -701,12 +711,20 @@ impl TestableBroker for ConnectedAmqpBroker {
             .enumerate()
             .filter(|(_, name)| **name == destination)
             .map(|(position, _)| position);
-        let termini = self
-            .termini
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .get(destination)
-            .copied();
+        // In process the router says who is attached now; a live connection has only what it
+        // opened.
+        let termini = match &self.link {
+            Link::InProcess(bus) => {
+                let (anycast, multicast) = bus.termini(destination);
+                Some(Termini { anycast, multicast })
+            }
+            Link::Amqp(_) => self
+                .termini
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .get(destination)
+                .copied(),
+        };
         match termini {
             Some(Termini { anycast, multicast }) => {
                 same_name.take(multicast + anycast.min(1)).collect()

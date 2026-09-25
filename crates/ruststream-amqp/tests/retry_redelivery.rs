@@ -19,7 +19,8 @@ use std::time::Duration;
 // derive is the macro `ruststream::Outgoing` the prelude carries, the value is the type
 // `ruststream::runtime::Outgoing`.
 use ruststream::runtime::{Outgoing, PublishContext, RETRY_COUNT_HEADER};
-use ruststream::testing::{Outcome, TestApp};
+use ruststream::testing::{InProcess, Outcome, TestApp};
+use ruststream::{Broker, ConnectedBroker};
 use ruststream_amqp::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -213,24 +214,37 @@ async fn a_deferred_retry_comes_back_in_process() {
     a_deferred_retry_comes_back(tb).await;
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_deferred_retry_comes_back_live() {
-    let Some(url) = test_url() else { return };
-    let tb = TestApp::start_live(app(&url))
-        .await
-        .expect("startup failed");
-    a_deferred_retry_comes_back(tb).await;
-}
-
 #[tokio::test(start_paused = true)]
 async fn a_capped_registration_dead_letters_in_process() {
     let tb = TestApp::start(app(URL)).await.expect("startup failed");
     a_capped_registration_dead_letters_the_spent_delivery(tb).await;
 }
 
+// A broker whose clone is connected to a server cannot also connect in process: the harness
+// could not drive the connection the two would share.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_capped_registration_dead_letters_live() {
+async fn a_broker_connected_live_does_not_connect_in_process() {
     let Some(url) = test_url() else { return };
+    let broker = AmqpBroker::new(&url);
+    let live = broker.clone().connect().await.expect("connect live");
+    let refused = broker.connect_in_process().await;
+    assert!(
+        refused.is_err(),
+        "the live connection was reused in process"
+    );
+    live.shutdown().await.expect("shutdown");
+}
+
+// One live test runs both cases, each on an app of its own and one after the other: every app
+// subscribes to every address, and two apps running at once would compete for each other's
+// messages on the shared queues.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_retry_cases_hold_live() {
+    let Some(url) = test_url() else { return };
+    let tb = TestApp::start_live(app(&url))
+        .await
+        .expect("startup failed");
+    a_deferred_retry_comes_back(tb).await;
     let tb = TestApp::start_live(app(&url))
         .await
         .expect("startup failed");

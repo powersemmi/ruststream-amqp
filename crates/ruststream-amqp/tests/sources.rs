@@ -382,3 +382,23 @@ async fn the_routing_answer_is_one_queue_consumer_and_every_topic_subscription()
     assert_eq!(broker.routes("news", &names), [2, 3]);
     assert!(broker.routes("nowhere", &names).is_empty());
 }
+
+// A subscription that detached no longer counts: the answer follows the subscriptions attached
+// now, which are the ones the transport delivers to.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_detached_subscription_leaves_the_routing_answer() {
+    let broker = in_process().await;
+    let _queue = broker
+        .subscribe_address(AmqpAddress::queue("mixed"))
+        .await
+        .expect("the queue subscription opens");
+    let topic = broker
+        .subscribe_address(AmqpAddress::topic("mixed"))
+        .await
+        .expect("the topic subscription opens");
+    let names = ["mixed", "mixed"];
+    assert_eq!(broker.routes("mixed", &names), [0, 1]);
+
+    drop(topic);
+    assert_eq!(broker.routes("mixed", &names), [0]);
+}
