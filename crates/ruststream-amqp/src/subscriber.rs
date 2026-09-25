@@ -56,10 +56,8 @@ impl AmqpSubscriber {
         core: &AmqpCore,
         mut session: SessionHandle<()>,
         address: AmqpAddress,
+        guard: PumpGuard,
     ) -> Result<Self, AmqpError> {
-        // Taken before the link attaches, so a subscription that opens races no shutdown: once
-        // the guard is out, the connection waits for this pump before it closes.
-        let guard = core.pumps.guard()?;
         let at_most_once = is_at_most_once(address.settle_value());
         let credit = address.credit_value();
         let receiver = FeReceiver::builder()
@@ -230,7 +228,7 @@ async fn pump(mut p: Pump) {
                                 if !p.at_most_once {
                                     let _ = p.receiver.reject(info, None).await;
                                 }
-                                if p.out.send(Err(err)).await.is_err() {
+                                if !deliver(&p.out, &mut p.guard.stop, Err(err)).await {
                                     break false;
                                 }
                             }
@@ -241,16 +239,16 @@ async fn pump(mut p: Pump) {
                             address: p.address.clone(),
                             source: box_err(err),
                         });
-                        if p.out.send(item).await.is_err() {
+                        if !deliver(&p.out, &mut p.guard.stop, item).await {
                             break false;
                         }
                     }
                     Err(err) => {
-                        let _ = p.out.send(Err(AmqpError::Receive {
+                        let error = Err(AmqpError::Receive {
                             address: p.address.clone(),
                             source: box_err(err),
-                        }))
-                        .await;
+                        });
+                        deliver(&p.out, &mut p.guard.stop, error).await;
                         break true;
                     }
                 },
@@ -287,6 +285,21 @@ async fn pump(mut p: Pump) {
 }
 
 /// Resolves once the connection shuts down, or once it is gone altogether.
+/// Hands `item` to the subscriber, waiting for channel capacity only until shutdown: a
+/// subscriber that stopped polling a full channel must not hold the connection open. `false`
+/// when the subscriber is gone or the connection is shutting down.
+async fn deliver(
+    out: &mpsc::Sender<Result<AmqpMessage, AmqpError>>,
+    stop: &mut watch::Receiver<bool>,
+    item: Result<AmqpMessage, AmqpError>,
+) -> bool {
+    tokio::select! {
+        biased;
+        () = stopped(stop) => false,
+        sent = out.send(item) => sent.is_ok(),
+    }
+}
+
 async fn stopped(stop: &mut watch::Receiver<bool>) {
     // An error means the connection's state was dropped, which ends the pump as surely as a
     // shutdown does. The value is dropped here rather than returned: it borrows the channel and

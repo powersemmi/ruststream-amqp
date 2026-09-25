@@ -349,6 +349,7 @@ jobs:
           --test conformance_amqp
           --test live_descriptor
           --test live_retry
+          --test live_shutdown
           -- --test-threads=1
 
       - name: Cleanup

@@ -454,6 +454,10 @@ impl ConnectedAmqpBroker {
     ) -> Result<AmqpSubscriber, AmqpError> {
         address.validate()?;
         self.core.ensure_open()?;
+        // Taken before the session begins, so a subscription opening on one handle races no
+        // shutdown on another: once the guard is out, the connection waits for this session
+        // before it closes, and once shutdown has begun no session begins.
+        let guard = self.core.pumps.guard()?;
 
         // Each subscription runs on its own session: flow-control windows are per session, so a
         // slow consumer must not share one with the publishers or with other subscriptions.
@@ -464,7 +468,7 @@ impl ConnectedAmqpBroker {
                 .map_err(|e| AmqpError::Session(box_err(e)))?
         };
 
-        let subscriber = AmqpSubscriber::attach(&self.core, session, address).await?;
+        let subscriber = AmqpSubscriber::attach(&self.core, session, address, guard).await?;
         Ok(subscriber)
     }
 
