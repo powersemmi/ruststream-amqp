@@ -1,9 +1,9 @@
 //! Conformance: the suites the in-process transport can answer for on its own, and every suite
 //! again against a real broker (gated behind `AMQP_TEST_URL`).
 //!
-//! The stand-in now carries the production descriptor and the production publish policies, so the
-//! framework's own contract suites run against it unchanged - which is what keeps its emulation
-//! honest rather than merely compiling.
+//! The in-process half runs the production broker through its in-process mode, so the descriptor
+//! and the publish policies under test are the ones a service ships: the framework's own contract
+//! suites keep the in-process transport honest rather than merely compiling.
 //!
 //! Start a broker for the gated half with `just brokers-up` (`ActiveMQ` Artemis), then:
 //! `AMQP_TEST_URL=amqp://guest:guest@127.0.0.1:5672 cargo test --all-features`.
@@ -11,11 +11,19 @@
 #![cfg(feature = "testing")]
 
 use ruststream::Name;
+use ruststream::conformance::harness::InProcessBroker;
 use ruststream::conformance::{capabilities, harness};
-use ruststream_amqp::testing::{AmqpTestBroker, ConnectedAmqpTestBroker};
 use ruststream_amqp::{AmqpAddress, AmqpBroker, Sasl};
 
 mod live;
+
+/// The broker's address in process; the in-process mode dials nothing.
+const URL: &str = "amqp://broker.example.com:5672";
+
+/// The production broker, connected in process by the suites that call `connect`.
+fn in_process() -> InProcessBroker<AmqpBroker> {
+    InProcessBroker::new(AmqpBroker::new(URL))
+}
 
 /// The broker URL, or `None` to skip. Under `RUSTSTREAM_REQUIRE_LIVE` a missing one is a failure.
 fn test_url() -> Option<String> {
@@ -23,30 +31,31 @@ fn test_url() -> Option<String> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn amqp_test_broker_passes_conformance_suite() {
-    harness::run_suite(AmqpTestBroker::new).await;
+async fn in_process_passes_conformance_suite() {
+    harness::run_suite(|| AmqpBroker::new(URL)).await;
 }
 
-/// Both brokers batch through the same client-side buffer, so the in-process one proves the
+/// Both transports batch through the same client-side buffer, so the in-process one proves the
 /// contract - a batch never longer than the size it was opened with - without a server.
+#[allow(clippy::redundant_closure_for_method_calls)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn amqp_test_broker_passes_batches_suite() {
+async fn in_process_passes_batches_suite() {
     capabilities::batches(
-        AmqpTestBroker::new,
+        in_process,
         |name| Name::new(name.to_owned()),
-        ConnectedAmqpTestBroker::publisher,
+        |connected| connected.publisher(),
     )
     .await;
 }
 
 /// The whole ladder in process, through the production descriptor: sync `new`, `connect`,
 /// subscribe, publish, receive, ack, `shutdown`, and a publisher that aliased the transport
-/// reporting an error afterwards rather than routing into a dead router.
+/// reporting an error afterwards rather than routing into a closed transport.
 #[allow(clippy::redundant_closure, clippy::redundant_closure_for_method_calls)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn amqp_test_broker_passes_lifecycle() {
+async fn in_process_passes_lifecycle() {
     harness::lifecycle(
-        AmqpTestBroker::new,
+        in_process,
         |name| AmqpAddress::queue(name),
         |connected| connected.publisher(),
     )
@@ -58,9 +67,9 @@ async fn amqp_test_broker_passes_lifecycle() {
 /// copy exactly like that, so an address reaching nothing would lose every delayed message.
 #[allow(clippy::redundant_closure, clippy::redundant_closure_for_method_calls)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn amqp_test_broker_reports_a_redelivery_address_that_arrives() {
+async fn in_process_reports_a_redelivery_address_that_arrives() {
     harness::redelivery_address(
-        AmqpTestBroker::new,
+        in_process,
         |name| AmqpAddress::queue(name),
         |connected| connected.publisher(),
     )
@@ -85,9 +94,9 @@ fn amqp_broker_describes_itself_without_credentials() {
 /// must fail once its timeout elapses instead of hanging or resolving with someone else's reply.
 #[allow(clippy::redundant_closure, clippy::redundant_closure_for_method_calls)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn amqp_test_broker_passes_request_reply_suite() {
+async fn in_process_passes_request_reply_suite() {
     capabilities::request_reply(
-        AmqpTestBroker::new,
+        in_process,
         |name| AmqpAddress::queue(name),
         |connected| connected.publisher(),
         |connected| connected.publisher(),
@@ -101,9 +110,9 @@ async fn amqp_test_broker_passes_request_reply_suite() {
 #[cfg(feature = "transaction")]
 #[allow(clippy::redundant_closure, clippy::redundant_closure_for_method_calls)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn amqp_test_broker_passes_transactions_suite() {
+async fn in_process_passes_transactions_suite() {
     capabilities::transactions(
-        AmqpTestBroker::new,
+        in_process,
         |name| AmqpAddress::queue(name),
         |connected| connected.transactional_publisher(),
     )

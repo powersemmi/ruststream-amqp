@@ -12,8 +12,8 @@ keywords = ["amqp", "amqp10", "messaging", "broker", "ruststream"]
 categories = ["asynchronous", "network-programming"]
 
 # `default` is empty and every module beyond the plain broker is behind a feature, so a default
-# build on docs.rs publishes a reference with the transactional publisher, the in-process test
-# broker and the AsyncAPI bindings missing - the ones the crate overview sends readers to.
+# build on docs.rs publishes a reference with the transactional publisher, the in-process mode
+# and the AsyncAPI bindings missing - the ones the crate overview sends readers to.
 [package.metadata.docs.rs]
 all-features = true
 
@@ -27,8 +27,9 @@ rustls = ["fe2o3-amqp/rustls"]
 native-tls = ["fe2o3-amqp/native-tls"]
 # AMQP 1.0 transactions (transactional posting) behind the client's own gate.
 transaction = ["fe2o3-amqp/transaction"]
-# The in-process test broker (TestableBroker + TestApp support). The conformance harness is a
-# broker-author tool and stays in this repo's dev-dependencies, not in the user-facing feature.
+# The broker's in-process mode: `TestApp::start` connects `AmqpBroker` without a server. A service
+# enables it in its dev-dependencies. The conformance harness is a broker-author tool and stays in
+# this repo's dev-dependencies, not in the user-facing feature.
 testing = ["ruststream/testing"]
 # What this crate contributes to a generated AsyncAPI document: the server coordinate's binding,
 # the channel binding of a subscription, and the send operation's binding of a publish policy.
