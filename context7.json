@@ -9,6 +9,6 @@
     "`HandlerOutcome::retry()` sends `modified` with `delivery-failed` so the broker counts the attempt, `drop()` sends `reject`, and on an at-most-once subscription both report `AckError::Unsupported`.",
     "Reach the transactional surface only through `TransactionalPublish` (feature `transaction`): the handle carries at most one broker-side transaction, and a second `begin_transaction` or a commit with nothing open is an error.",
     "Use `request(msg, timeout)` on a `RequestReply` publisher for native request/reply, and answer from a handler through an injected slot with `.to(reply_to)`, since the reply address is new for every request.",
-    "Test with `ruststream::testing::TestApp` over `ruststream_amqp::testing::AmqpTestBroker` (feature `testing`), mounting the production declaration unchanged; storage, broker-side redelivery, durability and flow control are not emulated, so those assertions belong in the live suite."
+    "Test the production app: with feature `testing`, hand the builder `main` runs to `ruststream::testing::TestApp::start`, which connects `AmqpBroker` in process, and address it as `tb.broker::<AmqpBroker>()`; `TestApp::start_live` runs the same test against a real broker, which is where an address's storage, link credit and the server's dead-letter policy are exercised."
   ]
 }

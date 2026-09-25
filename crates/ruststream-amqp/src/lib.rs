@@ -7,12 +7,12 @@ mod bindings;
 mod broker;
 mod config;
 mod error;
+#[cfg(feature = "testing")]
+mod in_process;
 mod message;
 pub mod prelude;
 mod publisher;
 mod subscriber;
-#[cfg(feature = "testing")]
-pub mod testing;
 #[cfg(feature = "transaction")]
 mod txn;
 

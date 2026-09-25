@@ -6,6 +6,14 @@
 //! [`TransactionalPublisher`] kind (one broker-side transaction per handle) and leaves
 //! transactional retirement (acks) and acquisition out.
 
+// Without the `testing` feature a connection link has one variant, so a `match` on it has a
+// single arm; the matches stay so that the in-process arm has its place when the feature is on.
+#![cfg_attr(
+    not(feature = "testing"),
+    allow(clippy::infallible_destructuring_match)
+)]
+
+use std::fmt;
 use std::future::{Future, ready};
 use std::sync::Arc;
 
@@ -22,8 +30,10 @@ use ruststream::{OutgoingFor, PairError, PublishPolicy, Publisher, Take, Transac
 use crate::bindings;
 use tokio::sync::Mutex;
 
-use crate::broker::{AmqpCore, ConnectedAmqpBroker};
+use crate::broker::{AmqpCore, ConnectedAmqpBroker, Link};
 use crate::error::{AmqpError, box_err};
+#[cfg(feature = "testing")]
+use crate::in_process::TxnBuffer;
 use crate::message::to_amqp_message;
 use crate::publisher::accepted;
 
@@ -73,47 +83,20 @@ impl PublishPolicy<ConnectedAmqpBroker> for AmqpTransactionalPublish {
     }
 }
 
-/// The transactional policy pairs on the in-process broker as well, into a publisher that buffers
-/// until the commit. The split is preserved there: this policy is still the only way to reach a
-/// transactional surface, so a mount that compiles against the stand-in compiles against a server.
-#[cfg(feature = "testing")]
-impl PublishPolicy<crate::testing::ConnectedAmqpTestBroker> for AmqpTransactionalPublish {
-    type Live = crate::testing::AmqpTestTxnPublisher;
-
-    fn pair(
-        self,
-        connected: &crate::testing::ConnectedAmqpTestBroker,
-    ) -> impl Future<Output = Result<Self::Live, PairError>> {
-        ready(Ok(connected.transactional_publisher()))
-    }
-
-    /// The sender link this policy attaches puts its target on the destination the document
-    /// reports, and the extension names that node address.
-    #[cfg(feature = "asyncapi")]
-    fn channel_bindings(&self, channel: &str) -> Bindings {
-        bindings::target(channel)
-    }
-
-    /// A send here is posted under a broker-side transaction and becomes visible on the commit,
-    /// which is the one thing this operation does differently from a plain publish. How the send
-    /// is posted does not vary with the destination, so the name is not read here.
-    #[cfg(feature = "asyncapi")]
-    fn operation_bindings(&self, _channel: &str) -> Bindings {
-        bindings::transactional_posting()
-    }
-
-    #[cfg(feature = "asyncapi")]
-    fn reply_address_location(&self) -> Option<&'static str> {
-        Some(bindings::REPLY_ADDRESS_LOCATION)
-    }
-}
-
 impl ConnectedAmqpBroker {
     /// A transactional publisher from the connected form; synchronous, the transaction is
     /// declared by `begin_transaction`.
     #[must_use]
     pub fn transactional_publisher(&self) -> AmqpTxnPublisher {
-        AmqpTxnPublisher::new(Arc::clone(&self.core))
+        let transport = match &self.link {
+            Link::Amqp(core) => Transport::Amqp(AmqpTxn {
+                core: Arc::clone(core),
+                txn: Mutex::new(None),
+            }),
+            #[cfg(feature = "testing")]
+            Link::InProcess(bus) => Transport::InProcess(TxnBuffer::new(Arc::clone(bus))),
+        };
+        AmqpTxnPublisher { transport }
     }
 }
 
@@ -124,22 +107,34 @@ impl ConnectedAmqpBroker {
 /// transaction, a second `begin_transaction` while one is open errors, and `commit`/`abort`
 /// with no open transaction error - never a silent no-op.
 pub struct AmqpTxnPublisher {
+    transport: Transport,
+}
+
+/// What a transactional publisher posts over: a controller on the live connection, or, under the
+/// `testing` feature, the in-process transport's buffer.
+///
+/// Without the feature there is one variant, so the type is the live state itself.
+// The live state is the larger variant on purpose: it is the one a production build has, and
+// boxing it would put an allocation on the service's own path to shrink a test build.
+#[cfg_attr(feature = "testing", allow(clippy::large_enum_variant))]
+enum Transport {
+    Amqp(AmqpTxn),
+    #[cfg(feature = "testing")]
+    InProcess(TxnBuffer),
+}
+
+#[cfg(not(feature = "testing"))]
+const _: () = assert!(size_of::<Transport>() == size_of::<AmqpTxn>());
+
+/// The live state: the connection, and the broker-side transaction open on it.
+struct AmqpTxn {
     core: Arc<AmqpCore>,
     txn: Mutex<Option<OwnedTransaction>>,
 }
 
-impl std::fmt::Debug for AmqpTxnPublisher {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for AmqpTxnPublisher {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AmqpTxnPublisher").finish_non_exhaustive()
-    }
-}
-
-impl AmqpTxnPublisher {
-    pub(crate) fn new(core: Arc<AmqpCore>) -> Self {
-        Self {
-            core,
-            txn: Mutex::new(None),
-        }
     }
 }
 
@@ -158,13 +153,18 @@ impl Publisher for AmqpTxnPublisher {
         msg: OutgoingFor<'_, Take>,
         _options: Option<&Self::Options>,
     ) -> Result<(), Self::Error> {
-        self.core.ensure_open()?;
+        let live = match &self.transport {
+            Transport::Amqp(live) => live,
+            #[cfg(feature = "testing")]
+            Transport::InProcess(buffer) => return buffer.publish(msg),
+        };
+        live.core.ensure_open()?;
         // The destination is the caller's string and outlives the message the conversion takes.
         let address = msg.name();
-        let sender = self.core.sender_for(address).await?;
+        let sender = live.core.sender_for(address).await?;
         let message = to_amqp_message(msg);
 
-        let txn = self.txn.lock().await;
+        let txn = live.txn.lock().await;
         if let Some(txn) = txn.as_ref() {
             let outcome = sender
                 .with(async |sender| {
@@ -188,8 +188,13 @@ impl TransactionalPublisher for AmqpTxnPublisher {
     // The slot guard intentionally spans the declare so two begins cannot race an open slot.
     #[allow(clippy::significant_drop_tightening)]
     async fn begin_transaction(&self) -> Result<(), Self::Error> {
-        self.core.ensure_open()?;
-        let mut slot = self.txn.lock().await;
+        let live = match &self.transport {
+            Transport::Amqp(live) => live,
+            #[cfg(feature = "testing")]
+            Transport::InProcess(buffer) => return buffer.begin(),
+        };
+        live.core.ensure_open()?;
+        let mut slot = live.txn.lock().await;
         if slot.is_some() {
             // A rejected begin leaves the open transaction untouched, per the trait contract.
             return Err(AmqpError::Transaction(
@@ -197,13 +202,13 @@ impl TransactionalPublisher for AmqpTxnPublisher {
             ));
         }
         let txn = {
-            let mut session = self.core.session.lock().await;
+            let mut session = live.core.session.lock().await;
             // The control link is attached with snd-settle-mode Mixed rather than through
             // `OwnedTransaction::declare`, which hardcodes Unsettled: the client requires the
             // broker to echo the mode verbatim, and ActiveMQ Artemis answers Mixed. Declare and
             // discharge transfers are still sent unsettled per transfer, as the spec requires.
             let controller = Controller::builder()
-                .name(self.core.link_name("txn"))
+                .name(live.core.link_name("txn"))
                 .coordinator(Coordinator::default())
                 .sender_settle_mode(SenderSettleMode::Mixed)
                 .attach(&mut session)
@@ -218,7 +223,12 @@ impl TransactionalPublisher for AmqpTxnPublisher {
     }
 
     async fn commit(&self) -> Result<(), Self::Error> {
-        let txn = self.txn.lock().await.take().ok_or_else(|| {
+        let live = match &self.transport {
+            Transport::Amqp(live) => live,
+            #[cfg(feature = "testing")]
+            Transport::InProcess(buffer) => return buffer.commit(),
+        };
+        let txn = live.txn.lock().await.take().ok_or_else(|| {
             AmqpError::Transaction("no transaction is open on this publisher".into())
         })?;
         // A failed discharge has still consumed the transaction: the slot stays empty and the
@@ -229,7 +239,12 @@ impl TransactionalPublisher for AmqpTxnPublisher {
     }
 
     async fn abort(&self) -> Result<(), Self::Error> {
-        let txn = self.txn.lock().await.take().ok_or_else(|| {
+        let live = match &self.transport {
+            Transport::Amqp(live) => live,
+            #[cfg(feature = "testing")]
+            Transport::InProcess(buffer) => return buffer.abort(),
+        };
+        let txn = live.txn.lock().await.take().ok_or_else(|| {
             AmqpError::Transaction("no transaction is open on this publisher".into())
         })?;
         txn.rollback()

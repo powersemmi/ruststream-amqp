@@ -36,8 +36,8 @@ at-most-once, диспозиция для каждого исхода обраб
 политики публикации, запрос и ответ по динамической обратной связи и транзакционная отправка.
 Дальше -
 [сгенерированный документ](https://docs.rs/ruststream-amqp/latest/ruststream_amqp/index.html#the-generated-document),
-[тестирование](https://docs.rs/ruststream-amqp/latest/ruststream_amqp/index.html#testing) на
-брокере внутри процесса и
+[тестирование](https://docs.rs/ruststream-amqp/latest/ruststream_amqp/index.html#testing)
+рабочего приложения внутри процесса или на работающем брокере и
 [эксплуатация](https://docs.rs/ruststream-amqp/latest/ruststream_amqp/index.html#operations):
 аутентификация, TLS, сеансы и известные ограничения.
 

@@ -1,10 +1,11 @@
 //! [`AmqpPublisher`], its [`AmqpPublish`] policy, and native request/reply.
 
+use std::fmt;
 use std::future::{Future, ready};
 use std::sync::Arc;
 use std::time::Duration;
 
-use fe2o3_amqp_types::messaging::{Message, Outcome, Properties};
+use fe2o3_amqp_types::messaging::{Data, Message, Outcome, Properties};
 #[cfg(feature = "asyncapi")]
 use ruststream::asyncapi::Bindings;
 use ruststream::{OutgoingFor, PairError, PublishPolicy, Publisher, RequestReply, Take};
@@ -12,8 +13,10 @@ use ruststream::{OutgoingFor, PairError, PublishPolicy, Publisher, RequestReply,
 #[cfg(feature = "asyncapi")]
 use crate::bindings;
 
-use crate::broker::{AmqpCore, ConnectedAmqpBroker, CoreCell, SenderLink};
+use crate::broker::{AmqpCore, ConnectedAmqpBroker, CoreCell, Link, SenderLink};
 use crate::error::{AmqpError, box_err};
+#[cfg(feature = "testing")]
+use crate::in_process;
 use crate::message::{AmqpMessage, headers_from_amqp, payload_from_body, to_amqp_message};
 
 /// Publishes messages to `AMQP` addresses, one sender link per address, attached lazily on the
@@ -27,8 +30,8 @@ pub struct AmqpPublisher {
     cell: CoreCell,
 }
 
-impl std::fmt::Debug for AmqpPublisher {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for AmqpPublisher {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AmqpPublisher").finish_non_exhaustive()
     }
 }
@@ -38,11 +41,16 @@ impl AmqpPublisher {
         Self { cell }
     }
 
-    fn core(&self) -> Result<&Arc<AmqpCore>, AmqpError> {
-        let core = self.cell.get().ok_or(AmqpError::NotConnected)?;
-        core.ensure_open()?;
-        Ok(core)
+    /// What this publisher speaks over, once `connect` has filled the broker's cell.
+    fn link(&self) -> Result<&Link, AmqpError> {
+        self.cell.get().ok_or(AmqpError::NotConnected)
     }
+}
+
+/// The live connection behind a link, checked open.
+fn open(core: &Arc<AmqpCore>) -> Result<&Arc<AmqpCore>, AmqpError> {
+    core.ensure_open()?;
+    Ok(core)
 }
 
 /// Sends one built message over a shared sender link and maps a non-accepted outcome to an
@@ -50,7 +58,7 @@ impl AmqpPublisher {
 pub(crate) async fn send_message(
     link: &SenderLink,
     address: &str,
-    message: Message<fe2o3_amqp_types::messaging::Data>,
+    message: Message<Data>,
 ) -> Result<(), AmqpError> {
     let outcome = link
         .with(async |sender| {
@@ -88,7 +96,11 @@ impl Publisher for AmqpPublisher {
         msg: OutgoingFor<'_, Take>,
         _options: Option<&Self::Options>,
     ) -> Result<(), Self::Error> {
-        let core = self.core()?;
+        let core = match self.link()? {
+            Link::Amqp(core) => open(core)?,
+            #[cfg(feature = "testing")]
+            Link::InProcess(bus) => return in_process::publish(bus, msg),
+        };
         // The destination is the caller's string and outlives the message the conversion takes.
         let address = msg.name();
         let sender = core.sender_for(address).await?;
@@ -104,7 +116,11 @@ impl RequestReply for AmqpPublisher {
         msg: OutgoingFor<'_, Take>,
         timeout: Duration,
     ) -> Result<Self::Reply, Self::Error> {
-        let core = self.core()?;
+        let core = match self.link()? {
+            Link::Amqp(core) => open(core)?,
+            #[cfg(feature = "testing")]
+            Link::InProcess(bus) => return in_process::request(bus, msg, timeout).await,
+        };
 
         // A dynamic receiver per request: the broker names a private reply address that lives
         // as long as the link. Simple and correct; a shared reply link is a later optimisation.
@@ -182,44 +198,6 @@ impl PublishPolicy<ConnectedAmqpBroker> for AmqpPublish {
     fn pair(
         self,
         connected: &ConnectedAmqpBroker,
-    ) -> impl Future<Output = Result<Self::Live, PairError>> {
-        ready(Ok(connected.publisher()))
-    }
-
-    /// The sender link this policy attaches puts its target on the destination the document
-    /// reports, and the extension names that node address.
-    #[cfg(feature = "asyncapi")]
-    fn channel_bindings(&self, channel: &str) -> Bindings {
-        bindings::target(channel)
-    }
-
-    /// A publish here waits for the peer's disposition and reports anything but `accepted` as an
-    /// error, which is what a reader of the document needs to know about this operation. How the
-    /// send is posted does not vary with the destination, so the name is not read here.
-    #[cfg(feature = "asyncapi")]
-    fn operation_bindings(&self, _channel: &str) -> Bindings {
-        bindings::confirmed_posting()
-    }
-
-    /// A request made through this policy carries the `AMQP` `reply-to` property, and a handler
-    /// reads it as the `reply-to` header, so a reply routed per delivery is routed from there.
-    #[cfg(feature = "asyncapi")]
-    fn reply_address_location(&self) -> Option<&'static str> {
-        Some(bindings::REPLY_ADDRESS_LOCATION)
-    }
-}
-
-/// The policy pairs on the in-process broker as well, so a routes file mounts
-/// `.out_reply(Publish)` on either broker with no test-only policy standing in for this one. It
-/// carries no settings, so nothing is silently dropped in the crossing; the live form differs, and
-/// [`AmqpTestPublisher`](crate::testing::AmqpTestPublisher) documents what it reproduces.
-#[cfg(feature = "testing")]
-impl PublishPolicy<crate::testing::ConnectedAmqpTestBroker> for AmqpPublish {
-    type Live = crate::testing::AmqpTestPublisher;
-
-    fn pair(
-        self,
-        connected: &crate::testing::ConnectedAmqpTestBroker,
     ) -> impl Future<Output = Result<Self::Live, PairError>> {
         ready(Ok(connected.publisher()))
     }

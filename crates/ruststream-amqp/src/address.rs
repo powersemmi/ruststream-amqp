@@ -22,8 +22,6 @@ use crate::bindings;
 use crate::broker::ConnectedAmqpBroker;
 use crate::error::AmqpError;
 use crate::subscriber::AmqpSubscriber;
-#[cfg(feature = "testing")]
-use crate::testing::{AmqpTestSubscriber, ConnectedAmqpTestBroker};
 
 /// Default protocol-level credit (prefetch) granted to a subscription.
 pub const DEFAULT_CREDIT: NonZeroU32 = nonzero!(256);
@@ -53,7 +51,7 @@ enum Kind {
 /// How the subscriptions on one address share its traffic: the terminus capability seen from the
 /// consuming end.
 ///
-/// This is the difference between a work queue and a broadcast, so the in-process broker
+/// This is the difference between a work queue and a broadcast, so the in-process transport
 /// reproduces it instead of handing every message to everyone and hoping the deployment agrees.
 #[cfg(feature = "testing")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -223,11 +221,11 @@ impl AmqpAddress {
         RedeliveryAddress::new(self.address.clone())
     }
 
-    /// How this descriptor's terminus shares the address's traffic, for the in-process broker.
+    /// How this descriptor's terminus shares the address's traffic, for the in-process transport.
     ///
     /// `queue` competes, `topic` fans out. A `raw` address declares no capability, so on a server
     /// the peer's own configuration decides; in process there is no configuration to consult, and
-    /// the stand-in delivers each message once rather than inventing a fan-out the deployment may
+    /// the transport delivers each message once rather than inventing a fan-out the deployment may
     /// not have. A service that wants the broadcast asserted says `topic`, which is also what the
     /// products needing the capability have to be told.
     #[cfg(feature = "testing")]
@@ -250,8 +248,8 @@ impl AmqpAddress {
     /// What this subscription tells a reader of the generated document: the node it reads, the
     /// terminus it asked for, and the link it reads over.
     ///
-    /// One answer serves both brokers, so a document built against the in-process broker says
-    /// what the deployment's does.
+    /// The answer does not depend on the transport, so a document built from a test says what the
+    /// deployment's does.
     #[cfg(feature = "asyncapi")]
     fn describe_channel(&self) -> Bindings {
         bindings::channel(
@@ -304,45 +302,6 @@ impl RedeliveryAddressed<ConnectedAmqpBroker> for AmqpAddress {
     fn redelivery_address(
         &self,
         _connected: &ConnectedAmqpBroker,
-    ) -> impl Future<Output = Result<RedeliveryAddress, AmqpError>> + Send {
-        ready(Ok(self.redelivery_target()))
-    }
-}
-
-/// The same descriptor resolves against the in-process stand-in, so a handler keeps the
-/// declaration it runs in production when it is mounted on
-/// [`AmqpTestBroker`](crate::testing::AmqpTestBroker).
-///
-/// What the stand-in reproduces and what it drops is documented on
-/// [`ConnectedAmqpTestBroker::subscribe_address`](crate::testing::ConnectedAmqpTestBroker::subscribe_address).
-#[cfg(feature = "testing")]
-impl SubscriptionSource<ConnectedAmqpTestBroker> for AmqpAddress {
-    type Subscriber = AmqpTestSubscriber;
-
-    type Copies = AddressedCopies;
-
-    fn name(&self) -> &str {
-        self.address()
-    }
-
-    async fn subscribe(
-        self,
-        connected: &ConnectedAmqpTestBroker,
-    ) -> Result<Self::Subscriber, AmqpError> {
-        connected.subscribe_address(self).await
-    }
-
-    #[cfg(feature = "asyncapi")]
-    fn channel_bindings(&self) -> Bindings {
-        self.describe_channel()
-    }
-}
-
-#[cfg(feature = "testing")]
-impl RedeliveryAddressed<ConnectedAmqpTestBroker> for AmqpAddress {
-    fn redelivery_address(
-        &self,
-        _connected: &ConnectedAmqpTestBroker,
     ) -> impl Future<Output = Result<RedeliveryAddress, AmqpError>> + Send {
         ready(Ok(self.redelivery_target()))
     }

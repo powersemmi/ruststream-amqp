@@ -7,9 +7,12 @@
 //! bounded-channel consumer, which keeps `stream` cancel-safe and re-enterable, under the
 //! framework's client-side buffer that turns it into a [`BatchSubscriber`].
 
+use std::fmt;
 use std::num::NonZeroUsize;
 
 use futures::Stream;
+#[cfg(feature = "testing")]
+use futures::future::Either;
 
 use fe2o3_amqp::link::receiver::CreditMode;
 use fe2o3_amqp::link::{Receiver as FeReceiver, RecvError};
@@ -22,6 +25,8 @@ use tokio::sync::{mpsc, watch};
 use crate::address::AmqpAddress;
 use crate::broker::{AmqpCore, PumpGuard, is_at_most_once, source_for};
 use crate::error::{AmqpError, box_err};
+#[cfg(feature = "testing")]
+use crate::in_process::BusDeliveries;
 use crate::message::{
     AmqpMessage, SettleCmd, SettleKind, SettleSender, headers_from_amqp, payload_from_body,
 };
@@ -37,8 +42,8 @@ pub struct AmqpSubscriber {
     deliveries: BufferedSubscriber<Deliveries>,
 }
 
-impl std::fmt::Debug for AmqpSubscriber {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for AmqpSubscriber {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AmqpSubscriber")
             .field("address", &self.address)
             .finish_non_exhaustive()
@@ -91,9 +96,20 @@ impl AmqpSubscriber {
 
         Ok(Self {
             address: addr,
-            deliveries: BufferedSubscriber::new(Deliveries { rx: out_rx })
+            deliveries: BufferedSubscriber::new(Deliveries::Amqp(out_rx))
                 .max_wait(address.batch_wait_value()),
         })
+    }
+
+    /// A subscriber on the in-process transport, batching on the client with the descriptor's own
+    /// deadline as the live subscriber does.
+    #[cfg(feature = "testing")]
+    pub(crate) fn in_process(deliveries: BusDeliveries, address: &AmqpAddress) -> Self {
+        Self {
+            address: address.address().to_owned(),
+            deliveries: BufferedSubscriber::new(Deliveries::InProcess(deliveries))
+                .max_wait(address.batch_wait_value()),
+        }
     }
 }
 
@@ -122,21 +138,47 @@ impl BatchSubscriber for AmqpSubscriber {
     }
 }
 
-/// The consuming end of the pump channel: one delivery per stream item.
-struct Deliveries {
-    rx: mpsc::Receiver<Result<AmqpMessage, AmqpError>>,
+/// The receiver of the pump channel.
+type PumpReceiver = mpsc::Receiver<Result<AmqpMessage, AmqpError>>;
+
+/// One delivery per stream item, from whichever transport the broker was connected to: everything
+/// above it batches on the client.
+///
+/// Without the `testing` feature the pump channel is the only variant, so the type is the channel
+/// and the `match` in [`stream`](Subscriber::stream) resolves at compile time.
+enum Deliveries {
+    Amqp(PumpReceiver),
+    #[cfg(feature = "testing")]
+    InProcess(BusDeliveries),
 }
+
+#[cfg(not(feature = "testing"))]
+const _: () = assert!(size_of::<Deliveries>() == size_of::<PumpReceiver>());
 
 impl Subscriber for Deliveries {
     type Message = AmqpMessage;
     type Error = AmqpError;
 
     fn stream(&mut self) -> impl Stream<Item = Result<AmqpMessage, AmqpError>> + Send + '_ {
-        // Poll the channel in place rather than wrapping it in an owning stream, so `stream`
-        // can be called again after the returned stream is dropped (the runtime and the
-        // conformance helpers re-enter it per call).
-        futures::stream::poll_fn(move |cx| self.rx.poll_recv(cx))
+        match self {
+            #[cfg(not(feature = "testing"))]
+            Self::Amqp(rx) => pump_stream(rx),
+            #[cfg(feature = "testing")]
+            Self::Amqp(rx) => Either::Left(pump_stream(rx)),
+            #[cfg(feature = "testing")]
+            Self::InProcess(deliveries) => Either::Right(deliveries.stream()),
+        }
     }
+}
+
+/// The pump channel as a stream.
+fn pump_stream(
+    rx: &mut PumpReceiver,
+) -> impl Stream<Item = Result<AmqpMessage, AmqpError>> + Send + '_ {
+    // Poll the channel in place rather than wrapping it in an owning stream, so `stream` can be
+    // called again after the returned stream is dropped (the runtime and the conformance helpers
+    // re-enter it per call).
+    futures::stream::poll_fn(move |cx| rx.poll_recv(cx))
 }
 
 struct Pump {
