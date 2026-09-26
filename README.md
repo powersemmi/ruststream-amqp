@@ -37,7 +37,7 @@ AMQP 1.0 is an ISO-standard protocol spoken by ActiveMQ Artemis and Classic, Rab
 - **Native request/reply.** `AmqpPublisher` implements the `RequestReply` capability over `reply-to`, `correlation-id`, and a dynamic receiver link.
 - **Transactions** (feature `transaction`). A distinct `AmqpTransactionalPublish` policy pairs into a `TransactionalPublisher` built on the protocol's transactional posting; the plain publisher carries no transactional surface.
 - **Headers without an envelope.** Well-known headers ride the `properties` section (`content-type`, `correlation-id`, `reply-to`, `message-id`, the partition key as `group-id`); everything else rides `application-properties`, so non-Rust peers see plain AMQP messages.
-- **In-process test broker** (feature `testing`). `AmqpTestBroker` runs a service's own wiring with no server: the same `AmqpAddress` descriptors, the same publish policies, the same capabilities (request/reply, transactional posting), and the terminus semantics that decide whether consumers compete or each get a copy.
+- **Tests on the production app** (feature `testing`). The framework's `TestApp` runs the app `main` runs with `AmqpBroker` connected in process - no server needed - and the same test runs against a real broker with `TestApp::start_live`.
 
 ## Install
 
@@ -59,7 +59,9 @@ Everything else is off by default: `amqps://` endpoints need `rustls` or `native
 use ruststream_amqp::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, PartialEq, Deserialize, Serialize)]
+// `Outgoing` and `PartialEq` are here for the test below, which publishes an order and asserts on
+// the decoded one.
+#[derive(Debug, PartialEq, Deserialize, Serialize, Outgoing)]
 struct Order {
     id: u64,
 }
@@ -104,40 +106,33 @@ async fn audit(order: &Order) -> HandlerOutcome {
 
 ## Test it
 
-The `testing` feature runs handlers against an in-process AMQP stand-in - no server, same behaviour, same ladder. It plugs into the framework's `TestApp` harness, which drives the built application through the dispatch path the production runtime uses, so the assertions read the handler's own behaviour rather than the transport's:
+The app `main` runs, handed to the harness unchanged: `TestApp::start` connects `AmqpBroker` in process, with no server, and the test addresses it by that type.
 
 ```rust
 use ruststream::testing::TestApp;
-use ruststream_amqp::prelude::*;
-use ruststream_amqp::testing::AmqpTestBroker;
 
-// The declaration is the production one, policy included: only the broker changes.
-let app = RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
-    AmqpTestBroker::new(),
-    |b| {
-        b.include(handle).out(DefaultSlot, Publish).build();
-    },
-);
-let app = TestApp::start(app).await?;
+let tb = TestApp::start(app()).await?;
 
 // The publish drives the handler to a standstill before it returns.
-app.broker::<AmqpTestBroker>().publish("orders", &Order { id: 42 }).await?;
+tb.broker::<AmqpBroker>()
+    .message(&Order { id: 42 })
+    .to("orders")
+    .publish()
+    .await?;
 
-app.broker::<AmqpTestBroker>()
+tb.broker::<AmqpBroker>()
     .subscriber("orders")
     .assert_called_once()
     .with(&Order { id: 42 })
     .settled(HandlerOutcome::ack());
 
-app.broker::<AmqpTestBroker>()
+tb.broker::<AmqpBroker>()
     .published::<Confirmation>("confirmations")
     .assert_called_once()
     .with(&Confirmation { order_id: 42 });
 ```
 
-The production wiring is what runs: `AmqpAddress` resolves against the test broker, `.out(DefaultSlot, Publish)` mounts the production policy, and the capabilities come with them - a handler binding `Out<impl RequestReply>` or `Out<impl TransactionalPublisher>` mounts in process too. So does the behaviour behind them: competing consumers on a queue address split the traffic while a topic address copies to each, a transaction publishes nothing before its commit, and a request that nothing answers times out. The framework's conformance suites run against this broker, not only against a server.
-
-What a process cannot hold is left out rather than faked - stored messages for an address with no consumer, broker-side redelivery and dead-lettering, durability across a crash, link credit. Those are covered by the env-gated live suite: `just test-brokers` spins up ActiveMQ Artemis and runs the integration tests plus every conformance suite against it. The [crate overview](https://docs.rs/ruststream-amqp/latest/ruststream_amqp/index.html#testing) lists the gaps in full.
+The in-process mode reads the broker's own settings and refuses what a server refuses. Competing consumers on a queue address split the traffic while a topic address copies to each, a transaction publishes nothing before its commit, and a request that nothing answers times out. `TestApp::start_live(app())` runs the same test against a running broker, which is where an address's storage, link credit and the server's dead-letter policy are exercised (`just test-brokers` starts ActiveMQ Artemis). The [crate overview](https://docs.rs/ruststream-amqp/latest/ruststream_amqp/index.html#testing) has the details.
 
 ## Layout
 

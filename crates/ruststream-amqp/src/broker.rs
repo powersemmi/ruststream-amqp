@@ -5,7 +5,17 @@
 //! cell remains so publishers can be handed out while the application is still being assembled,
 //! before `connect` runs.
 
+// Without the `testing` feature a connection link has one variant, so a `match` on it has a
+// single arm; the matches stay so that the in-process arm has its place when the feature is on.
+#![cfg_attr(
+    not(feature = "testing"),
+    allow(clippy::infallible_destructuring_match)
+)]
+
 use std::collections::HashMap;
+use std::fmt;
+#[cfg(feature = "testing")]
+use std::future::{Future, ready};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, PoisonError};
 
@@ -15,18 +25,26 @@ use fe2o3_amqp::session::{Session, SessionHandle};
 use fe2o3_amqp::{Receiver, Sender};
 use fe2o3_amqp_types::messaging::Source;
 use fe2o3_amqp_types::primitives::{Array, Symbol};
+#[cfg(feature = "testing")]
+use ruststream::testing::{Coordinator, InProcess, TestableBroker};
 use ruststream::{
     AddressedCopies, Broker, ConnectedBroker, DefaultPublish, DescribeServer, ServerSpec, Subscribe,
 };
+#[cfg(feature = "testing")]
+use ruststream::{OutgoingMessage, RawMessage};
 use tokio::net::TcpStream;
 use tokio::sync::{Mutex, OnceCell, mpsc, watch};
 use url::Url;
 
+#[cfg(feature = "testing")]
+use crate::address::Routing;
 use crate::address::{AmqpAddress, Settle};
 #[cfg(feature = "asyncapi")]
 use crate::bindings;
 use crate::config::Sasl;
 use crate::error::{AmqpError, box_err};
+#[cfg(feature = "testing")]
+use crate::in_process::{self, Bus};
 use crate::publisher::{AmqpPublish, AmqpPublisher};
 use crate::subscriber::AmqpSubscriber;
 
@@ -257,14 +275,14 @@ impl SenderLink {
     }
 }
 
-impl std::fmt::Debug for SenderLink {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for SenderLink {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SenderLink").finish_non_exhaustive()
     }
 }
 
-impl std::fmt::Debug for AmqpCore {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for AmqpCore {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AmqpCore")
             .field("container_id", &self.container_id)
             .field("closed", &self.closed.load(Ordering::Relaxed))
@@ -272,7 +290,25 @@ impl std::fmt::Debug for AmqpCore {
     }
 }
 
-pub(crate) type CoreCell = Arc<OnceCell<Arc<AmqpCore>>>;
+/// What a connected broker and every handle derived from it speak over: the live connection, or,
+/// under the `testing` feature, the in-process transport the test harness connected instead.
+///
+/// Without the feature there is one variant, so the type is the connection handle itself and
+/// every `match` on it is irrefutable: a production build carries no second transport and no
+/// branch to it.
+#[derive(Debug, Clone)]
+pub(crate) enum Link {
+    Amqp(Arc<AmqpCore>),
+    #[cfg(feature = "testing")]
+    InProcess(Arc<Bus>),
+}
+
+// The zero-cost promise of the in-process mode, held by the compiler: a build without it gives the
+// link exactly the size of the connection handle it wraps.
+#[cfg(not(feature = "testing"))]
+const _: () = assert!(size_of::<Link>() == size_of::<Arc<AmqpCore>>());
+
+pub(crate) type CoreCell = Arc<OnceCell<Link>>;
 
 /// The container id a service presents when it names none of its own.
 const DEFAULT_CONTAINER_ID: &str = "ruststream";
@@ -351,7 +387,7 @@ impl Broker for AmqpBroker {
 
     async fn connect(self) -> Result<Self::Connected, Self::Error> {
         let container_id = self.container().to_owned();
-        let core = self
+        let link = self
             .cell
             .get_or_try_init(async || {
                 let url =
@@ -383,7 +419,7 @@ impl Broker for AmqpBroker {
                 let session = Session::begin(&mut conn)
                     .await
                     .map_err(|e| AmqpError::Session(box_err(e)))?;
-                Ok::<_, AmqpError>(Arc::new(AmqpCore {
+                Ok::<_, AmqpError>(Link::Amqp(Arc::new(AmqpCore {
                     conn: Mutex::new(conn),
                     session: Mutex::new(session),
                     senders: Mutex::new(HashMap::new()),
@@ -391,16 +427,61 @@ impl Broker for AmqpBroker {
                     closed: AtomicBool::new(false),
                     container_id,
                     link_seq: AtomicU64::new(0),
-                }))
+                })))
             })
             .await?
             .clone();
-        Ok(ConnectedAmqpBroker {
-            core,
-            cell: self.cell,
-        })
+        // A clone connected in process filled the cell with the test transport: reusing it would
+        // report a live connection that never opened a socket.
+        #[cfg(feature = "testing")]
+        if matches!(link, Link::InProcess(_)) {
+            return Err(AmqpError::Connect(Box::from(
+                "a clone of this broker is connected in process already, so it cannot connect to \
+                 a server",
+            )));
+        }
+        Ok(ConnectedAmqpBroker::new(link, self.cell))
     }
 }
+
+/// The in-process mode: the connected form a test runs the production app against, carrying the
+/// in-process transport in place of the connection.
+///
+/// The URL is read as `connect` reads it, so a broker a service could not connect is not one a
+/// test can connect either. Publishers handed out by [`AmqpBroker::publisher`] before this point
+/// share the broker's connection cell, so they publish in process from here on, as they publish
+/// over the connection once `connect` has run.
+#[cfg(feature = "testing")]
+impl InProcess for AmqpBroker {
+    fn connect_in_process(
+        self,
+    ) -> impl Future<Output = Result<Self::Connected, Self::Error>> + Send {
+        let connected = in_process::check_url(&self.url).and_then(|()| {
+            let fresh = Link::InProcess(Arc::new(Bus::default()));
+            // A clone of this broker connected earlier filled the cell already; its handles and
+            // this connected form then share that transport, as they share a connection. A clone
+            // connected live filled it with a connection the harness cannot drive.
+            let link = match self.cell.set(fresh.clone()) {
+                Ok(()) => fresh,
+                Err(_) => match self.cell.get().cloned() {
+                    Some(Link::Amqp(_)) => {
+                        return Err(AmqpError::Connect(Box::from(
+                            "a clone of this broker is connected to a server already, so it \
+                             cannot connect in process",
+                        )));
+                    }
+                    Some(link) => link,
+                    None => fresh,
+                },
+            };
+            Ok(ConnectedAmqpBroker::new(link, self.cell))
+        });
+        ready(connected)
+    }
+}
+
+#[cfg(feature = "testing")]
+ruststream::register_testable_broker!(AmqpBroker);
 
 /// `DescribeServer` reports the host and port the service connects to, which is what the
 /// `AsyncAPI` document records for it. Credentials in the URL are not part of that coordinate and
@@ -429,12 +510,33 @@ impl DescribeServer for AmqpBroker {
 /// The typed witness that `connect` succeeded: holds the live connection directly.
 #[derive(Debug)]
 pub struct ConnectedAmqpBroker {
-    pub(crate) core: Arc<AmqpCore>,
+    pub(crate) link: Link,
     // Keeps the cell of publishers handed out before connect alive and filled.
     cell: CoreCell,
+    /// The termini this connection opened subscriptions on, per address, which is what decides
+    /// whom a publish reaches. Read by the test harness only, so it exists only with `testing`.
+    #[cfg(feature = "testing")]
+    termini: StdMutex<HashMap<String, Termini>>,
+}
+
+/// How many subscriptions of each terminus an address carries on one connection.
+#[cfg(feature = "testing")]
+#[derive(Debug, Default, Clone, Copy)]
+struct Termini {
+    anycast: usize,
+    multicast: usize,
 }
 
 impl ConnectedAmqpBroker {
+    fn new(link: Link, cell: CoreCell) -> Self {
+        Self {
+            link,
+            cell,
+            #[cfg(feature = "testing")]
+            termini: StdMutex::new(HashMap::new()),
+        }
+    }
+
     /// A publisher from the connected form. It rides the same cell-backed publisher type as the
     /// early path; by now `connect` has filled the cell, so it resolves immediately.
     #[must_use]
@@ -452,23 +554,40 @@ impl ConnectedAmqpBroker {
         &self,
         address: AmqpAddress,
     ) -> Result<AmqpSubscriber, AmqpError> {
+        #[cfg(feature = "testing")]
+        let (at, routing) = (address.address().to_owned(), address.routing());
+        let subscriber = self.open(address).await?;
+        #[cfg(feature = "testing")]
+        self.opened(at, routing);
+        Ok(subscriber)
+    }
+
+    async fn open(&self, address: AmqpAddress) -> Result<AmqpSubscriber, AmqpError> {
         address.validate()?;
-        self.core.ensure_open()?;
+        let core = match &self.link {
+            Link::Amqp(core) => core,
+            #[cfg(feature = "testing")]
+            Link::InProcess(bus) => {
+                let deliveries = in_process::subscribe(bus, &address)?;
+                return Ok(AmqpSubscriber::in_process(deliveries, &address));
+            }
+        };
+        core.ensure_open()?;
         // Taken before the session begins, so a subscription opening on one handle races no
         // shutdown on another: once the guard is out, the connection waits for this session
         // before it closes, and once shutdown has begun no session begins.
-        let guard = self.core.pumps.guard()?;
+        let guard = core.pumps.guard()?;
 
         // Each subscription runs on its own session: flow-control windows are per session, so a
         // slow consumer must not share one with the publishers or with other subscriptions.
         let session = {
-            let mut conn = self.core.conn.lock().await;
+            let mut conn = core.conn.lock().await;
             Session::begin(&mut conn)
                 .await
                 .map_err(|e| AmqpError::Session(box_err(e)))?
         };
 
-        let subscriber = AmqpSubscriber::attach(&self.core, session, address, guard).await?;
+        let subscriber = AmqpSubscriber::attach(core, session, address, guard).await?;
         Ok(subscriber)
     }
 
@@ -515,19 +634,27 @@ impl ConnectedBroker for ConnectedAmqpBroker {
     type Closed = ();
 
     async fn shutdown(self) -> Result<(), Self::Error> {
-        self.core.closed.store(true, Ordering::Release);
+        let core = match self.link {
+            Link::Amqp(core) => core,
+            #[cfg(feature = "testing")]
+            Link::InProcess(bus) => {
+                bus.close();
+                return Ok(());
+            }
+        };
+        core.closed.store(true, Ordering::Release);
         // Teardown runs inwards - the subscriptions' sessions, the publisher links, then the
         // session carrying them, then the connection - because each layer has to still be able to
         // route the peer's answer to the one inside it. Every step runs even after an earlier one
         // fails, so a stuck link cannot leave the connection open, and the report is the innermost
         // failure: the outer ones after it are its consequences, not independent faults.
-        let sessions_ended = self.core.pumps.stop_all().await;
-        let senders_result = self.core.close_senders().await;
+        let sessions_ended = core.pumps.stop_all().await;
+        let senders_result = core.close_senders().await;
         let session_result = {
-            let mut session = self.core.session.lock().await;
+            let mut session = core.session.lock().await;
             session.end().await
         };
-        let conn_result = self.core.close_connection(sessions_ended).await;
+        let conn_result = core.close_connection(sessions_ended).await;
         senders_result?;
         session_result.map_err(|e| AmqpError::Session(box_err(e)))?;
         conn_result.map_err(|e| AmqpError::Connect(box_err(e)))?;
@@ -551,6 +678,94 @@ impl Subscribe for ConnectedAmqpBroker {
 
 impl DefaultPublish for ConnectedAmqpBroker {
     type Policy = AmqpPublish;
+}
+
+/// The harness's view of the connected broker: what it injects, what it reads back, the
+/// coordinator it counts in-flight deliveries with, and whom a publish reaches.
+///
+/// # Panics
+///
+/// `inject` and `published` panic on a broker connected with `connect`: the harness drives only
+/// the transport `connect_in_process` produced, and a live connection has no log to read and no
+/// synchronous way to take a message.
+#[cfg(feature = "testing")]
+impl TestableBroker for ConnectedAmqpBroker {
+    fn install_coordinator(&self, coordinator: Coordinator) {
+        if let Link::InProcess(bus) = &self.link {
+            bus.install(coordinator);
+        }
+    }
+
+    fn inject(&self, message: OutgoingMessage<'_>) {
+        if let Err(err) = in_process::inject(self.bus("inject"), &message) {
+            panic!(
+                "the injected message to {:?} is not one the broker takes: {err}",
+                message.name()
+            );
+        }
+    }
+
+    fn published(&self, name: &str) -> Vec<RawMessage> {
+        self.bus("published").published(name)
+    }
+
+    /// An `AMQP` 1.0 node routes by its exact address. Among the subscriptions on the address, a
+    /// topic terminus gets a copy each, and the queue termini compete, so exactly one of them
+    /// takes the message; a verbatim address counts as a queue, as the in-process transport
+    /// delivers it. The harness counts deliveries per subscription name, so which of the
+    /// competing consumers takes the message does not change what it waits for.
+    fn routes(&self, destination: &str, subscriptions: &[&str]) -> Vec<usize> {
+        let same_name = subscriptions
+            .iter()
+            .enumerate()
+            .filter(|(_, name)| **name == destination)
+            .map(|(position, _)| position);
+        // In process the router says who is attached now; a live connection has only what it
+        // opened.
+        let termini = match &self.link {
+            Link::InProcess(bus) => {
+                let (anycast, multicast) = bus.termini(destination);
+                Some(Termini { anycast, multicast })
+            }
+            Link::Amqp(_) => self
+                .termini
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .get(destination)
+                .copied(),
+        };
+        match termini {
+            Some(Termini { anycast, multicast }) => {
+                same_name.take(multicast + anycast.min(1)).collect()
+            }
+            None => same_name.collect(),
+        }
+    }
+}
+
+#[cfg(feature = "testing")]
+impl ConnectedAmqpBroker {
+    /// Notes a subscription this connection opened, for [`TestableBroker::routes`].
+    fn opened(&self, address: String, routing: Routing) {
+        let mut termini = self.termini.lock().unwrap_or_else(PoisonError::into_inner);
+        let entry = termini.entry(address).or_default();
+        match routing {
+            Routing::Anycast => entry.anycast += 1,
+            Routing::Multicast => entry.multicast += 1,
+        }
+        drop(termini);
+    }
+
+    /// The in-process transport, which is all the harness drives.
+    fn bus(&self, what: &str) -> &Bus {
+        match &self.link {
+            Link::InProcess(bus) => bus,
+            Link::Amqp(_) => panic!(
+                "TestableBroker::{what} reached a broker connected with `connect`; the harness \
+                 drives the transport `connect_in_process` produces"
+            ),
+        }
+    }
 }
 
 // Re-exported for the subscriber module without making Settle a broker concern.

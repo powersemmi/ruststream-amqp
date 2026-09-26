@@ -444,77 +444,90 @@ produces.
 
 # Testing
 
-The `testing` feature ships `AmqpTestBroker`, an in-process transport that reproduces this crate's
-behaviour with no server and no `AMQP` wire. A test file imports it by its own path,
-`use ruststream_amqp::testing::AmqpTestBroker;`, alongside the prelude glob. It follows the same
-ladder as the real broker and drives the core's
-[`TestApp`](https://docs.rs/ruststream/latest/ruststream/testing/index.html) harness:
+A test runs the service's own app: the builder `main` runs, on [`AmqpBroker`], handed to the
+framework's `TestApp` harness unchanged. With the `testing` feature in `[dev-dependencies]`,
+`TestApp::start` connects the broker in process instead of dialling the server, and the test
+addresses it by its production type, `tb.broker::<AmqpBroker>()`. `TestApp::start_live` runs the
+same test body against a running broker. The harness's usage is the core's:
+<https://docs.rs/ruststream/latest/ruststream/testing/index.html>.
 
 ```
 # #[cfg(feature = "testing")]
 # mod demo {
 use ruststream::testing::TestApp;
 use ruststream_amqp::prelude::*;
-use ruststream_amqp::testing::AmqpTestBroker;
 use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Serialize, Outgoing)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Outgoing)]
+#[outgoing(name = "orders")]
 struct Order {
     id: u64,
 }
 
 #[subscriber(AmqpAddress::queue("orders"))]
-async fn handle(order: &Order) -> HandlerOutcome {
-    let _ = order.id;
+async fn accept(order: &Order) -> HandlerOutcome {
+    if order.id == 0 {
+        return HandlerOutcome::drop();
+    }
     HandlerOutcome::ack()
 }
 
-pub async fn an_order_reaches_the_handler() {
-    let app = RustStream::new(AppInfo::new("orders", "0.1.0"))
-        .with_broker(AmqpTestBroker::new(), |b| {
-            b.include(handle);
-        });
-    let app = TestApp::start(app).await.expect("startup failed");
+/// The app `main` runs.
+pub fn app() -> RustStream {
+    RustStream::new(AppInfo::new("orders", "0.1.0"))
+        .with_broker(AmqpBroker::new("amqp://broker:5672"), |b| {
+            b.include(accept);
+        })
+}
 
-    app.broker::<AmqpTestBroker>()
+pub async fn accepts_an_order() -> Result<(), Box<dyn std::error::Error>> {
+    let tb = TestApp::start(app()).await?;
+
+    // The publish returns once the handler it woke has settled.
+    tb.broker::<AmqpBroker>()
         .message(&Order { id: 7 })
-        .to("orders")
         .publish()
-        .await
-        .expect("publish failed");
-    app.settle().await.expect("the run settles");
+        .await?;
 
-    app.broker::<AmqpTestBroker>()
+    tb.broker::<AmqpBroker>()
         .subscriber("orders")
-        .assert_called_once();
+        .assert_called_once()
+        .with(&Order { id: 7 })
+        .settled(HandlerOutcome::ack());
+
+    tb.shutdown().await?;
+    Ok(())
 }
 # }
 # fn main() {}
 ```
 
-The whole production declaration resolves against it, so the test runs the wiring the service
-ships rather than a rewritten copy: `#[subscriber(AmqpAddress::queue("orders"))]` mounts
-unchanged, `.out_reply(Publish)` mounts the production policy, and `AmqpTransactionalPublish`
-pairs into an in-process publisher that buffers until the commit. There is no test-only policy to
-swap in, and no capability that exists on one broker and not the other.
+In process, the broker's connected form carries an in-process transport in place of the
+connection, and so do its subscribers, its publishers and its deliveries: the descriptors and
+publish policies of the routes file are the production ones, and a mount that does not compile
+against a server does not compile in process either. The transport has no settings of its own. It
+reads the broker's URL as `connect` reads it, and it frames a publish with the same conversion a
+live publish goes through, so a handler reads the headers a live delivery carries.
 
-Behaviour crosses over with them. The terminus decides delivery here as it does on a server, so a
-work-queue service cannot pass in process what a broker would fail; an `AmqpAddress::raw` address
-declares no capability and the stand-in, having no configuration to consult, delivers each message
-once, so say `topic` where the broadcast is the thing being asserted. An at-most-once delivery
-arrives settled and its `ack` reports `AckError::Unsupported`. Batches come from the same
-client-side buffer with the descriptor's own `batch_wait`. A transaction publishes nothing before
-its commit and discards its buffer on an abort. A request carries `reply-to` and `correlation-id`
-and fails with `AmqpError::RequestTimeout` when nothing answers.
+It never succeeds where a server fails. A message to the empty address is rejected, a publisher
+or a transaction used after shutdown reports `AmqpError::NotConnected`, a delivery settled after
+the shutdown reports an error, and a subscription open at shutdown ends its stream. The terminus
+decides delivery as it does on a server: consumers on a queue address compete, one delivery
+each, and every topic subscription gets a copy. An `AmqpAddress::raw` address declares no
+capability, so on a server the peer's configuration decides (`ActiveMQ` Artemis fans it out by
+default); in process it is delivered once, so say `topic` where the broadcast is the thing being
+asserted. An at-most-once delivery arrives settled and its `ack` reports
+`AckError::Unsupported`. A `modified` disposition counts the attempt in `delivery-count`, and a
+released delivery goes back to a consumer still attached to its address. Batches come from the
+same client-side buffer with the descriptor's own `batch_wait`. A transaction publishes nothing
+before its commit and discards its buffer on an abort. A request carries `reply-to` and
+`correlation-id` and fails with `AmqpError::RequestTimeout` when nothing answers.
 
-What is left out is what a broker holds and a process cannot, and each one makes an assertion
-unsound rather than merely imprecise, so it belongs in the live suite instead: no storage (a
-message published where nothing subscribes is dropped, so open the subscriptions first), no
-broker-side redelivery (a requeued delivery returns to the subscription that had it, and there is
-no dead-letter policy behind `nack(requeue = false)`), no durability, no flow control (`credit`
-has no counterpart and subscriptions here are unbounded), and no refusal (a request nothing
-consumes times out rather than being rejected). `just test-brokers` starts `ActiveMQ` Artemis from
-`docker-compose.test.yml` and runs the integration tests and every conformance suite against it.
+What only a server has belongs to the live mode, over the same test body: an address's storage
+while nothing consumes it (in process a message no subscription takes is dropped), how the server
+creates an address a publish reaches first, link credit, the dead-letter policy behind a
+rejection and the server's own delivery limit, and durability. The crate's live suites run
+against the `ActiveMQ` Artemis stand in `docker-compose.test.yml` (`just test-brokers`).
 
 # Operations
 

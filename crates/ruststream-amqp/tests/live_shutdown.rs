@@ -13,11 +13,11 @@ use std::pin::pin;
 use std::time::Duration;
 
 use futures::StreamExt;
+#[cfg(feature = "testing")]
+use ruststream::testing::InProcess;
 use ruststream::{
     Broker, ConnectedBroker, IncomingMessage, OutgoingMessage, Publisher, Subscriber,
 };
-#[cfg(feature = "testing")]
-use ruststream_amqp::testing::AmqpTestBroker;
 use ruststream_amqp::{AmqpAddress, AmqpBroker, AmqpSubscriber, ConnectedAmqpBroker};
 
 mod live;
@@ -120,10 +120,10 @@ async fn a_shutdown_under_an_open_subscription_reports_no_error() {
 #[cfg(feature = "testing")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_in_process_transport_refuses_a_settlement_after_shutdown() {
-    let connected = AmqpTestBroker::new()
-        .connect()
+    let connected = AmqpBroker::new("amqp://broker.example.com:5672")
+        .connect_in_process()
         .await
-        .expect("the stand-in connects");
+        .expect("the broker connects in process");
     let mut subscriber = connected
         .subscribe_address(AmqpAddress::queue("orders"))
         .await
