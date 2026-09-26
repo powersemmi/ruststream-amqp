@@ -13,7 +13,7 @@
 use std::time::Duration;
 
 use ruststream::testing::{InProcess, TestApp};
-use ruststream::{ConnectedBroker, OutgoingMessage};
+use ruststream::{Broker, ConnectedBroker, OutgoingMessage};
 use ruststream_amqp::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -338,6 +338,21 @@ async fn a_request_nobody_answers_times_out() {
         .await
         .expect_err("an unanswered request must not resolve");
     assert!(matches!(err, AmqpError::RequestTimeout), "got {err}");
+}
+
+// A clone connected in process holds the test transport in the shared cell; a live connect of
+// another clone is refused rather than reported as a connection that never opened a socket.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_live_connect_after_an_in_process_one_is_refused() {
+    let broker = AmqpBroker::new(URL);
+    let live = broker.clone();
+    let _in_process = broker.connect_in_process().await.expect("connect failed");
+
+    let refused = live.connect().await;
+    assert!(
+        matches!(refused, Err(AmqpError::Connect(_))),
+        "got {refused:?}"
+    );
 }
 
 // The ladder makes the owner's misuse a compile error; what stays checkable at runtime is a handle

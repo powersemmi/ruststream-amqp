@@ -134,15 +134,21 @@ impl Settlement {
         // `accept` and `reject` both take the message off the address; which dead-letter policy a
         // rejection meets is the server's configuration, which a process does not have.
         if matches!(kind, SettleKind::Modify) {
-            self.bus.requeue(
-                origin.id,
-                &origin.address,
-                Delivery {
-                    payload,
-                    headers,
-                    count: Some(delivery_count.unwrap_or(0) + 1),
-                },
-            );
+            self.bus
+                .requeue(
+                    origin.id,
+                    &origin.address,
+                    Delivery {
+                        payload,
+                        headers,
+                        count: Some(delivery_count.unwrap_or(0) + 1),
+                    },
+                )
+                .map_err(|_| {
+                    AckError::Broker(Box::from(
+                        "the subscription's session ended with the connection",
+                    ))
+                })?;
         }
         Ok(())
     }
