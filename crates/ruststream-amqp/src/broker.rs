@@ -431,6 +431,15 @@ impl Broker for AmqpBroker {
             })
             .await?
             .clone();
+        // A clone connected in process filled the cell with the test transport: reusing it would
+        // report a live connection that never opened a socket.
+        #[cfg(feature = "testing")]
+        if matches!(link, Link::InProcess(_)) {
+            return Err(AmqpError::Connect(Box::from(
+                "a clone of this broker is connected in process already, so it cannot connect to \
+                 a server",
+            )));
+        }
         Ok(ConnectedAmqpBroker::new(link, self.cell))
     }
 }

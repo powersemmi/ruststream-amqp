@@ -81,10 +81,7 @@ impl TxnBuffer {
         let buffered = self.take()?;
         // The discharge cannot reach a closed connection, as on the live publisher.
         self.bus.ensure_live()?;
-        for (address, delivery) in buffered {
-            self.bus.route(&address, &delivery)?;
-        }
-        Ok(())
+        self.bus.route_all(&buffered)
     }
 
     pub(crate) fn abort(&self) -> Result<(), AmqpError> {

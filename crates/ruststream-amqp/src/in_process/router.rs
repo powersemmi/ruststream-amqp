@@ -130,23 +130,29 @@ impl AddressRouter {
         delivery: &Delivery,
         coordinator: Option<&Coordinator>,
     ) -> bool {
-        let snapshot = RawMessage::new(address.to_owned(), delivery.payload.clone())
-            .with_headers(delivery.headers.clone());
         let mut state = self.state();
         if state.closed {
             return false;
         }
-        state
-            .log
-            .entry(address.to_owned())
-            .or_default()
-            .push(snapshot);
-        for sub in state.subscriptions.values() {
-            if sub.address == address && sub.routing == Routing::Multicast {
-                send(&sub.sender, delivery.clone(), coordinator);
-            }
+        publish_one(&mut state, address, delivery, coordinator);
+        drop(state);
+        true
+    }
+
+    /// Publishes every message of a committed transaction in one step with the check for
+    /// shutdown: all of them, or none once the connection has shut down.
+    pub(crate) fn publish_all<'a>(
+        &self,
+        messages: impl IntoIterator<Item = (&'a str, &'a Delivery)>,
+        coordinator: Option<&Coordinator>,
+    ) -> bool {
+        let mut state = self.state();
+        if state.closed {
+            return false;
         }
-        hand_to_one(&mut state, address, delivery, coordinator);
+        for (address, delivery) in messages {
+            publish_one(&mut state, address, delivery, coordinator);
+        }
         drop(state);
         true
     }
@@ -154,20 +160,27 @@ impl AddressRouter {
     /// Returns a released delivery to the subscription that had it, or, when that one is gone, to
     /// another anycast subscription on its address: the broker keeps a released message and hands
     /// it to a consumer that is still attached.
+    ///
+    /// Refuses once the connection has shut down, in one step with the return, so a release
+    /// never reports success into a router that has let its subscriptions go.
     pub(crate) fn requeue(
         &self,
         id: SubscriptionId,
         address: &str,
         delivery: Delivery,
         coordinator: Option<&Coordinator>,
-    ) {
+    ) -> bool {
         let mut state = self.state();
+        if state.closed {
+            return false;
+        }
         if let Some(sub) = state.subscriptions.get(&id) {
             send(&sub.sender, delivery, coordinator);
         } else {
             hand_to_one(&mut state, address, &delivery, coordinator);
         }
         drop(state);
+        true
     }
 
     /// Returns every message recorded for `address`, in publish order.
@@ -183,6 +196,29 @@ impl AddressRouter {
         state.subscriptions.clear();
         state.anycast_turn.clear();
     }
+}
+
+/// Logs one message on `address` and hands it to the subscriptions there: a copy to every
+/// multicast one, and the message to one anycast one in turn.
+fn publish_one(
+    state: &mut RouterState,
+    address: &str,
+    delivery: &Delivery,
+    coordinator: Option<&Coordinator>,
+) {
+    let snapshot = RawMessage::new(address.to_owned(), delivery.payload.clone())
+        .with_headers(delivery.headers.clone());
+    state
+        .log
+        .entry(address.to_owned())
+        .or_default()
+        .push(snapshot);
+    for sub in state.subscriptions.values() {
+        if sub.address == address && sub.routing == Routing::Multicast {
+            send(&sub.sender, delivery.clone(), coordinator);
+        }
+    }
+    hand_to_one(state, address, delivery, coordinator);
 }
 
 /// Hands `delivery` to one of the competing consumers of `address`, in turn. A send fails only

@@ -46,8 +46,8 @@ impl Bus {
 
     /// Shuts the connection down: nothing routes again, and every subscription's stream ends.
     pub(crate) fn close(&self) {
-        self.router.close();
         self.closed.store(true, Ordering::Release);
+        self.router.close();
     }
 
     /// Opens a subscription, or refuses once the connection has shut down: the check and the
@@ -89,9 +89,42 @@ impl Bus {
         }
     }
 
-    pub(crate) fn requeue(&self, id: SubscriptionId, address: &str, delivery: Delivery) {
-        self.router
-            .requeue(id, address, delivery, self.coordinator());
+    /// Returns a released delivery to its address.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AmqpError::NotConnected`] once the connection has shut down.
+    pub(crate) fn requeue(
+        &self,
+        id: SubscriptionId,
+        address: &str,
+        delivery: Delivery,
+    ) -> Result<(), AmqpError> {
+        if self
+            .router
+            .requeue(id, address, delivery, self.coordinator())
+        {
+            Ok(())
+        } else {
+            Err(AmqpError::NotConnected)
+        }
+    }
+
+    /// Routes a committed transaction's messages, all of them or none once the connection has
+    /// shut down.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AmqpError::NotConnected`] once the connection has shut down.
+    pub(crate) fn route_all(&self, messages: &[(String, Delivery)]) -> Result<(), AmqpError> {
+        let messages = messages
+            .iter()
+            .map(|(address, delivery)| (address.as_str(), delivery));
+        if self.router.publish_all(messages, self.coordinator()) {
+            Ok(())
+        } else {
+            Err(AmqpError::NotConnected)
+        }
     }
 
     pub(crate) fn published(&self, address: &str) -> Vec<RawMessage> {
