@@ -16,6 +16,7 @@ use std::collections::HashMap;
 use std::fmt;
 #[cfg(feature = "testing")]
 use std::future::{Future, ready};
+use std::panic::resume_unwind;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, PoisonError};
 
@@ -33,6 +34,7 @@ use ruststream::{
 #[cfg(feature = "testing")]
 use ruststream::{OutgoingMessage, RawMessage};
 use tokio::net::TcpStream;
+use tokio::runtime::Handle;
 use tokio::sync::{Mutex, OnceCell, mpsc, watch};
 use url::Url;
 
@@ -100,6 +102,11 @@ pub(crate) struct AmqpCore {
     pub(crate) closed: AtomicBool,
     pub(crate) container_id: String,
     link_seq: AtomicU64,
+    /// The runtime the connection was opened on, which runs every task the connection starts
+    /// afterwards: a subscription's session and its pump. A subscription opened from another
+    /// runtime (a handler on a dedicated thread) would otherwise leave both there, behind that
+    /// thread's work and gone once its runtime stops, while the connection they serve lives on.
+    pub(crate) runtime: Handle,
 }
 
 impl AmqpCore {
@@ -160,6 +167,28 @@ impl AmqpCore {
     pub(crate) fn correlation_id(&self) -> String {
         let seq = self.link_seq.fetch_add(1, Ordering::Relaxed);
         format!("{}-corr-{seq}", self.container_id)
+    }
+
+    /// Begins a subscription's session and attaches its receiver; runs on [`Self::runtime`].
+    async fn open_subscription(
+        self: Arc<Self>,
+        address: AmqpAddress,
+    ) -> Result<AmqpSubscriber, AmqpError> {
+        // Taken before the session begins, so a subscription opening on one handle races no
+        // shutdown on another: once the guard is out, the connection waits for this session
+        // before it closes, and once shutdown has begun no session begins.
+        let guard = self.pumps.guard()?;
+
+        // Each subscription runs on its own session: flow-control windows are per session, so a
+        // slow consumer must not share one with the publishers or with other subscriptions.
+        let session = {
+            let mut conn = self.conn.lock().await;
+            Session::begin(&mut conn)
+                .await
+                .map_err(|e| AmqpError::Session(box_err(e)))?
+        };
+
+        AmqpSubscriber::attach(&self, session, address, guard).await
     }
 }
 
@@ -427,6 +456,7 @@ impl Broker for AmqpBroker {
                     closed: AtomicBool::new(false),
                     container_id,
                     link_seq: AtomicU64::new(0),
+                    runtime: Handle::current(),
                 })))
             })
             .await?
@@ -573,22 +603,16 @@ impl ConnectedAmqpBroker {
             }
         };
         core.ensure_open()?;
-        // Taken before the session begins, so a subscription opening on one handle races no
-        // shutdown on another: once the guard is out, the connection waits for this session
-        // before it closes, and once shutdown has begun no session begins.
-        let guard = core.pumps.guard()?;
-
-        // Each subscription runs on its own session: flow-control windows are per session, so a
-        // slow consumer must not share one with the publishers or with other subscriptions.
-        let session = {
-            let mut conn = core.conn.lock().await;
-            Session::begin(&mut conn)
-                .await
-                .map_err(|e| AmqpError::Session(box_err(e)))?
-        };
-
-        let subscriber = AmqpSubscriber::attach(core, session, address, guard).await?;
-        Ok(subscriber)
+        // The client starts the session's task on the runtime that begins it, and the pump is a
+        // task too, so the whole opening runs on the connection's runtime whoever calls it. One
+        // task per subscription opened, nothing per delivery.
+        let opening = Arc::clone(core);
+        match core.runtime.spawn(opening.open_subscription(address)).await {
+            Ok(opened) => opened,
+            Err(err) if err.is_panic() => resume_unwind(err.into_panic()),
+            // The connection's runtime is stopping, so the session it would run on cannot start.
+            Err(err) => Err(AmqpError::Session(box_err(err))),
+        }
     }
 
     /// Attaches a sender link for `address` on the shared publisher session.
