@@ -6,10 +6,10 @@
 //! before `connect` runs.
 
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex as StdMutex, PoisonError};
 
-use fe2o3_amqp::connection::{Connection, ConnectionHandle};
+use fe2o3_amqp::connection::{Connection, ConnectionHandle, Error as ConnectionError};
 use fe2o3_amqp::sasl_profile::SaslProfile;
 use fe2o3_amqp::session::{Session, SessionHandle};
 use fe2o3_amqp::{Receiver, Sender};
@@ -19,7 +19,7 @@ use ruststream::{
     AddressedCopies, Broker, ConnectedBroker, DefaultPublish, DescribeServer, ServerSpec, Subscribe,
 };
 use tokio::net::TcpStream;
-use tokio::sync::{Mutex, OnceCell};
+use tokio::sync::{Mutex, OnceCell, mpsc, watch};
 use url::Url;
 
 use crate::address::{AmqpAddress, Settle};
@@ -77,6 +77,8 @@ pub(crate) struct AmqpCore {
     /// publisher handle that attached them. See [`SenderLink`] for why the connection has to own
     /// them.
     senders: Mutex<HashMap<String, Arc<SenderLink>>>,
+    /// The pump tasks of the subscriptions on this connection, each ending a session of its own.
+    pub(crate) pumps: Pumps,
     pub(crate) closed: AtomicBool,
     pub(crate) container_id: String,
     link_seq: AtomicU64,
@@ -121,6 +123,16 @@ impl AmqpCore {
         first_error.map_or(Ok(()), Err)
     }
 
+    /// Closes the connection, which takes the proof that no subscription session is still ending:
+    /// a session's end that reaches the peer after the close is answered on a connection already
+    /// in `CloseSent`, and the client reports that as `IllegalState`.
+    async fn close_connection(
+        &self,
+        _sessions_ended: SessionsEnded,
+    ) -> Result<(), ConnectionError> {
+        self.conn.lock().await.close().await
+    }
+
     /// A process-unique link name; `AMQP` link names must be unique per connection.
     pub(crate) fn link_name(&self, role: &str) -> String {
         let seq = self.link_seq.fetch_add(1, Ordering::Relaxed);
@@ -130,6 +142,76 @@ impl AmqpCore {
     pub(crate) fn correlation_id(&self) -> String {
         let seq = self.link_seq.fetch_add(1, Ordering::Relaxed);
         format!("{}-corr-{seq}", self.container_id)
+    }
+}
+
+/// The subscriptions' pump tasks, as the connection sees them: a signal that stops them and a way
+/// to wait until every one has ended its session.
+///
+/// Why this is tracked at run time: a subscription's session is ended by its pump task, and that
+/// task outlives the subscriber handle that started it, because dropping a handle cannot await a
+/// session end. The connection therefore cannot close when its handles are gone; it closes when
+/// the tasks say they are done, and [`SessionsEnded`] is how they say it.
+pub(crate) struct Pumps {
+    stop: watch::Sender<bool>,
+    /// Cloned into each pump and dropped when the pump has ended its session; taken out by
+    /// shutdown, after which no pump can start.
+    running: StdMutex<Option<mpsc::Sender<()>>>,
+    ended: Mutex<mpsc::Receiver<()>>,
+}
+
+/// What a pump task holds for as long as its session is live.
+pub(crate) struct PumpGuard {
+    pub(crate) stop: watch::Receiver<bool>,
+    /// Never sent on: its drop is the signal that the session has ended.
+    _running: mpsc::Sender<()>,
+}
+
+/// Proof that every subscription session on the connection has ended, which the connection's
+/// close requires. Only [`Pumps::stop_all`] makes one.
+pub(crate) struct SessionsEnded(());
+
+impl Pumps {
+    fn new() -> Self {
+        let (stop, _) = watch::channel(false);
+        let (running, ended) = mpsc::channel(1);
+        Self {
+            stop,
+            running: StdMutex::new(Some(running)),
+            ended: Mutex::new(ended),
+        }
+    }
+
+    /// The guard a new pump task holds.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AmqpError::NotConnected`] once shutdown has begun.
+    pub(crate) fn guard(&self) -> Result<PumpGuard, AmqpError> {
+        let running = self
+            .running
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+            .ok_or(AmqpError::NotConnected)?;
+        Ok(PumpGuard {
+            stop: self.stop.subscribe(),
+            _running: running,
+        })
+    }
+
+    /// Stops every pump and waits until each has ended its session.
+    async fn stop_all(&self) -> SessionsEnded {
+        let running = self
+            .running
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take();
+        drop(running);
+        self.stop.send_replace(true);
+        // Every guard is a sender; the channel reports its end once the last one is dropped.
+        let _ = self.ended.lock().await.recv().await;
+        SessionsEnded(())
     }
 }
 
@@ -305,6 +387,7 @@ impl Broker for AmqpBroker {
                     conn: Mutex::new(conn),
                     session: Mutex::new(session),
                     senders: Mutex::new(HashMap::new()),
+                    pumps: Pumps::new(),
                     closed: AtomicBool::new(false),
                     container_id,
                     link_seq: AtomicU64::new(0),
@@ -371,6 +454,10 @@ impl ConnectedAmqpBroker {
     ) -> Result<AmqpSubscriber, AmqpError> {
         address.validate()?;
         self.core.ensure_open()?;
+        // Taken before the session begins, so a subscription opening on one handle races no
+        // shutdown on another: once the guard is out, the connection waits for this session
+        // before it closes, and once shutdown has begun no session begins.
+        let guard = self.core.pumps.guard()?;
 
         // Each subscription runs on its own session: flow-control windows are per session, so a
         // slow consumer must not share one with the publishers or with other subscriptions.
@@ -381,7 +468,7 @@ impl ConnectedAmqpBroker {
                 .map_err(|e| AmqpError::Session(box_err(e)))?
         };
 
-        let subscriber = AmqpSubscriber::attach(&self.core, session, address).await?;
+        let subscriber = AmqpSubscriber::attach(&self.core, session, address, guard).await?;
         Ok(subscriber)
     }
 
@@ -429,20 +516,18 @@ impl ConnectedBroker for ConnectedAmqpBroker {
 
     async fn shutdown(self) -> Result<(), Self::Error> {
         self.core.closed.store(true, Ordering::Release);
-        // Teardown runs inwards - links, then the session carrying them, then the connection -
-        // because each layer has to still be able to route the peer's answer to the one inside
-        // it. Every step runs even after an earlier one fails, so a stuck link cannot leave the
-        // connection open, and the report is the innermost failure: the outer ones after it are
-        // its consequences, not independent faults.
+        // Teardown runs inwards - the subscriptions' sessions, the publisher links, then the
+        // session carrying them, then the connection - because each layer has to still be able to
+        // route the peer's answer to the one inside it. Every step runs even after an earlier one
+        // fails, so a stuck link cannot leave the connection open, and the report is the innermost
+        // failure: the outer ones after it are its consequences, not independent faults.
+        let sessions_ended = self.core.pumps.stop_all().await;
         let senders_result = self.core.close_senders().await;
         let session_result = {
             let mut session = self.core.session.lock().await;
             session.end().await
         };
-        let conn_result = {
-            let mut conn = self.core.conn.lock().await;
-            conn.close().await
-        };
+        let conn_result = self.core.close_connection(sessions_ended).await;
         senders_result?;
         session_result.map_err(|e| AmqpError::Session(box_err(e)))?;
         conn_result.map_err(|e| AmqpError::Connect(box_err(e)))?;
