@@ -64,8 +64,12 @@
     }
   }
 
-  const number = (value, lang) =>
-    typeof value === "number" ? value.toLocaleString(lang, { maximumFractionDigits: 1 }) : "-";
+  // Allocations per message are published to three decimals: one allocation per thousand
+  // messages is a cost, and one decimal would print it as zero.
+  const number = (value, lang, digits = 1) =>
+    typeof value === "number"
+      ? value.toLocaleString(lang, { maximumFractionDigits: digits })
+      : "-";
 
   function side(measurement, unit, lang) {
     if (!measurement) {
@@ -125,17 +129,14 @@
       row.appendChild(text("td", side(scenario.raw, scenario.unit, lang)));
       row.appendChild(text("td", side(scenario.adapter, scenario.unit, lang)));
       row.appendChild(text("td", side(scenario.framework, scenario.unit, lang)));
-      // The adapter column is the one this crate answers for, so it is printed whatever the
-      // verdict; the verdict rule applies to the framework column, which the crate shares with
-      // the runtime.
-      row.appendChild(
-        text(
-          "td",
-          typeof scenario.adapter_overhead_percent === "number"
-            ? percent(scenario.adapter_overhead_percent)
-            : "-",
-        ),
-      );
+      // The same honesty rule for the adapter column, on the verdict the run wrote for it.
+      let adapter = "-";
+      if (scenario.adapter_verdict === "indistinguishable") {
+        adapter = labels.indistinguishable;
+      } else if (typeof scenario.adapter_overhead_percent === "number") {
+        adapter = percent(scenario.adapter_overhead_percent);
+      }
+      row.appendChild(text("td", adapter));
       row.appendChild(text("td", overhead(scenario, labels)));
     }
     return element;
@@ -152,7 +153,7 @@
       const row = body.insertRow();
       row.appendChild(text("td", scenario.name));
       row.appendChild(text("td", number(scenario.framework?.instructions, lang)));
-      row.appendChild(text("td", number(scenario.framework?.allocations, lang)));
+      row.appendChild(text("td", number(scenario.framework?.allocations, lang, 3)));
       // Two numbers in one cell: what starting cost in instructions, and in allocations.
       row.appendChild(
         text(
@@ -190,6 +191,14 @@
       results.crate + " " + results.crate_version + ", ruststream " + results.core_version,
     );
     row(labels.measured, results.measured_at);
+    const coded = results.code_measured;
+    if (coded) {
+      row(
+        labels.codeMeasured,
+        results.crate + " " + coded.crate_version + ", ruststream " + coded.core_version + ", " +
+          coded.measured_at,
+      );
+    }
     return element;
   }
 
@@ -230,9 +239,8 @@
     if (results.code?.length) {
       codeTable?.replaceChildren(code(results, labels, lang));
     } else {
-      codeTable?.replaceChildren(
-        text("p", labels.unavailable.replace("{url}", new URL(url, location.href).href)),
-      );
+      // The document loaded: it only predates the code costs, or was published without them.
+      codeTable?.replaceChildren(text("p", labels.codeUnpublished));
     }
   }
 
