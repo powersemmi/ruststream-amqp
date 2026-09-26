@@ -23,9 +23,9 @@ this page publishes what it produced here.
 
 ## The numbers
 
-The best of three interleaved rounds, with the slowest round in parentheses. Higher is better.
+The best of three interleaved rounds, with the median round in parentheses. Higher is better.
 
-<div id="benchmark-results" data-benchmark-labels='{"loading": "Loading the published results...", "scenario": "Scenario", "raw": "Raw client", "adapter": "Adapter", "framework": "RustStream", "adapterOverhead": "Adapter cost", "overhead": "Total cost", "indistinguishable": "indistinguishable", "brokerBound": "broker-bound", "machine": "Machine", "os": "OS", "broker": "Broker", "build": "Build", "roundTrip": "Round trip", "versions": "Versions", "measured": "Measured", "unavailable": "No results could be read. They are published at {url}.", "unknownSchema": "The published results declare schema {schema}, which this page does not render."}'></div>
+<div id="benchmark-results" data-benchmark-labels='{"loading": "Loading the published results...", "scenario": "Scenario", "raw": "Raw client", "adapter": "Adapter", "framework": "RustStream", "adapterOverhead": "Adapter cost", "overhead": "Total cost", "indistinguishable": "indistinguishable", "brokerBound": "broker-bound", "machine": "Machine", "os": "OS", "broker": "Broker", "build": "Build", "roundTrip": "Round trip", "versions": "Versions", "measured": "Measured", "codeMeasured": "Code costs measured", "codeUnpublished": "This results document carries no code costs.", "instructions": "Instructions per message", "allocations": "Allocations per message", "cold": "Cold start (instructions / allocations)", "unavailable": "No results could be read. They are published at {url}.", "unknownSchema": "The published results declare schema {schema}, which this page does not render."}'></div>
 
 The table is read in your browser from the document the last run wrote, so nothing on this page is
 a copy that could have gone stale.
@@ -44,11 +44,6 @@ transfer is already in hand when the loop asks for it; the runtime adds another 
 kind. What the columns measure here is therefore not a tax but the difference between a loop that
 waits and a pipeline that does not.
 
-The row above predates the socket this crate now opens for itself. It was measured when every loop
-alike waited on a delayed acknowledgement per settlement, which is most of what it reports: a run
-since puts all three loops around 160,000 messages a second and indistinguishable from each other.
-The figures want a re-measurement under the published procedure before they are read again.
-
 The row is a consumer and nothing else: a delivery arrives, the body decodes, a field is read, and
 the delivery is accepted. The producer is hand-written in all three loops, so the only side that
 changes is the consuming one.
@@ -63,6 +58,32 @@ on is a result rather than noise.
 The machine-readable form of the same run, which the framework's site reads to build its
 cross-broker table, is at
 [`benchmarks/results.json`](https://powersemmi.github.io/ruststream-amqp/latest/benchmarks/results.json).
+
+## The crate's own code
+
+<div id="benchmark-code"></div>
+
+The second table is this crate's own cost per message, counted rather than timed: instructions
+under callgrind and allocations under DHAT. Each scenario is the service a user writes, built on
+`AmqpBroker` and connected to the same Artemis stand, on a single-threaded runtime. What is counted
+is everything that runs on the service's thread: the framework's dispatch, this crate's
+subscription, message and publisher, and the `fe2o3-amqp` client's framing and decoding, which run
+there as the connection's tasks. The broker is another process, and none of its work is in the
+number. The queue is filled before the drain starts, over another connection on another thread,
+and that thread is not counted either.
+
+Instructions and allocations are per message in the steady state: the slope between a run of 1000
+deliveries and a run of 2000. The last column is what connecting the service, attaching its
+subscription and taking the first delivery cost once. The numbers are absolute, the framework's and
+the client's cost included; the core publishes the framework's cost alone on its
+[benchmarks page](https://powersemmi.github.io/ruststream/latest/benchmarks/).
+
+The socket is real, so a count moves a little between runs of one binary. Over five runs the
+instructions per message stayed within two tenths of a percent and the cold start within one
+percent, and the longest run's allocations moved by up to four blocks in two thousand deliveries.
+`just bench-code` fails when a run allocates more than the floor its scenario declares, which is
+the highest count seen plus a tenth of a percent. With `--baseline=main` it also fails on more than
+two percent more instructions. A pull request that changes the cost cites its numbers.
 
 ## The machine
 
@@ -94,8 +115,9 @@ a TCP timer rather than any code: the socket the client opened was left with Nag
 and a reply that waits for its disposition on a connection that is also writing dispositions sat in
 the kernel's buffer until the peer's delayed acknowledgement released it. This crate now opens that
 socket itself and sets `TCP_NODELAY` on it, which takes one request/reply round trip against the
-Artemis stand from 140 ms to 2 ms. The scenario has not been rewritten yet, so what a publish costs
-on this crate is still unpublished.
+Artemis stand from 140 ms to 2 ms. The scenario has not been rewritten yet, so this comparison
+covers the consuming side; the reply row of the code table counts what a publish costs on the
+service's thread.
 
 The window a run measures opens at the first delivery and closes when the last one's work ends, in
 every loop alike. The settlement follows that point, so one disposition out of the hundreds of
@@ -115,6 +137,14 @@ just bench
 ```
 
 The recipe starts the stand from `docker-compose.test.yml`, runs the scenario, stops the stand and
-rewrites `docs/benchmarks/results.json` with what it measured. It takes about ten minutes and wants
+rewrites `docs/benchmarks/results.json` with what it measured. It takes about a minute and wants
 the machine to itself. The message count is not fixed: a probe run sets it so that every
 measured run lasts at least five seconds on whatever machine it is taken on.
+
+```bash
+just bench-code
+```
+
+The recipe starts the same stand, counts the code table under valgrind, stops the stand and rewrites
+the `code` section of the same document. It takes about half a minute and needs valgrind and the benchmark
+runner: `cargo install --locked gungraun-runner --version =0.19.4`.

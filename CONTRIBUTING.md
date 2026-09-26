@@ -38,6 +38,7 @@ git clone https://github.com/powersemmi/ruststream-amqp.git
 | `just deny` | cargo-deny | `cargo install cargo-deny --locked` |
 | `just typo`, `just zizmor` | uv | the uv documentation |
 | `just bench` | Python 3 | the system package manager |
+| `just bench-code` | valgrind and the benchmark runner | the system package manager, then `cargo install --locked gungraun-runner --version =0.19.4` |
 | the documentation site | Python 3.12 | `pip install -r docs/requirements.txt`, then `properdocs serve` |
 
 ## Checking a change
@@ -54,8 +55,10 @@ starts the Compose stand, runs the whole suite against Artemis with the live tes
 stops the stand.
 
 `just bench` measures what this crate and the framework's runtime cost over the raw `fe2o3-amqp`
-client on the same stand and rewrites `docs/benchmarks/results.json`. It takes minutes and wants
-the machine to itself.
+client on the same stand and rewrites `docs/benchmarks/results.json`. It takes about a minute and
+wants the machine to itself. `just bench-code` counts what a service on this crate costs per message
+on its own thread, in instructions and allocations against the same stand, and rewrites the code
+table of the same document; it takes about half a minute.
 
 ## Testing against a local core
 
