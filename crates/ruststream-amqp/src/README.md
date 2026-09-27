@@ -527,7 +527,9 @@ What only a server has belongs to the live mode, over the same test body: an add
 while nothing consumes it (in process a message no subscription takes is dropped), how the server
 creates an address a publish reaches first, link credit, the dead-letter policy behind a
 rejection and the server's own delivery limit, and durability. The crate's live suites run
-against the `ActiveMQ` Artemis stand in `docker-compose.test.yml` (`just test-brokers`).
+against the `ActiveMQ` Artemis stand in `docker-compose.test.yml` (`just test-brokers`). There the
+conformance suites hold the in-process transport to the server as well: a message published before
+its subscription opened, and a publish or subscription the server refuses, answer alike on both.
 
 # Operations
 
