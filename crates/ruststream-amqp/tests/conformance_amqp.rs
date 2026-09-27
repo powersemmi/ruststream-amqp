@@ -44,6 +44,11 @@ fn key_header(key: &[u8], headers: &mut HeaderMap) -> Option<()> {
     None
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn in_process_passes_conformance_suite() {
+    harness::run_suite(|| AmqpBroker::new(URL)).await;
+}
+
 /// Both transports batch through the same client-side buffer, so the in-process one proves the
 /// contract - a batch never longer than the size it was opened with - without a server.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

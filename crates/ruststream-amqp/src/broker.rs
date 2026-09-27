@@ -736,18 +736,29 @@ impl TestableBroker for ConnectedAmqpBroker {
     /// An `AMQP` 1.0 node routes by its exact address. Among the subscriptions on the address, a
     /// topic terminus gets a copy each, and the queue termini compete, so exactly one of them
     /// takes the message; a verbatim address counts as a queue, as the in-process transport
-    /// delivers it. The harness counts deliveries per subscription name, so which of the
-    /// competing consumers takes the message does not change what it waits for.
+    /// delivers it. In process the answer names the queue subscription whose turn it is, because a
+    /// live `TestApp` waits on the very subscription the answer names. A live connection knows
+    /// only what it opened, and names the first queue subscription.
     fn routes(&self, destination: &str, subscriptions: &[&str]) -> Vec<usize> {
         let same_name = subscriptions
             .iter()
             .enumerate()
             .filter(|(_, name)| **name == destination)
             .map(|(position, _)| position);
-        // In process the router says who is attached now; a live connection has only what it
-        // opened.
+        // In process the router says who is attached now, and whose turn it is; a live connection
+        // has only what it opened.
         let termini = match &self.link {
             Link::InProcess(bus) => {
+                let recipients = bus.recipients(destination);
+                // The app's subscriptions of the name are the ones attached there, in the order it
+                // opened them; where the two disagree (a subscription detached), the answer falls
+                // back to counting.
+                if recipients.len() == same_name.clone().count() {
+                    return same_name
+                        .zip(recipients)
+                        .filter_map(|(position, reached)| reached.then_some(position))
+                        .collect();
+                }
                 let (anycast, multicast) = bus.termini(destination);
                 Some(Termini { anycast, multicast })
             }

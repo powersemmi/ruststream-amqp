@@ -116,6 +116,37 @@ impl AddressRouter {
         (anycast, multicast)
     }
 
+    /// Whether the next message published to `address` reaches each subscription attached there,
+    /// in attach order: every topic subscription, and the one queue subscription whose turn it is.
+    pub(crate) fn recipients(&self, address: &str) -> Vec<bool> {
+        let state = self.state();
+        let mut attached: Vec<(SubscriptionId, Routing)> = state
+            .subscriptions
+            .iter()
+            .filter(|(_, sub)| sub.address == address)
+            .map(|(id, sub)| (*id, sub.routing))
+            .collect();
+        attached.sort_unstable_by_key(|(id, _)| *id);
+        let competing = attached
+            .iter()
+            .filter(|(_, routing)| *routing == Routing::Anycast)
+            .count();
+        let turn = state.anycast_turn.get(address).copied().unwrap_or(0);
+        drop(state);
+        let mut anycast = 0;
+        attached
+            .into_iter()
+            .map(|(_, routing)| match routing {
+                Routing::Multicast => true,
+                Routing::Anycast => {
+                    let picked = anycast == turn % competing;
+                    anycast += 1;
+                    picked
+                }
+            })
+            .collect()
+    }
+
     /// Removes a subscription. No-op if the id is unknown (the transport already closed).
     pub(crate) fn unsubscribe(&self, id: SubscriptionId) {
         self.state().subscriptions.remove(&id);

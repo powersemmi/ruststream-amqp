@@ -71,6 +71,12 @@ impl Bus {
         self.router.termini(address)
     }
 
+    /// Whether the next message published to `address` reaches each subscription attached there,
+    /// in attach order.
+    pub(crate) fn recipients(&self, address: &str) -> Vec<bool> {
+        self.router.recipients(address)
+    }
+
     pub(crate) fn unsubscribe(&self, id: SubscriptionId) {
         self.router.unsubscribe(id);
     }

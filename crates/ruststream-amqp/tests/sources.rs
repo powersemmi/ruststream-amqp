@@ -381,6 +381,14 @@ async fn the_routing_answer_is_one_queue_consumer_and_every_topic_subscription()
     assert_eq!(broker.routes("work", &names), [0]);
     assert_eq!(broker.routes("news", &names), [2, 3]);
     assert_eq!(broker.routes("nowhere", &names), [0_usize; 0]);
+
+    // The queue consumers take turns, and the answer names the one whose turn it is.
+    broker
+        .publisher()
+        .publish(OutgoingMessage::new("work", b"one".as_slice()), None)
+        .await
+        .expect("publish succeeds");
+    assert_eq!(broker.routes("work", &names), [1]);
 }
 
 // A subscription that detached no longer counts: the answer follows the subscriptions attached
