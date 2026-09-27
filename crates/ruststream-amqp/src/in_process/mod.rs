@@ -12,12 +12,15 @@
 //! connection are refused with the live error.
 //!
 //! What it models: exact-address routing, the queue terminus (competing consumers, one delivery
-//! each) and the topic terminus (a copy for every subscription), the settle mode, the
-//! `delivery-count` a `modified` disposition adds, a released delivery going back to a consumer
-//! that is still attached, request/reply over a private reply address, and transactional posting.
-//! What belongs to the server and is left to the live mode: an address's storage while nothing
-//! consumes it (a message no subscription takes is dropped here), link credit, the dead-letter
-//! policy behind a rejection and the server's own delivery limit, and a request refused by a peer.
+//! each) and the topic terminus (a copy for every subscription), the queue a queue subscription
+//! creates and what it keeps while no consumer is attached, the settle mode, the `delivery-count` a
+//! `modified` disposition adds, a released delivery going back to a consumer that is still
+//! attached, an unsettled delivery going back to the queue when its subscription detaches,
+//! request/reply over a private reply address, and transactional posting. What belongs to the
+//! server and is left to the live mode: how it creates an address a publish reaches first (a
+//! message to an address no queue subscription attached to is dropped here), link credit, the
+//! dead-letter policy behind a rejection and the server's own delivery limit, and a request refused
+//! by a peer.
 
 mod bus;
 mod deliveries;
