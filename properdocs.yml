@@ -1,5 +1,5 @@
 site_name: ruststream-amqp
-site_description: The AMQP 1.0 broker for RustStream - explicit addressing, protocol dispositions, request/reply, transactions, and an in-process test broker.
+site_description: The AMQP 1.0 broker for RustStream - explicit addressing, protocol dispositions, request/reply, transactions, and tests that run the production app in process.
 site_url: https://powersemmi.github.io/ruststream-amqp/
 repo_url: https://github.com/powersemmi/ruststream-amqp
 repo_name: powersemmi/ruststream-amqp

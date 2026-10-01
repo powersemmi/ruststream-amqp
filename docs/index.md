@@ -34,8 +34,8 @@ disposition each handler outcome maps to, the retry cap and the deferred re-publ
 [Publishing](https://docs.rs/ruststream-amqp/latest/ruststream_amqp/index.html#publishing) has the
 publish policies, request/reply over a dynamic reply link, and transactional posting. Then
 [the generated document](https://docs.rs/ruststream-amqp/latest/ruststream_amqp/index.html#the-generated-document),
-[testing](https://docs.rs/ruststream-amqp/latest/ruststream_amqp/index.html#testing) with the
-in-process broker, and
+[testing](https://docs.rs/ruststream-amqp/latest/ruststream_amqp/index.html#testing) of the
+production app in process or against a live broker, and
 [operations](https://docs.rs/ruststream-amqp/latest/ruststream_amqp/index.html#operations):
 authentication, TLS, sessions, and the known gaps.
 
