@@ -518,18 +518,21 @@ capability, so on a server the peer's configuration decides (`ActiveMQ` Artemis 
 default); in process it is delivered once, so say `topic` where the broadcast is the thing being
 asserted. An at-most-once delivery arrives settled and its `ack` reports
 `AckError::Unsupported`. A `modified` disposition counts the attempt in `delivery-count`, and a
-released delivery goes back to a consumer still attached to its address. Batches come from the
-same client-side buffer with the descriptor's own `batch_wait`. A transaction publishes nothing
-before its commit and discards its buffer on an abort. A request carries `reply-to` and
-`correlation-id` and fails with `AmqpError::RequestTimeout` when nothing answers.
+released delivery goes back to a consumer still attached to its address. A queue subscription
+creates its address's queue, as the server does for the attach, and a message no consumer is there
+to take waits in it for the next queue subscription. A delivery dropped without a settlement stays
+on its subscription, as on a live link, and goes back to the queue when the subscription detaches.
+Batches come from the same client-side buffer with the descriptor's own `batch_wait`. A transaction
+publishes nothing before its commit and discards its buffer on an abort. A request carries
+`reply-to` and `correlation-id` and fails with `AmqpError::RequestTimeout` when nothing answers.
 
-What only a server has belongs to the live mode, over the same test body: an address's storage
-while nothing consumes it (in process a message no subscription takes is dropped), how the server
-creates an address a publish reaches first, link credit, the dead-letter policy behind a
-rejection and the server's own delivery limit, and durability. The crate's live suites run
-against the `ActiveMQ` Artemis stand in `docker-compose.test.yml` (`just test-brokers`). There the
-conformance suites hold the in-process transport to the server as well: a message published before
-its subscription opened, and a publish or subscription the server refuses, answer alike on both.
+What only a server has belongs to the live mode, over the same test body: how the server creates an
+address a publish reaches first (in process a message to an address with no queue subscription yet
+is dropped), link credit, the dead-letter policy behind a rejection and the server's own delivery
+limit, and durability. The crate's live suites run against the `ActiveMQ` Artemis stand in
+`docker-compose.test.yml` (`just test-brokers`). There the conformance suites hold the in-process
+transport to the server as well: a settlement, a message published before its subscription opened,
+and a publish or subscription the server refuses answer alike on both.
 
 # Operations
 
