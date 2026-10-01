@@ -7,9 +7,12 @@
 //! bounded-channel consumer, which keeps `stream` cancel-safe and re-enterable, under the
 //! framework's client-side buffer that turns it into a [`BatchSubscriber`].
 
+use std::fmt;
 use std::num::NonZeroUsize;
 
 use futures::Stream;
+#[cfg(feature = "testing")]
+use futures::future::Either;
 
 use fe2o3_amqp::link::receiver::CreditMode;
 use fe2o3_amqp::link::{Receiver as FeReceiver, RecvError};
@@ -17,11 +20,13 @@ use fe2o3_amqp::session::SessionHandle;
 use fe2o3_amqp_types::messaging::{Body, Modified};
 use fe2o3_amqp_types::primitives::Value;
 use ruststream::{AckError, BatchSubscriber, BufferedSubscriber, Subscriber};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 
 use crate::address::AmqpAddress;
-use crate::broker::{AmqpCore, is_at_most_once, source_for};
+use crate::broker::{AmqpCore, PumpGuard, is_at_most_once, source_for};
 use crate::error::{AmqpError, box_err};
+#[cfg(feature = "testing")]
+use crate::in_process::BusDeliveries;
 use crate::message::{
     AmqpMessage, SettleCmd, SettleKind, SettleSender, headers_from_amqp, payload_from_body,
 };
@@ -29,14 +34,16 @@ use crate::message::{
 /// A subscription to one `AMQP` address; yields [`AmqpMessage`]s one at a time, or in batches.
 ///
 /// Dropping the subscriber stops the pump task, detaches the link, and ends the subscription's
-/// session.
+/// session. A subscription still open when the connected broker shuts down is ended by the
+/// shutdown, before the connection closes: its stream yields the deliveries it had already
+/// received and then ends, and settling one of those reports an error.
 pub struct AmqpSubscriber {
     address: String,
     deliveries: BufferedSubscriber<Deliveries>,
 }
 
-impl std::fmt::Debug for AmqpSubscriber {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for AmqpSubscriber {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AmqpSubscriber")
             .field("address", &self.address)
             .finish_non_exhaustive()
@@ -54,6 +61,7 @@ impl AmqpSubscriber {
         core: &AmqpCore,
         mut session: SessionHandle<()>,
         address: AmqpAddress,
+        guard: PumpGuard,
     ) -> Result<Self, AmqpError> {
         let at_most_once = is_at_most_once(address.settle_value());
         let credit = address.credit_value();
@@ -75,7 +83,7 @@ impl AmqpSubscriber {
         let (out_tx, out_rx) = mpsc::channel(credit as usize);
         let (settle_tx, settle_rx) = mpsc::unbounded_channel();
         let addr = address.address().to_owned();
-        tokio::spawn(pump(Pump {
+        core.runtime.spawn(pump(Pump {
             session,
             receiver,
             out: out_tx,
@@ -83,13 +91,25 @@ impl AmqpSubscriber {
             settle_rx,
             address: addr.clone(),
             at_most_once,
+            guard,
         }));
 
         Ok(Self {
             address: addr,
-            deliveries: BufferedSubscriber::new(Deliveries { rx: out_rx })
+            deliveries: BufferedSubscriber::new(Deliveries::Amqp(out_rx))
                 .max_wait(address.batch_wait_value()),
         })
+    }
+
+    /// A subscriber on the in-process transport, batching on the client with the descriptor's own
+    /// deadline as the live subscriber does.
+    #[cfg(feature = "testing")]
+    pub(crate) fn in_process(deliveries: BusDeliveries, address: &AmqpAddress) -> Self {
+        Self {
+            address: address.address().to_owned(),
+            deliveries: BufferedSubscriber::new(Deliveries::InProcess(deliveries))
+                .max_wait(address.batch_wait_value()),
+        }
     }
 }
 
@@ -118,21 +138,47 @@ impl BatchSubscriber for AmqpSubscriber {
     }
 }
 
-/// The consuming end of the pump channel: one delivery per stream item.
-struct Deliveries {
-    rx: mpsc::Receiver<Result<AmqpMessage, AmqpError>>,
+/// The receiver of the pump channel.
+type PumpReceiver = mpsc::Receiver<Result<AmqpMessage, AmqpError>>;
+
+/// One delivery per stream item, from whichever transport the broker was connected to: everything
+/// above it batches on the client.
+///
+/// Without the `testing` feature the pump channel is the only variant, so the type is the channel
+/// and the `match` in [`stream`](Subscriber::stream) resolves at compile time.
+enum Deliveries {
+    Amqp(PumpReceiver),
+    #[cfg(feature = "testing")]
+    InProcess(BusDeliveries),
 }
+
+#[cfg(not(feature = "testing"))]
+const _: () = assert!(size_of::<Deliveries>() == size_of::<PumpReceiver>());
 
 impl Subscriber for Deliveries {
     type Message = AmqpMessage;
     type Error = AmqpError;
 
     fn stream(&mut self) -> impl Stream<Item = Result<AmqpMessage, AmqpError>> + Send + '_ {
-        // Poll the channel in place rather than wrapping it in an owning stream, so `stream`
-        // can be called again after the returned stream is dropped (the runtime and the
-        // conformance helpers re-enter it per call).
-        futures::stream::poll_fn(move |cx| self.rx.poll_recv(cx))
+        match self {
+            #[cfg(not(feature = "testing"))]
+            Self::Amqp(rx) => pump_stream(rx),
+            #[cfg(feature = "testing")]
+            Self::Amqp(rx) => Either::Left(pump_stream(rx)),
+            #[cfg(feature = "testing")]
+            Self::InProcess(deliveries) => Either::Right(deliveries.stream()),
+        }
     }
+}
+
+/// The pump channel as a stream.
+fn pump_stream(
+    rx: &mut PumpReceiver,
+) -> impl Stream<Item = Result<AmqpMessage, AmqpError>> + Send + '_ {
+    // Poll the channel in place rather than wrapping it in an owning stream, so `stream` can be
+    // called again after the returned stream is dropped (the runtime and the conformance helpers
+    // re-enter it per call).
+    futures::stream::poll_fn(move |cx| rx.poll_recv(cx))
 }
 
 struct Pump {
@@ -147,6 +193,9 @@ struct Pump {
     settle_rx: mpsc::UnboundedReceiver<SettleCmd>,
     address: String,
     at_most_once: bool,
+    /// Carries the connection's stop signal in, and its drop tells the connection this pump's
+    /// session has ended. Held to the last line of the pump.
+    guard: PumpGuard,
 }
 
 /// A `RecvError` that poisons only one delivery; the link keeps going.
@@ -182,6 +231,7 @@ async fn pump(mut p: Pump) {
                     Ok(permit) => permit.send(Ok(msg)),
                     Err(_) => break false, // subscriber dropped
                 },
+                () = stopped(&mut p.guard.stop) => break false, // shutdown
             }
         } else {
             tokio::select! {
@@ -192,6 +242,7 @@ async fn pump(mut p: Pump) {
                     }
                 }
                 () = p.out.closed() => break false, // subscriber dropped
+                () = stopped(&mut p.guard.stop) => break false, // shutdown
                 delivery = p.receiver.recv::<Body<Value>>() => match delivery {
                     Ok(delivery) => {
                         let (info, message) = delivery.into_parts();
@@ -219,7 +270,7 @@ async fn pump(mut p: Pump) {
                                 if !p.at_most_once {
                                     let _ = p.receiver.reject(info, None).await;
                                 }
-                                if p.out.send(Err(err)).await.is_err() {
+                                if !deliver(&p.out, &mut p.guard.stop, Err(err)).await {
                                     break false;
                                 }
                             }
@@ -230,16 +281,16 @@ async fn pump(mut p: Pump) {
                             address: p.address.clone(),
                             source: box_err(err),
                         });
-                        if p.out.send(item).await.is_err() {
+                        if !deliver(&p.out, &mut p.guard.stop, item).await {
                             break false;
                         }
                     }
                     Err(err) => {
-                        let _ = p.out.send(Err(AmqpError::Receive {
+                        let error = Err(AmqpError::Receive {
                             address: p.address.clone(),
                             source: box_err(err),
-                        }))
-                        .await;
+                        });
+                        deliver(&p.out, &mut p.guard.stop, error).await;
                         break true;
                     }
                 },
@@ -248,10 +299,21 @@ async fn pump(mut p: Pump) {
     };
 
     // Outstanding message handles may still settle; serve them until every clone of the settle
-    // sender is gone. On a fatal link error the dispositions fail and report through AckError.
+    // sender is gone, or until the connection shuts down, after which a settlement could not
+    // reach the peer anyway and reports through AckError instead. On a fatal link error the
+    // dispositions fail and report the same way. The delivery channel goes first: deliveries it
+    // still holds for a dropped subscriber hold settle handles of their own.
+    drop(p.out);
     drop(p.settle_tx);
-    while let Some(cmd) = p.settle_rx.recv().await {
-        apply(&p.receiver, cmd).await;
+    loop {
+        tokio::select! {
+            biased;
+            cmd = p.settle_rx.recv() => match cmd {
+                Some(cmd) => apply(&p.receiver, cmd).await,
+                None => break,
+            },
+            () = stopped(&mut p.guard.stop) => break,
+        }
     }
 
     if !fatal && let Err((_, err)) = p.receiver.detach().await {
@@ -260,6 +322,31 @@ async fn pump(mut p: Pump) {
     if let Err(err) = p.session.end().await {
         tracing::debug!(address = %p.address, error = %err, "amqp session end failed");
     }
+    // Only now may the connection close.
+    drop(p.guard);
+}
+
+/// Resolves once the connection shuts down, or once it is gone altogether.
+/// Hands `item` to the subscriber, waiting for channel capacity only until shutdown: a
+/// subscriber that stopped polling a full channel must not hold the connection open. `false`
+/// when the subscriber is gone or the connection is shutting down.
+async fn deliver(
+    out: &mpsc::Sender<Result<AmqpMessage, AmqpError>>,
+    stop: &mut watch::Receiver<bool>,
+    item: Result<AmqpMessage, AmqpError>,
+) -> bool {
+    tokio::select! {
+        biased;
+        () = stopped(stop) => false,
+        sent = out.send(item) => sent.is_ok(),
+    }
+}
+
+async fn stopped(stop: &mut watch::Receiver<bool>) {
+    // An error means the connection's state was dropped, which ends the pump as surely as a
+    // shutdown does. The value is dropped here rather than returned: it borrows the channel and
+    // cannot cross a task boundary.
+    let _ = stop.wait_for(|stopped| *stopped).await.is_ok();
 }
 
 async fn apply(receiver: &FeReceiver, cmd: SettleCmd) {

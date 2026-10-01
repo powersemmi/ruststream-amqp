@@ -2,15 +2,17 @@
 //! mount site supplies when the type declares none.
 //!
 //! Both resolutions are the framework's, but the address a reply actually leaves on is the
-//! broker's, so this reads it back off the in-process broker's publish log rather than trusting
-//! the mount site.
+//! broker's, so this reads it back off the broker's publish log rather than trusting the mount
+//! site.
 
 #![cfg(feature = "testing")]
 
 use ruststream::testing::TestApp;
 use ruststream_amqp::prelude::*;
-use ruststream_amqp::testing::AmqpTestBroker;
 use serde::{Deserialize, Serialize};
+
+/// The broker's address; the in-process mode dials nothing.
+const URL: &str = "amqp://broker.example.com:5672";
 
 /// The request both responders answer. The derive names no destination, so each injection below
 /// says which address it goes to.
@@ -53,27 +55,31 @@ async fn confirm(order: &Order) -> Confirmation {
     }
 }
 
+/// The service's app.
+fn app() -> RustStream {
+    RustStream::new(AppInfo::new("billing", "0.1.0")).with_broker(AmqpBroker::new(URL), |b| {
+        b.include(issue_receipt);
+        b.include(confirm);
+    })
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_reply_lands_where_its_own_type_declares() {
-    let app =
-        RustStream::new(AppInfo::new("billing", "0.1.0")).with_broker(AmqpTestBroker::new(), |b| {
-            b.include(issue_receipt);
-        });
-    let app = TestApp::start(app).await.expect("startup failed");
+    let tb = TestApp::start(app()).await.expect("startup failed");
 
     // Awaiting the injection drives the reaction to a standstill, so the assertions below read a
     // settled service.
-    app.broker::<AmqpTestBroker>()
+    tb.broker::<AmqpBroker>()
         .message(&Order { id: 7 })
         .to("receipt-requests")
         .publish()
         .await
         .expect("publish failed");
 
-    app.broker::<AmqpTestBroker>()
+    tb.broker::<AmqpBroker>()
         .subscriber("receipt-requests")
         .assert_called_once();
-    app.broker::<AmqpTestBroker>()
+    tb.broker::<AmqpBroker>()
         .published::<Receipt>("receipts")
         .assert_called_once()
         .with(&Receipt {
@@ -81,28 +87,24 @@ async fn a_reply_lands_where_its_own_type_declares() {
             paid: true,
         });
 
-    app.shutdown().await.expect("shutdown failed");
+    tb.shutdown().await.expect("shutdown failed");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_reply_that_declares_no_name_lands_where_the_mount_site_says() {
-    let app =
-        RustStream::new(AppInfo::new("billing", "0.1.0")).with_broker(AmqpTestBroker::new(), |b| {
-            b.include(confirm);
-        });
-    let app = TestApp::start(app).await.expect("startup failed");
+    let tb = TestApp::start(app()).await.expect("startup failed");
 
-    app.broker::<AmqpTestBroker>()
+    tb.broker::<AmqpBroker>()
         .message(&Order { id: 11 })
         .to("confirmation-requests")
         .publish()
         .await
         .expect("publish failed");
 
-    app.broker::<AmqpTestBroker>()
+    tb.broker::<AmqpBroker>()
         .subscriber("confirmation-requests")
         .assert_called_once();
-    app.broker::<AmqpTestBroker>()
+    tb.broker::<AmqpBroker>()
         .published::<Confirmation>("confirmations")
         .assert_called_once()
         .with(&Confirmation {
@@ -110,5 +112,5 @@ async fn a_reply_that_declares_no_name_lands_where_the_mount_site_says() {
             accepted: true,
         });
 
-    app.shutdown().await.expect("shutdown failed");
+    tb.shutdown().await.expect("shutdown failed");
 }
