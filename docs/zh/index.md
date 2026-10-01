@@ -30,7 +30,7 @@ serde = { version = "1", features = ["derive"] }
 [发布](https://docs.rs/ruststream-amqp/latest/ruststream_amqp/index.html#publishing)一节讲发布
 策略、基于动态回复链路的请求-响应，以及事务性投递。再往后是
 [生成的文档](https://docs.rs/ruststream-amqp/latest/ruststream_amqp/index.html#the-generated-document)、
-基于进程内 Broker 的[测试](https://docs.rs/ruststream-amqp/latest/ruststream_amqp/index.html#testing)，
+在进程内或针对运行中的 Broker 对生产应用进行的[测试](https://docs.rs/ruststream-amqp/latest/ruststream_amqp/index.html#testing)，
 以及[运维](https://docs.rs/ruststream-amqp/latest/ruststream_amqp/index.html#operations)：认证、
 TLS、会话和已知的限制。
 

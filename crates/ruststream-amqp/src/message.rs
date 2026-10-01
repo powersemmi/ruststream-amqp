@@ -5,6 +5,8 @@
 //! header rides `application-properties`, so no envelope format is invented and non-RustStream
 //! peers see plain `AMQP` messages.
 
+use std::fmt;
+
 use bytes::Bytes;
 use fe2o3_amqp::link::delivery::DeliveryInfo;
 use fe2o3_amqp_types::messaging::{
@@ -15,6 +17,8 @@ use ruststream::{AckError, HeaderMap, IncomingMessage, OutgoingFor, Partitioned,
 use tokio::sync::{mpsc, oneshot};
 
 use crate::error::AmqpError;
+#[cfg(feature = "testing")]
+use crate::in_process::{Delivery, Settlement};
 
 /// Header carrying the partition key, mapped onto the `AMQP` `group-id` property.
 ///
@@ -23,7 +27,7 @@ use crate::error::AmqpError;
 pub const PARTITION_KEY_HEADER: &str = "partition-key";
 
 /// How a delivered message asks its pump task to settle it.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) enum SettleKind {
     /// Accept the delivery (ack).
     Accept,
@@ -65,6 +69,10 @@ pub struct AmqpMessage {
     delivery_count: Option<u32>,
     /// `None` when the delivery is already settled (at-most-once, request/reply replies).
     settle: Option<SettleHandle>,
+    /// How a delivery of the in-process transport settles, in place of the settle handle a live
+    /// one carries. The field is there only with the `testing` feature.
+    #[cfg(feature = "testing")]
+    in_process: Option<Settlement>,
 }
 
 struct SettleHandle {
@@ -72,8 +80,8 @@ struct SettleHandle {
     info: DeliveryInfo,
 }
 
-impl std::fmt::Debug for AmqpMessage {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for AmqpMessage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AmqpMessage")
             .field("payload_len", &self.payload.len())
             .field("delivery_count", &self.delivery_count)
@@ -95,6 +103,8 @@ impl AmqpMessage {
             headers,
             delivery_count,
             settle: Some(SettleHandle { tx, info }),
+            #[cfg(feature = "testing")]
+            in_process: None,
         }
     }
 
@@ -106,10 +116,29 @@ impl AmqpMessage {
             headers,
             delivery_count,
             settle: None,
+            #[cfg(feature = "testing")]
+            in_process: None,
         }
     }
 
+    /// A delivery of the in-process transport, reporting what a live one reports.
+    #[cfg(feature = "testing")]
+    pub(crate) fn in_process(delivery: Delivery, settlement: Settlement) -> Self {
+        Self::settled(delivery.payload, delivery.headers, delivery.count).settling(settlement)
+    }
+
+    /// Hands the settlement of this delivery to the in-process transport.
+    #[cfg(feature = "testing")]
+    pub(crate) fn settling(mut self, settlement: Settlement) -> Self {
+        self.in_process = Some(settlement);
+        self
+    }
+
     async fn settle(self, kind: SettleKind) -> Result<(), AckError> {
+        #[cfg(feature = "testing")]
+        if let Some(settlement) = self.in_process {
+            return settlement.settle(kind, self.payload, self.headers, self.delivery_count);
+        }
         let Some(SettleHandle { tx, info }) = self.settle else {
             return Err(AckError::Unsupported);
         };
@@ -171,6 +200,12 @@ impl IncomingMessage for AmqpMessage {
 /// Builds the `AMQP` message for an outgoing publish.
 pub(crate) fn to_amqp_message(msg: OutgoingFor<'_, Take>) -> Message<Data> {
     let (_, payload, headers) = msg.into_parts();
+    build_message(&headers, Vec::from(payload))
+}
+
+/// Builds the `AMQP` message carrying `body` with `headers` spread over its sections: the
+/// well-known ones on `properties`, every other one on `application-properties`.
+pub(crate) fn build_message(headers: &HeaderMap, body: Vec<u8>) -> Message<Data> {
     let mut properties = Properties::default();
     let mut has_properties = false;
     let mut application: Option<ApplicationProperties> = None;
@@ -217,7 +252,7 @@ pub(crate) fn to_amqp_message(msg: OutgoingFor<'_, Take>) -> Message<Data> {
     if let Some(application) = application {
         builder = builder.application_properties(application);
     }
-    builder.data(Binary::from(Vec::from(payload))).build()
+    builder.data(Binary::from(body)).build()
 }
 
 /// Extracts `RustStream` headers from a delivered `AMQP` message.

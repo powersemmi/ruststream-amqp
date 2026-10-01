@@ -1,5 +1,4 @@
-//! A batch handler mounted on the in-process broker: what the mount site names is what the body
-//! is handed.
+//! A batch handler in the service's app: what the mount site names is what the body is handed.
 //!
 //! The conformance suite checks the capability itself; this pins the runtime path, where the size
 //! travels from `batch(..)` at the mount site down to the subscriber that builds the batches.
@@ -8,8 +7,10 @@
 
 use ruststream::testing::TestApp;
 use ruststream_amqp::prelude::*;
-use ruststream_amqp::testing::AmqpTestBroker;
 use serde::{Deserialize, Serialize};
+
+/// The broker's address; the in-process mode dials nothing.
+const URL: &str = "amqp://broker.example.com:5672";
 
 /// The batch size the mount below names, spelled once so the assertion cannot drift from it.
 const SIZE: usize = 2;
@@ -26,18 +27,21 @@ async fn settle(orders: &[Order]) -> HandlerOutcome {
     HandlerOutcome::ack()
 }
 
+/// The service's app, on the broker it is handed.
+fn app(broker: AmqpBroker) -> RustStream {
+    RustStream::new(AppInfo::new("billing", "0.1.0")).with_broker(broker, |b| {
+        b.include(settle.batch(nonzero!(SIZE)));
+    })
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_batch_carries_at_most_the_size_the_mount_named() {
-    // A producer handle taken off the broker publishes as an external client does, without
-    // driving the reaction to a standstill on every message - which an injection through the
-    // harness would do, closing each batch after a single delivery.
-    let broker = AmqpTestBroker::new();
+    // A publisher taken off the broker before it connects publishes as an external client does,
+    // without driving the reaction to a standstill on every message - which an injection through
+    // the harness would do, closing each batch after a single delivery.
+    let broker = AmqpBroker::new(URL);
     let producer = broker.publisher();
-
-    let app = RustStream::new(AppInfo::new("billing", "0.1.0")).with_broker(broker, |b| {
-        b.include(settle.batch(nonzero!(SIZE)));
-    });
-    let app = TestApp::start(app).await.expect("startup failed");
+    let tb = TestApp::start(app(broker)).await.expect("startup failed");
 
     for id in 0..5 {
         producer
@@ -47,14 +51,11 @@ async fn a_batch_carries_at_most_the_size_the_mount_named() {
             .await
             .expect("publish failed");
     }
-    app.settle().await.expect("the run settles");
+    tb.settle().await.expect("the run settles");
 
     // How the five split across batches is the buffer's business (its deadline may close one
     // early); that none of them is longer than the mount named is the contract.
-    let batches: Vec<Vec<Order>> = app
-        .broker::<AmqpTestBroker>()
-        .subscriber("orders")
-        .batches();
+    let batches: Vec<Vec<Order>> = tb.broker::<AmqpBroker>().subscriber("orders").batches();
     assert!(
         batches
             .iter()
@@ -68,9 +69,9 @@ async fn a_batch_carries_at_most_the_size_the_mount_named() {
         "every order must arrive, in order",
     );
 
-    app.broker::<AmqpTestBroker>()
+    tb.broker::<AmqpBroker>()
         .subscriber("orders")
         .settled(HandlerOutcome::ack());
 
-    app.shutdown().await.expect("shutdown failed");
+    tb.shutdown().await.expect("shutdown failed");
 }
