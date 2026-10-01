@@ -43,9 +43,23 @@ impl BusDeliveries {
 }
 
 impl Drop for BusDeliveries {
-    /// Detaching the link: the address stops handing this subscription anything.
+    /// Detaching the link: the address stops handing this subscription anything, and takes back
+    /// what the subscription held unsettled, the deliveries its consumer never read included. An
+    /// at-most-once subscription's deliveries were settled when they were sent, so they go with it.
     fn drop(&mut self) {
-        self.bus.unsubscribe(self.id);
+        self.receiver.close();
+        let mut pending = Vec::new();
+        while let Ok(delivery) = self.receiver.try_recv() {
+            // Counted in flight when it was sent; it leaves the flight here, and is counted again
+            // if it is handed to another consumer.
+            if let Some(coordinator) = self.bus.coordinator() {
+                coordinator.consumed();
+            }
+            if !self.at_most_once {
+                pending.push(delivery);
+            }
+        }
+        self.bus.unsubscribe(self.id, pending);
     }
 }
 
@@ -77,6 +91,7 @@ impl Subscriber for BusDeliveries {
                     let origin = (!*at_most_once).then(|| Origin {
                         id: *id,
                         address: address.clone(),
+                        delivery: delivery.clone(),
                     });
                     let settlement = Settlement::new(Arc::clone(bus), origin);
                     Ok(AmqpMessage::in_process(delivery, settlement))
@@ -86,11 +101,13 @@ impl Subscriber for BusDeliveries {
     }
 }
 
-/// The subscription a delivery came from, which a requeue returns it to.
+/// The subscription a delivery came from, which a requeue returns it to, and the delivery as it
+/// arrived, which goes back unchanged when its consumer drops it without settling.
 #[derive(Debug)]
 struct Origin {
     id: SubscriptionId,
     address: String,
+    delivery: Delivery,
 }
 
 /// How an in-process delivery settles, in place of the settle handle a live one carries.
@@ -117,13 +134,14 @@ impl Settlement {
     /// [`AckError::Unsupported`], a settlement after the connection shut down reports the ended
     /// session, and a `modified` disposition returns the message with one more counted attempt.
     pub(crate) fn settle(
-        self,
+        mut self,
         kind: SettleKind,
         payload: Bytes,
         headers: HeaderMap,
         delivery_count: Option<u32>,
     ) -> Result<(), AckError> {
-        let Some(origin) = &self.origin else {
+        // Taken, so the drop that follows the settlement does not hand the delivery back.
+        let Some(origin) = self.origin.take() else {
             return Err(AckError::Unsupported);
         };
         if self.bus.is_closed() {
@@ -155,7 +173,15 @@ impl Settlement {
 }
 
 impl Drop for Settlement {
+    /// A delivery dropped without a settlement stays unsettled on its subscription, as on a live
+    /// link, and goes back to its address when the subscription detaches.
     fn drop(&mut self) {
+        // Handed back before its count is released, so the harness never sees a moment with
+        // nothing in flight while the delivery is on its way back.
+        if let Some(origin) = self.origin.take() {
+            self.bus
+                .release(origin.id, &origin.address, origin.delivery);
+        }
         if let Some(coordinator) = self.bus.coordinator() {
             coordinator.consumed();
         }
