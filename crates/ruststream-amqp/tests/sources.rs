@@ -380,7 +380,7 @@ async fn the_routing_answer_is_one_queue_consumer_and_every_topic_subscription()
 
     assert_eq!(broker.routes("work", &names), [0]);
     assert_eq!(broker.routes("news", &names), [2, 3]);
-    assert!(broker.routes("nowhere", &names).is_empty());
+    assert_eq!(broker.routes("nowhere", &names), [0_usize; 0]);
 }
 
 // A subscription that detached no longer counts: the answer follows the subscriptions attached
