@@ -21,23 +21,26 @@
 
 ---
 
-`ruststream-amqp` implements the RustStream broker contract over [`fe2o3-amqp`](https://crates.io/crates/fe2o3-amqp). Handlers, routers, codecs, and middleware come from the framework; this crate supplies the transport - and nothing broker-specific leaks back into the framework.
-
-AMQP 1.0 is an ISO-standard protocol spoken by ActiveMQ Artemis and Classic, RabbitMQ 4.x (a separate protocol stack from the 0.9.1 that [`ruststream-lapin`](https://github.com/powersemmi/ruststream-lapin) speaks), Azure Service Bus and Event Hubs, Amazon MQ, Solace, Apache Qpid, and IBM MQ - one crate serves the whole family.
+`ruststream-amqp` connects a RustStream service to an AMQP 1.0 broker over
+[`fe2o3-amqp`](https://crates.io/crates/fe2o3-amqp). One crate serves the whole family: ActiveMQ
+Artemis and Classic, RabbitMQ 4.x over AMQP 1.0, Azure Service Bus and Event Hubs, Amazon MQ,
+Solace, Apache Qpid and IBM MQ. For RabbitMQ over AMQP 0.9.1, use
+[`ruststream-lapin`](https://github.com/powersemmi/ruststream-lapin). Handlers, routing, codecs and
+middleware come from the framework; this crate is the transport.
 
 ## Features
 
-- **Lazy startup contract.** `AmqpBroker::new(url)` is synchronous and does no I/O; the runtime connects once at startup, so the broker composes with `#[ruststream::app]`. SASL (ANONYMOUS, PLAIN, EXTERNAL) and the container id are builder options.
-- **Acknowledgement as dispositions.** `ack` maps to `accept`, `nack(requeue = true)` to `modified` with `delivery-failed` (so the broker counts the attempt), `nack(requeue = false)` to `reject` - the broker's own dead-letter policy applies. At-most-once subscriptions report `AckError::Unsupported` instead of a settlement that never reaches the wire.
-- **Retries have a cap and somewhere to land.** `b.include(handler).max_attempts(nonzero!(5u32)).dead_letter("orders.dead")` ends a message that never settles, counting the broker's own `delivery-count` where the delivery carries one. The protocol has no delayed redelivery, so `retry_after` is the framework's deferred re-publish, and every subscription here addresses its own copies: one AMQP node is both what a receiver attaches to and what a sender publishes to, so the mount site owes no destination.
-- **A document that names the right protocol** (feature `asyncapi`). The generated AsyncAPI server is `amqp1` with version `1.0`, not the `amqp` that means 0.9.1, and an `x-ruststream-amqp1` extension carries the container id, the node address, its terminus capability, the credit and the settle mode - the specification's own `amqp1` binding objects are reserved and must stay empty.
-- **Explicit addressing.** The protocol standardises the wire, not the meaning of an address: `AmqpAddress::queue` (anycast), `AmqpAddress::topic` (multicast), `AmqpAddress::raw` (verbatim, for deployments with their own convention), plus `credit` (prefetch as protocol-level flow control) and the `settle` guarantee.
-- **Batches.** A handler taking a slice gets batches of the size its mount site names (`.batch(nonzero!(32))`). A transfer carries one message, so the batches are assembled on the client and `batch_wait` caps how long a partial one waits - the mount site reads the same as on a broker that batches on the wire.
-- **Publishers pair at startup.** `AmqpPublish` is declaration only, so it is written anywhere; the runtime pairs it against the connected broker, and a handler slot never holds an unconnected publisher. The crate prelude aliases it to `Publish` (and `AmqpTransactionalPublish` to `TransactionalPublish`), so a mount site reads `.out_reply(Publish)` here exactly as on every other broker in the family.
-- **Native request/reply.** `AmqpPublisher` implements the `RequestReply` capability over `reply-to`, `correlation-id`, and a dynamic receiver link.
-- **Transactions** (feature `transaction`). A distinct `AmqpTransactionalPublish` policy pairs into a `TransactionalPublisher` built on the protocol's transactional posting; the plain publisher carries no transactional surface.
-- **Headers without an envelope.** Well-known headers ride the `properties` section (`content-type`, `correlation-id`, `reply-to`, `message-id`, the partition key as `group-id`); everything else rides `application-properties`, so non-Rust peers see plain AMQP messages.
-- **Tests on the production app** (feature `testing`). The framework's `TestApp` runs the app `main` runs with `AmqpBroker` connected in process - no server needed - and the same test runs against a real broker with `TestApp::start_live`.
+- **Settlement as dispositions:** `ack` is `accepted`, a retry is `modified`, a drop is `rejected`,
+  so the broker's own dead-letter policy applies.
+- **Explicit addressing:** queues (anycast), topics (multicast) or a raw address, with credit as
+  flow control.
+- **Retry caps and dead letters** declared where the handler is mounted.
+- **Batches** assembled on the client.
+- **Request/reply** over `reply-to` and `correlation-id`, and **transactions** behind the
+  `transaction` feature.
+- **Plain AMQP messages** for non-Rust peers: well-known headers ride the `properties` section.
+- **AsyncAPI** that names the protocol `amqp1`, behind the `asyncapi` feature.
+- **Tests without a server:** handlers run against an in-process AMQP broker.
 
 ## Install
 
@@ -51,7 +54,7 @@ serde = { version = "1", features = ["derive"] }
 ruststream-amqp = { version = "0.7", features = ["testing"] }
 ```
 
-Everything else is off by default: `amqps://` endpoints need `rustls` or `native-tls`, transactional publishing needs `transaction`, and the AsyncAPI document needs `asyncapi`.
+Optional features: TLS for `amqps://` (`rustls` or `native-tls`), `transaction` and `asyncapi`.
 
 ## Write a service
 
@@ -59,8 +62,6 @@ Everything else is off by default: `amqps://` endpoints need `rustls` or `native
 use ruststream_amqp::prelude::*;
 use serde::{Deserialize, Serialize};
 
-// `Outgoing` and `PartialEq` are here for the test below, which publishes an order and asserts on
-// the decoded one.
 #[derive(Debug, PartialEq, Deserialize, Serialize, Outgoing)]
 struct Order {
     id: u64,
@@ -92,28 +93,17 @@ fn app() -> impl App {
 }
 ```
 
-The handler names a capability, never a broker: `Out<impl Publisher>` is filled by whatever policy the mount site binds to the slot's marker, `DefaultSlot` being the unnamed one and `Reply` the reply slot. `Publish` is the prelude's name for `AmqpPublish`, so an include site reads the same on every broker in the family - what changes when a service moves is the prelude it globs and the subscription descriptor, not every `.out(..)`.
-
-The descriptor carries the AMQP-specific options inline in the decorator - `credit` is the protocol's own flow control, so a lower value bounds work in flight with no extra layer:
-
-```rust
-#[subscriber(AmqpAddress::queue("audit").credit(nonzero!(64)))]
-async fn audit(order: &Order) -> HandlerOutcome {
-    println!("auditing order {}", order.id);
-    HandlerOutcome::ack()
-}
-```
+`#[ruststream::app]` generates `main`, so the binary understands `run` and `asyncapi gen`.
 
 ## Test it
 
-The app `main` runs, handed to the harness unchanged: `TestApp::start` connects `AmqpBroker` in process, with no server, and the test addresses it by that type.
+`TestApp` runs the service's own app with `AmqpBroker` in process, with no server.
 
 ```rust
 use ruststream::testing::TestApp;
 
 let tb = TestApp::start(app()).await?;
 
-// The publish drives the handler to a standstill before it returns.
 tb.broker::<AmqpBroker>()
     .message(&Order { id: 42 })
     .to("orders")
@@ -132,32 +122,18 @@ tb.broker::<AmqpBroker>()
     .with(&Confirmation { order_id: 42 });
 ```
 
-The in-process mode reads the broker's own settings and refuses what a server refuses. Competing consumers on a queue address split the traffic while a topic address copies to each, a transaction publishes nothing before its commit, and a request that nothing answers times out. `TestApp::start_live(app())` runs the same test against a running broker, which is where an address's storage, link credit and the server's dead-letter policy are exercised (`just test-brokers` starts ActiveMQ Artemis). The [crate overview](https://docs.rs/ruststream-amqp/latest/ruststream_amqp/index.html#testing) has the details.
+## Documentation
 
-## Layout
+- This crate: <https://docs.rs/ruststream-amqp>
+- The framework: <https://powersemmi.github.io/ruststream/latest>
 
-```
-ruststream-amqp/
-├── crates/
-│   ├── ruststream-amqp/        the published crate
-│   │   └── examples/           runnable amqp_* examples (docs-site snippet sources)
-│   └── ruststream-amqp-bench/  the paired raw-versus-framework benchmark, never published
-├── docs/                       the documentation site (properdocs + Material)
-├── docker-compose.test.yml     ActiveMQ Artemis for the live suite
-├── properdocs.yml              docs site config
-└── Cargo.toml                  workspace
-```
+## Minimum supported Rust version
 
-The AMQP reference, including the request/reply, transaction, and capability coverage, is the [crate overview](https://docs.rs/ruststream-amqp/latest/ruststream_amqp/index.html); [powersemmi.github.io/ruststream-amqp](https://powersemmi.github.io/ruststream-amqp/) is the entry page. Framework concepts (subscribers, routing, codecs, middleware, the CLI) live in the [RustStream docs](https://powersemmi.github.io/ruststream/).
+The MSRV is **1.88**, edition 2024.
 
 ## Contributing
 
-```bash
-just check          # fmt, clippy, feature checks
-just test           # in-process tests; the live suites skip without AMQP_TEST_URL
-just test-brokers   # live integration + conformance against ActiveMQ Artemis
-just bench          # the paired benchmark against the stand; rewrites the published results
-```
+See [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## License
 
