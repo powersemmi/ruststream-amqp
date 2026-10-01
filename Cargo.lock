@@ -198,9 +198,9 @@ checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
 
 [[package]]
 name = "fe2o3-amqp"
-version = "0.18.1"
+version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf5b7cb4e0f00960c89f2a286b66af21f0eca1e985b4718a4b7dca7d4e5ec45a"
+checksum = "ff7b603be595828b418b4f69a111d19adb55ec4dd7e8b0e8b9e63295150af945"
 dependencies = [
  "bytes",
  "fe2o3-amqp-types",

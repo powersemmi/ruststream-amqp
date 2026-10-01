@@ -22,8 +22,9 @@ ruststream = { version = ">=0.7.0-rc.9, <0.8.0", default-features = false }
 
 # The two move together: the client's public API is written in the types crate, so a version of
 # `fe2o3-amqp-types` the client was not built against gives every message and terminus type a
-# second, incompatible copy.
-fe2o3-amqp = "0.18"
+# second, incompatible copy. The client's floor is 0.18.2: before it, a send whose delivery the peer
+# settled at once could wait forever for an outcome the client had already dropped.
+fe2o3-amqp = "0.18.2"
 fe2o3-amqp-types = "0.18"
 bytes = "1.2"
 futures = "0.3"
