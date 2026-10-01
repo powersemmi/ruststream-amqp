@@ -62,7 +62,7 @@ impl Bus {
         routing: Routing,
     ) -> Result<(SubscriptionId, DeliveryReceiver), AmqpError> {
         self.router
-            .subscribe(address, routing)
+            .subscribe(address, routing, self.coordinator())
             .ok_or(AmqpError::NotConnected)
     }
 
@@ -77,8 +77,16 @@ impl Bus {
         self.router.recipients(address)
     }
 
-    pub(crate) fn unsubscribe(&self, id: SubscriptionId) {
-        self.router.unsubscribe(id);
+    /// Detaches a subscription, handing back what it held unsettled: what its consumer dropped,
+    /// then `pending`, what its consumer never read.
+    pub(crate) fn unsubscribe(&self, id: SubscriptionId, pending: Vec<Delivery>) {
+        self.router.unsubscribe(id, pending, self.coordinator());
+    }
+
+    /// Keeps a delivery its consumer dropped unsettled on its subscription until it detaches.
+    pub(crate) fn release(&self, id: SubscriptionId, address: &str, delivery: Delivery) {
+        self.router
+            .release(id, address, delivery, self.coordinator());
     }
 
     /// Routes one framed message to the subscriptions on `address`, or refuses once the

@@ -4,8 +4,8 @@
 //! The in-process half runs the production broker through its in-process mode, so the descriptor
 //! and the publish policies under test are the ones a service ships: the framework's own contract
 //! suites keep the in-process transport honest rather than merely compiling. The live half holds
-//! the in-process transport to the server as well: its backlog and its refusals must answer as the
-//! server does.
+//! the in-process transport to the server as well: its settlements, its backlog and its refusals
+//! must answer as the server does.
 //!
 //! Start a broker for the gated half with `just brokers-up` (`ActiveMQ` Artemis), then:
 //! `AMQP_TEST_URL=amqp://artemis:artemis@127.0.0.1:5672 cargo test --all-features`.
@@ -15,10 +15,12 @@
 #![cfg(feature = "testing")]
 #![allow(clippy::redundant_closure, clippy::redundant_closure_for_method_calls)]
 
+use std::time::Duration;
+
 use ruststream::conformance::harness::InProcessBroker;
 use ruststream::conformance::helpers::unique_subject;
 use ruststream::conformance::in_process::{self as in_process_checks, Refusal};
-use ruststream::conformance::{capabilities, harness, lifecycle, message_shape, retry};
+use ruststream::conformance::{capabilities, harness, lifecycle, message_shape, retry, settlement};
 use ruststream::testing::Backlog;
 use ruststream::{Bytes, HeaderMap, Name};
 use ruststream_amqp::{AmqpAddress, AmqpBroker, PARTITION_KEY_HEADER, Sasl};
@@ -27,6 +29,10 @@ mod live;
 
 /// The broker's address in process; the in-process mode dials nothing.
 const URL: &str = "amqp://broker.example.com:5672";
+
+/// Unsettled deliveries come back only once their link detaches: `AMQP` 1.0 has no redelivery
+/// timer.
+const REDELIVERY_TIMEOUT: Duration = Duration::ZERO;
 
 /// The production broker, connected in process by the suites that call `connect`.
 fn in_process() -> InProcessBroker<AmqpBroker> {
@@ -90,6 +96,18 @@ async fn in_process_reports_a_redelivery_address_that_arrives() {
         in_process,
         |name| Name::new(name.to_owned()),
         |connected| connected.publisher(),
+    )
+    .await;
+}
+
+/// Settlements in process mean what they mean on the server.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn in_process_passes_settlement_suite() {
+    settlement::suite(
+        in_process,
+        |name| AmqpAddress::queue(name),
+        |connected| connected.publisher(),
+        REDELIVERY_TIMEOUT,
     )
     .await;
 }
@@ -195,6 +213,19 @@ async fn amqp_broker_reports_a_redelivery_address_that_arrives() {
         |name| Name::new(name.to_owned()),
         |connected| connected.publisher(),
     )
+    .await;
+}
+
+/// Settlements against the server, and the in-process transport answering each one alike.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn amqp_broker_settles_as_in_process() {
+    let Some(url) = test_url() else { return };
+    Box::pin(settlement::matches_in_process(
+        || AmqpBroker::new(url.clone()),
+        |name| AmqpAddress::queue(name),
+        |connected| connected.publisher(),
+        REDELIVERY_TIMEOUT,
+    ))
     .await;
 }
 

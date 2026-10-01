@@ -13,7 +13,7 @@
 use std::pin::pin;
 use std::time::Duration;
 
-use futures::{Stream, StreamExt};
+use futures::{FutureExt, Stream, StreamExt};
 use ruststream::testing::{InProcess, TestApp, TestableBroker};
 use ruststream::{AckError, ConnectedBroker, IncomingMessage, OutgoingMessage, Subscriber};
 use ruststream_amqp::prelude::*;
@@ -409,4 +409,58 @@ async fn a_detached_subscription_leaves_the_routing_answer() {
 
     drop(topic);
     assert_eq!(broker.routes("mixed", &names), [0]);
+}
+
+// An unsettled delivery stays on its link until the link detaches, and the queue the attach
+// created keeps it for the next consumer: dropping it does not hand it back at once, and dropping
+// the subscription loses neither it nor what the subscription had not read yet.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_delivery_dropped_unsettled_waits_for_the_next_queue_subscription() {
+    let broker = in_process().await;
+    let publisher = broker.publisher();
+    let mut first = broker
+        .subscribe_address(AmqpAddress::queue("held"))
+        .await
+        .expect("the subscription opens");
+    publisher
+        .publish(OutgoingMessage::new("held", b"dropped".as_slice()), None)
+        .await
+        .expect("publish succeeds");
+    {
+        let mut stream = pin!(first.stream());
+        let dropped = stream
+            .next()
+            .now_or_never()
+            .flatten()
+            .expect("the delivery is there")
+            .expect("delivery is ok");
+        assert_eq!(dropped.payload(), b"dropped");
+        drop(dropped);
+        assert!(
+            stream.next().now_or_never().is_none(),
+            "a delivery dropped unsettled stays on its subscription until it detaches",
+        );
+    }
+    publisher
+        .publish(OutgoingMessage::new("held", b"unread".as_slice()), None)
+        .await
+        .expect("publish succeeds");
+    drop(first);
+
+    let mut second = broker
+        .subscribe_address(AmqpAddress::queue("held"))
+        .await
+        .expect("the subscription opens again");
+    let mut stream = pin!(second.stream());
+    for expected in [b"dropped".as_slice(), b"unread"] {
+        let back = stream
+            .next()
+            .now_or_never()
+            .flatten()
+            .expect("the unsettled delivery came back")
+            .expect("delivery is ok");
+        assert_eq!(back.payload(), expected);
+        back.ack().await.expect("ack succeeds");
+    }
+    assert!(stream.next().now_or_never().is_none());
 }

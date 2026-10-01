@@ -44,7 +44,7 @@ pub(crate) async fn request(
     // The private reply address carries one consumer, this request.
     let (id, mut replies) = bus.subscribe(reply_to, Routing::Anycast)?;
     if let Err(err) = bus.route(address, &delivery) {
-        bus.unsubscribe(id);
+        bus.unsubscribe(id, Vec::new());
         return Err(err);
     }
 
@@ -68,7 +68,7 @@ pub(crate) async fn request(
 
     // Detaching the reply link: the address stops taking anything once the exchange is over, and
     // whatever raced the deadline into the channel is released through the same kind of message.
-    bus.unsubscribe(id);
+    bus.unsubscribe(id, Vec::new());
     while let Ok(Delivery {
         payload, headers, ..
     }) = replies.try_recv()
