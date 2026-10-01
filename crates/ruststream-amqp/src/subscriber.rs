@@ -83,7 +83,7 @@ impl AmqpSubscriber {
         let (out_tx, out_rx) = mpsc::channel(credit as usize);
         let (settle_tx, settle_rx) = mpsc::unbounded_channel();
         let addr = address.address().to_owned();
-        tokio::spawn(pump(Pump {
+        core.runtime.spawn(pump(Pump {
             session,
             receiver,
             out: out_tx,
