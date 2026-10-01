@@ -11,10 +11,32 @@ use fe2o3_amqp::sasl_profile::SaslProfile;
 /// # Examples
 ///
 /// ```
-/// use ruststream_amqp::Sasl;
+/// # mod demo {
+/// use ruststream_amqp::prelude::*;
+/// # use serde::Deserialize;
+/// #
+/// # #[derive(Deserialize)]
+/// # struct Order {
+/// #     id: u64,
+/// # }
+/// #
+/// # #[subscriber(AmqpAddress::queue("orders"))]
+/// # async fn handle(order: &Order) -> HandlerOutcome {
+/// #     println!("got order {}", order.id);
+/// #     HandlerOutcome::ack()
+/// # }
 ///
-/// let sasl = Sasl::plain("svc", "secret");
-/// # let _ = sasl;
+/// #[ruststream::app]
+/// fn app() -> impl App {
+///     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
+///         AmqpBroker::new("amqp://broker.internal:5672").sasl(Sasl::plain("svc", "secret")),
+///         |b| {
+///             b.include(handle);
+///         },
+///     )
+/// }
+/// # }
+/// # fn main() {}
 /// ```
 #[derive(Debug, Clone)]
 #[must_use]
@@ -28,9 +50,33 @@ impl Sasl {
     /// # Examples
     ///
     /// ```
-    /// use ruststream_amqp::Sasl;
-    /// let sasl = Sasl::anonymous();
-    /// # let _ = sasl;
+    /// # mod demo {
+    /// use ruststream_amqp::prelude::*;
+    /// # use serde::Deserialize;
+    /// #
+    /// # #[derive(Deserialize)]
+    /// # struct Order {
+    /// #     id: u64,
+    /// # }
+    /// #
+    /// # #[subscriber(AmqpAddress::queue("orders"))]
+    /// # async fn handle(order: &Order) -> HandlerOutcome {
+    /// #     println!("got order {}", order.id);
+    /// #     HandlerOutcome::ack()
+    /// # }
+    ///
+    /// #[ruststream::app]
+    /// fn app() -> impl App {
+    ///     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
+    ///         // The broker admits unauthenticated connections.
+    ///         AmqpBroker::new("amqp://broker.internal:5672").sasl(Sasl::anonymous()),
+    ///         |b| {
+    ///             b.include(handle);
+    ///         },
+    ///     )
+    /// }
+    /// # }
+    /// # fn main() {}
     /// ```
     pub fn anonymous() -> Self {
         Self {
@@ -43,9 +89,32 @@ impl Sasl {
     /// # Examples
     ///
     /// ```
-    /// use ruststream_amqp::Sasl;
-    /// let sasl = Sasl::plain("svc", "secret");
-    /// # let _ = sasl;
+    /// # mod demo {
+    /// use ruststream_amqp::prelude::*;
+    /// # use serde::Deserialize;
+    /// #
+    /// # #[derive(Deserialize)]
+    /// # struct Order {
+    /// #     id: u64,
+    /// # }
+    /// #
+    /// # #[subscriber(AmqpAddress::queue("orders"))]
+    /// # async fn handle(order: &Order) -> HandlerOutcome {
+    /// #     println!("got order {}", order.id);
+    /// #     HandlerOutcome::ack()
+    /// # }
+    ///
+    /// #[ruststream::app]
+    /// fn app() -> impl App {
+    ///     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
+    ///         AmqpBroker::new("amqp://broker.internal:5672").sasl(Sasl::plain("svc", "secret")),
+    ///         |b| {
+    ///             b.include(handle);
+    ///         },
+    ///     )
+    /// }
+    /// # }
+    /// # fn main() {}
     /// ```
     pub fn plain(username: impl Into<String>, password: impl Into<String>) -> Self {
         Self {
@@ -62,9 +131,33 @@ impl Sasl {
     /// # Examples
     ///
     /// ```
-    /// use ruststream_amqp::Sasl;
-    /// let sasl = Sasl::external();
-    /// # let _ = sasl;
+    /// # mod demo {
+    /// use ruststream_amqp::prelude::*;
+    /// # use serde::Deserialize;
+    /// #
+    /// # #[derive(Deserialize)]
+    /// # struct Order {
+    /// #     id: u64,
+    /// # }
+    /// #
+    /// # #[subscriber(AmqpAddress::queue("orders"))]
+    /// # async fn handle(order: &Order) -> HandlerOutcome {
+    /// #     println!("got order {}", order.id);
+    /// #     HandlerOutcome::ack()
+    /// # }
+    ///
+    /// #[ruststream::app]
+    /// fn app() -> impl App {
+    ///     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
+    ///         // Authenticated by the TLS client certificate; no SASL credentials.
+    ///         AmqpBroker::new("amqps://broker.internal:5671").sasl(Sasl::external()),
+    ///         |b| {
+    ///             b.include(handle);
+    ///         },
+    ///     )
+    /// }
+    /// # }
+    /// # fn main() {}
     /// ```
     pub fn external() -> Self {
         Self {

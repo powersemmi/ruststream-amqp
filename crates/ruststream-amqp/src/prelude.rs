@@ -29,19 +29,52 @@
 //!
 //! # Examples
 //!
-//! ```
-//! use ruststream_amqp::prelude::*;
+//! A routes file whose every name comes from the glob:
 //!
-//! async fn handle(order: &str, ctx: &mut Context<'_>) -> HandlerOutcome {
-//!     let _ = (order.len(), ctx.name());
+//! ```
+//! # mod demo {
+//! use ruststream_amqp::prelude::*;
+//! use serde::{Deserialize, Serialize};
+//!
+//! #[derive(Deserialize)]
+//! struct Order {
+//!     id: u64,
+//! }
+//!
+//! #[derive(Deserialize)]
+//! struct Event {
+//!     kind: String,
+//! }
+//!
+//! #[derive(Serialize, Outgoing)]
+//! #[outgoing(name = "receipts")]
+//! struct Receipt {
+//!     order_id: u64,
+//! }
+//!
+//! #[subscriber(AmqpAddress::queue("orders").credit(nonzero!(64)), publish)]
+//! async fn issue_receipt(order: &Order) -> Receipt {
+//!     Receipt { order_id: order.id }
+//! }
+//!
+//! #[subscriber(AmqpAddress::topic("events").settle(Settle::AtMostOnce))]
+//! async fn audit(event: &Event, ctx: &mut Context<'_>) -> HandlerOutcome {
+//!     println!("{}: {}", ctx.name(), event.kind);
 //!     HandlerOutcome::ack()
 //! }
 //!
-//! let broker = AmqpBroker::new("amqp://localhost:5672").sasl(Sasl::plain("svc", "secret"));
-//! let orders = AmqpAddress::queue("orders").credit(nonzero!(64));
-//! let events = AmqpAddress::topic("events").settle(Settle::AtMostOnce);
-//! let policy = Publish;
-//! # let _ = (handle, broker, orders, events, policy);
+//! #[ruststream::app]
+//! fn app() -> impl App {
+//!     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
+//!         AmqpBroker::new("amqp://localhost:5672").sasl(Sasl::plain("svc", "secret")),
+//!         |b| {
+//!             b.include(issue_receipt).out_reply(Publish);
+//!             b.include(audit);
+//!         },
+//!     )
+//! }
+//! # }
+//! # fn main() {}
 //! ```
 
 pub use ruststream::prelude::*;
