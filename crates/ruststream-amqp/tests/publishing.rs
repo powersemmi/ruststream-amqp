@@ -30,12 +30,12 @@ struct Order {
     id: u64,
 }
 
-#[subscriber(AmqpAddress::queue("orders"), publish("confirmations"))]
+#[subscriber(AmqpAddress::queue("orders"), reply("confirmations"))]
 async fn confirm(order: &Order) -> Result<Order, HandlerOutcome> {
     Ok(Order { id: order.id })
 }
 
-#[subscriber(AmqpAddress::queue("orders.default"), publish("confirmations.default"))]
+#[subscriber(AmqpAddress::queue("orders.default"), reply("confirmations.default"))]
 async fn confirm_by_default(order: &Order) -> Result<Order, HandlerOutcome> {
     Ok(Order { id: order.id })
 }

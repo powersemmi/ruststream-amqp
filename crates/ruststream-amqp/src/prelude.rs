@@ -52,7 +52,7 @@
 //!     order_id: u64,
 //! }
 //!
-//! #[subscriber(AmqpAddress::queue("orders").credit(nonzero!(64)), publish)]
+//! #[subscriber(AmqpAddress::queue("orders").credit(nonzero!(64)), reply)]
 //! async fn issue_receipt(order: &Order) -> Receipt {
 //!     Receipt { order_id: order.id }
 //! }

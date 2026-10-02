@@ -200,7 +200,7 @@ impl RequestReply for AmqpPublisher {
 ///     order_id: u64,
 /// }
 ///
-/// #[subscriber(AmqpAddress::queue("orders"), publish)]
+/// #[subscriber(AmqpAddress::queue("orders"), reply)]
 /// async fn issue_receipt(order: &Order) -> Receipt {
 ///     Receipt { order_id: order.id }
 /// }
