@@ -67,11 +67,30 @@ pub(crate) enum Routing {
 /// Implements [`SubscriptionSource`], so it can sit inline in the `#[subscriber(..)]` decorator:
 ///
 /// ```
-/// use ruststream::nonzero;
-/// use ruststream_amqp::AmqpAddress;
+/// # mod demo {
+/// use ruststream_amqp::prelude::*;
+/// use serde::Deserialize;
 ///
-/// let source = AmqpAddress::queue("orders").credit(nonzero!(64));
-/// # let _ = source;
+/// #[derive(Deserialize)]
+/// struct Order {
+///     id: u64,
+/// }
+///
+/// #[subscriber(AmqpAddress::queue("orders").credit(nonzero!(64)))]
+/// async fn fulfil(order: &Order) -> HandlerOutcome {
+///     println!("fulfilling order {}", order.id);
+///     HandlerOutcome::ack()
+/// }
+/// #
+/// # #[ruststream::app]
+/// # fn app() -> impl App {
+/// #     RustStream::new(AppInfo::new("orders", "0.1.0"))
+/// #         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| {
+/// #             b.include(fulfil);
+/// #         })
+/// # }
+/// # }
+/// # fn main() {}
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[must_use]
@@ -99,9 +118,31 @@ impl AmqpAddress {
     /// # Examples
     ///
     /// ```
-    /// use ruststream_amqp::AmqpAddress;
-    /// let source = AmqpAddress::queue("orders");
-    /// # let _ = source;
+    /// # mod demo {
+    /// use ruststream_amqp::prelude::*;
+    /// use serde::Deserialize;
+    ///
+    /// #[derive(Deserialize)]
+    /// struct Order {
+    ///     id: u64,
+    /// }
+    ///
+    /// // Every replica of the service competes for "orders": each order is handled once.
+    /// #[subscriber(AmqpAddress::queue("orders"))]
+    /// async fn fulfil(order: &Order) -> HandlerOutcome {
+    ///     println!("fulfilling order {}", order.id);
+    ///     HandlerOutcome::ack()
+    /// }
+    /// #
+    /// # #[ruststream::app]
+    /// # fn app() -> impl App {
+    /// #     RustStream::new(AppInfo::new("orders", "0.1.0"))
+    /// #         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| {
+    /// #             b.include(fulfil);
+    /// #         })
+    /// # }
+    /// # }
+    /// # fn main() {}
     /// ```
     pub fn queue(name: impl Into<String>) -> Self {
         Self::of(name.into(), Kind::Queue)
@@ -112,9 +153,31 @@ impl AmqpAddress {
     /// # Examples
     ///
     /// ```
-    /// use ruststream_amqp::AmqpAddress;
-    /// let source = AmqpAddress::topic("events");
-    /// # let _ = source;
+    /// # mod demo {
+    /// use ruststream_amqp::prelude::*;
+    /// use serde::Deserialize;
+    ///
+    /// #[derive(Deserialize)]
+    /// struct Event {
+    ///     kind: String,
+    /// }
+    ///
+    /// // Every service subscribed to "events" gets its own copy of each event.
+    /// #[subscriber(AmqpAddress::topic("events"))]
+    /// async fn audit(event: &Event) -> HandlerOutcome {
+    ///     println!("audit: {}", event.kind);
+    ///     HandlerOutcome::ack()
+    /// }
+    /// #
+    /// # #[ruststream::app]
+    /// # fn app() -> impl App {
+    /// #     RustStream::new(AppInfo::new("orders", "0.1.0"))
+    /// #         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| {
+    /// #             b.include(audit);
+    /// #         })
+    /// # }
+    /// # }
+    /// # fn main() {}
     /// ```
     pub fn topic(name: impl Into<String>) -> Self {
         Self::of(name.into(), Kind::Topic)
@@ -126,9 +189,31 @@ impl AmqpAddress {
     /// # Examples
     ///
     /// ```
-    /// use ruststream_amqp::AmqpAddress;
-    /// let source = AmqpAddress::raw("/queues/orders");
-    /// # let _ = source;
+    /// # mod demo {
+    /// use ruststream_amqp::prelude::*;
+    /// use serde::Deserialize;
+    ///
+    /// #[derive(Deserialize)]
+    /// struct Order {
+    ///     id: u64,
+    /// }
+    ///
+    /// // RabbitMQ 4.x addresses a queue by its v2 path; the string reaches the broker as written.
+    /// #[subscriber(AmqpAddress::raw("/queues/orders"))]
+    /// async fn fulfil(order: &Order) -> HandlerOutcome {
+    ///     println!("fulfilling order {}", order.id);
+    ///     HandlerOutcome::ack()
+    /// }
+    /// #
+    /// # #[ruststream::app]
+    /// # fn app() -> impl App {
+    /// #     RustStream::new(AppInfo::new("orders", "0.1.0"))
+    /// #         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| {
+    /// #             b.include(fulfil);
+    /// #         })
+    /// # }
+    /// # }
+    /// # fn main() {}
     /// ```
     pub fn raw(address: impl Into<String>) -> Self {
         Self::of(address.into(), Kind::Raw)
@@ -143,11 +228,31 @@ impl AmqpAddress {
     /// # Examples
     ///
     /// ```
-    /// use ruststream::nonzero;
-    /// use ruststream_amqp::AmqpAddress;
+    /// # mod demo {
+    /// use ruststream_amqp::prelude::*;
+    /// use serde::Deserialize;
     ///
-    /// let source = AmqpAddress::queue("orders").credit(nonzero!(64));
-    /// # let _ = source;
+    /// #[derive(Deserialize)]
+    /// struct Order {
+    ///     id: u64,
+    /// }
+    ///
+    /// // At most 64 unsettled orders in flight to this service at once.
+    /// #[subscriber(AmqpAddress::queue("orders").credit(nonzero!(64)))]
+    /// async fn fulfil(order: &Order) -> HandlerOutcome {
+    ///     println!("fulfilling order {}", order.id);
+    ///     HandlerOutcome::ack()
+    /// }
+    /// #
+    /// # #[ruststream::app]
+    /// # fn app() -> impl App {
+    /// #     RustStream::new(AppInfo::new("orders", "0.1.0"))
+    /// #         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| {
+    /// #             b.include(fulfil);
+    /// #         })
+    /// # }
+    /// # }
+    /// # fn main() {}
     /// ```
     ///
     /// A zero is rejected while the service is compiled, not when the subscription opens:
@@ -180,11 +285,34 @@ impl AmqpAddress {
     /// # Examples
     ///
     /// ```
+    /// # mod demo {
     /// use std::time::Duration;
     ///
-    /// use ruststream_amqp::AmqpAddress;
-    /// let source = AmqpAddress::queue("orders").batch_wait(Duration::from_millis(50));
-    /// # let _ = source;
+    /// use ruststream_amqp::prelude::*;
+    /// use serde::Deserialize;
+    ///
+    /// #[derive(Deserialize)]
+    /// struct Order {
+    ///     id: u64,
+    /// }
+    ///
+    /// // Up to 32 orders per call, or whatever arrived within 50 ms of the first one.
+    /// #[subscriber(AmqpAddress::queue("orders").batch_wait(Duration::from_millis(50)))]
+    /// async fn fulfil(orders: &[Order]) -> HandlerOutcome {
+    ///     let ids: Vec<u64> = orders.iter().map(|order| order.id).collect();
+    ///     println!("fulfilling orders {ids:?}");
+    ///     HandlerOutcome::ack()
+    /// }
+    ///
+    /// #[ruststream::app]
+    /// fn app() -> impl App {
+    ///     RustStream::new(AppInfo::new("orders", "0.1.0"))
+    ///         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| {
+    ///             b.include(fulfil.batch(nonzero!(32)));
+    ///         })
+    /// }
+    /// # }
+    /// # fn main() {}
     /// ```
     pub fn batch_wait(mut self, batch_wait: Duration) -> Self {
         self.batch_wait = batch_wait;

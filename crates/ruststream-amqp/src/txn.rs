@@ -42,11 +42,45 @@ use crate::publisher::accepted;
 ///
 /// # Examples
 ///
-/// ```
-/// use ruststream_amqp::AmqpTransactionalPublish;
+/// In the prelude it is `TransactionalPublish`. The three invoices below become visible together,
+/// on the commit:
 ///
-/// let policy = AmqpTransactionalPublish::default();
-/// # let _ = policy;
+/// ```
+/// # mod demo {
+/// use std::io;
+///
+/// use ruststream_amqp::prelude::*;
+/// use serde::Serialize;
+///
+/// #[derive(Serialize, Outgoing)]
+/// #[outgoing(name = "invoices")]
+/// struct Invoice {
+///     id: u64,
+/// }
+///
+/// #[ruststream::app]
+/// fn app() -> impl App {
+///     RustStream::new(AppInfo::new("billing", "0.1.0")).with_broker(
+///         AmqpBroker::new("amqp://localhost:5672"),
+///         |b| {
+///             b.after_startup(
+///                 TransactionalPublish,
+///                 async move |publisher| -> io::Result<()> {
+///                     publisher.begin_transaction().await.map_err(io::Error::other)?;
+///                     for id in 1..=3_u64 {
+///                         if let Err(error) = publisher.message(&Invoice { id }).publish().await {
+///                             publisher.abort().await.map_err(io::Error::other)?;
+///                             return Err(io::Error::other(error));
+///                         }
+///                     }
+///                     publisher.commit().await.map_err(io::Error::other)
+///                 },
+///             );
+///         },
+///     )
+/// }
+/// # }
+/// # fn main() {}
 /// ```
 #[derive(Debug, Clone, Copy, Default)]
 #[must_use]

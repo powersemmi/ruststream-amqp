@@ -182,11 +182,38 @@ impl RequestReply for AmqpPublisher {
 ///
 /// # Examples
 ///
-/// ```
-/// use ruststream_amqp::AmqpPublish;
+/// In the prelude it is `Publish`. Here it sends each order's receipt:
 ///
-/// let policy = AmqpPublish::default();
-/// # let _ = policy;
+/// ```
+/// # mod demo {
+/// use ruststream_amqp::prelude::*;
+/// use serde::{Deserialize, Serialize};
+///
+/// #[derive(Deserialize)]
+/// struct Order {
+///     id: u64,
+/// }
+///
+/// #[derive(Serialize, Outgoing)]
+/// #[outgoing(name = "receipts")]
+/// struct Receipt {
+///     order_id: u64,
+/// }
+///
+/// #[subscriber(AmqpAddress::queue("orders"), publish)]
+/// async fn issue_receipt(order: &Order) -> Receipt {
+///     Receipt { order_id: order.id }
+/// }
+///
+/// #[ruststream::app]
+/// fn app() -> impl App {
+///     RustStream::new(AppInfo::new("orders", "0.1.0"))
+///         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| {
+///             b.include(issue_receipt).out_reply(Publish);
+///         })
+/// }
+/// # }
+/// # fn main() {}
 /// ```
 #[derive(Debug, Clone, Copy, Default)]
 #[must_use]

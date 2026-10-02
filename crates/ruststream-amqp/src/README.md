@@ -454,6 +454,8 @@ same test body against a running broker. The harness's usage is the core's:
 ```
 # #[cfg(feature = "testing")]
 # mod demo {
+use std::error::Error;
+
 use ruststream::testing::TestApp;
 use ruststream_amqp::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -480,7 +482,7 @@ pub fn app() -> RustStream {
         })
 }
 
-pub async fn accepts_an_order() -> Result<(), Box<dyn std::error::Error>> {
+pub async fn accepts_an_order() -> Result<(), Box<dyn Error>> {
     let tb = TestApp::start(app()).await?;
 
     // The publish returns once the handler it woke has settled.
