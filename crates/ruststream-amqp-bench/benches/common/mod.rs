@@ -80,7 +80,7 @@ const QUANTITY: u32 = 37;
 
 /// How long a drain may take before the run is called stuck. Valgrind slows the service down
 /// about fifty times, so this is far above what a run takes.
-const DRAIN_LIMIT: Duration = Duration::from_secs(600);
+const DRAIN_LIMIT: Duration = Duration::from_mins(10);
 
 /// How far, in percent, the instructions of a run may rise over the run compared against before
 /// it fails.
