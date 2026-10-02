@@ -106,7 +106,7 @@ jobs:
       # build job; keep it in step with `rust-version` in the workspace manifest.
       - name: Install the extra toolchains
         if: "!cancelled() && env.RUST_CHANGED == 'true'"
-        run: rustup toolchain install --profile minimal 1.88 nightly
+        run: rustup toolchain install --profile minimal 1.95 nightly
 
       - name: Cache cargo
         if: "!cancelled() && env.RUST_CHANGED == 'true'"
@@ -178,7 +178,7 @@ jobs:
         id: minimal-test
         if: "!cancelled() && steps.minimal-pin.outcome == 'success'"
         env:
-          RUSTUP_TOOLCHAIN: "1.88"
+          RUSTUP_TOOLCHAIN: "1.95"
         run: |
           cargo check --locked --workspace --exclude ruststream-amqp-bench --all-targets \
             --features transaction,testing
@@ -206,7 +206,7 @@ jobs:
       - name: Install beta and the floor
         run: |
           rustup toolchain install --profile minimal --component clippy beta
-          rustup toolchain install --profile minimal 1.88
+          rustup toolchain install --profile minimal 1.95
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
@@ -216,8 +216,8 @@ jobs:
       - name: Check the floor matches the manifest
         run: |
           declared="$(sed -n 's/^rust-version *= *"\(.*\)"/\1/p' Cargo.toml)"
-          if [ "$declared" != "1.88" ]; then
-            echo "workflow floor '1.88' does not match rust-version '${declared}' in Cargo.toml"
+          if [ "$declared" != "1.95" ]; then
+            echo "workflow floor '1.95' does not match rust-version '${declared}' in Cargo.toml"
             exit 1
           fi
 
@@ -285,25 +285,25 @@ jobs:
           RUSTUP_TOOLCHAIN: beta
         run: cargo test --workspace --all-features --no-fail-fast
 
-      - name: cargo check (no default features, 1.88)
+      - name: cargo check (no default features, 1.95)
         if: "!cancelled() && steps.stable.outcome == 'success'"
         env:
-          RUSTUP_TOOLCHAIN: "1.88"
+          RUSTUP_TOOLCHAIN: "1.95"
         run: cargo check --workspace --no-default-features
 
-      - name: cargo check (all features, 1.88)
+      - name: cargo check (all features, 1.95)
         if: "!cancelled() && steps.stable.outcome == 'success'"
         env:
-          RUSTUP_TOOLCHAIN: "1.88"
+          RUSTUP_TOOLCHAIN: "1.95"
         run: |
           cargo check --workspace --exclude ruststream-amqp-bench --all-targets \
             --all-features
           cargo check -p ruststream-amqp-bench --all-targets
 
-      - name: cargo test (1.88)
+      - name: cargo test (1.95)
         if: "!cancelled() && steps.stable.outcome == 'success'"
         env:
-          RUSTUP_TOOLCHAIN: "1.88"
+          RUSTUP_TOOLCHAIN: "1.95"
         run: cargo test --workspace --all-features --no-fail-fast
 
   broker-integration:

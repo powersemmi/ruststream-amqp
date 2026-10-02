@@ -5,9 +5,9 @@ members = ["crates/ruststream-amqp", "crates/ruststream-amqp-bench"]
 [workspace.package]
 version = "0.7.0"
 edition = "2024"
-# The floor tracks the core line: ruststream 0.7 requires 1.88, so an older toolchain cannot
+# The floor tracks the core line: ruststream 0.7 requires 1.95, so an older toolchain cannot
 # resolve this crate's own dependency.
-rust-version = "1.88"
+rust-version = "1.95"
 license = "Apache-2.0"
 repository = "https://github.com/powersemmi/ruststream-amqp"
 authors = ["RustStream contributors"]
