@@ -224,7 +224,7 @@ in scope it makes `msg.partition_key()` ambiguous with the method of the same na
 # Publishing
 
 [`AmqpPublish`] is the policy that constructs [`AmqpPublisher`]. It has no fields, so it is
-written bare, and it is this broker's default policy: a `#[subscriber(.., publish)]` handler whose
+written bare, and it is this broker's default policy: a `#[subscriber(.., reply)]` handler whose
 mount site names no reply publisher replies through it. Name it where you want it explicitly with
 `.out_reply(Publish)` for a reply, `.out_retry(Publish)` for the deferred copy, and
 `.out(marker, Publish).build()` for a slot the body publishes through. `Publish` is the policy's
@@ -232,7 +232,7 @@ mount site names no reply publisher replies through it. Name it where you want i
 
 Where a reply goes is a property of the reply type. A type deriving `Outgoing` with
 `#[outgoing(name = "receipts")]` fixes its destination and the subscriber writes the bare
-`publish` clause; a type that names nothing takes the mount site's `publish("dest")`, or the call
+`reply` clause; a type that names nothing takes the mount site's `reply("dest")`, or the call
 site's `.to(address)` when the body publishes it through a slot. The second form is what a
 per-request reply address needs, since that address is new for every request:
 
@@ -259,7 +259,7 @@ struct Greeting {
     text: String,
 }
 
-#[subscriber(AmqpAddress::queue("orders"), publish)]
+#[subscriber(AmqpAddress::queue("orders"), reply)]
 async fn issue_receipt(order: &Order) -> Receipt {
     Receipt { order_id: order.id }
 }

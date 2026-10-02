@@ -28,7 +28,7 @@ struct Confirmation {
     id: u64,
 }
 
-#[subscriber(AmqpAddress::queue(common::input()), publish)]
+#[subscriber(AmqpAddress::queue(common::input()), reply)]
 async fn confirm(order: &Order, ctx: &mut Context<'_, (), Latch>) -> Confirmation {
     ctx.state().arrived();
     Confirmation {

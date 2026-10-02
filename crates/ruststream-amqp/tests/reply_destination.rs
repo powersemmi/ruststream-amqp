@@ -39,7 +39,7 @@ struct Confirmation {
     accepted: bool,
 }
 
-#[subscriber("receipt-requests", publish)]
+#[subscriber("receipt-requests", reply)]
 async fn issue_receipt(order: &Order) -> Receipt {
     Receipt {
         order_id: order.id,
@@ -47,7 +47,7 @@ async fn issue_receipt(order: &Order) -> Receipt {
     }
 }
 
-#[subscriber("confirmation-requests", publish("confirmations"))]
+#[subscriber("confirmation-requests", reply("confirmations"))]
 async fn confirm(order: &Order) -> Confirmation {
     Confirmation {
         order_id: order.id,

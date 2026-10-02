@@ -46,7 +46,7 @@ impl<C, Options> PublishTransform<ForReply<C>, Options> for ToReplyTo {
     }
 }
 
-#[subscriber(AmqpAddress::queue("orders").credit(nonzero!(64)), publish("receipts"))]
+#[subscriber(AmqpAddress::queue("orders").credit(nonzero!(64)), reply("receipts"))]
 async fn confirm(order: &Order) -> Receipt {
     Receipt { order_id: order.id }
 }
