@@ -58,7 +58,9 @@ stops the stand.
 client on the same stand and rewrites `docs/benchmarks/results.json`. It takes about a minute and
 wants the machine to itself. `just bench-code` counts what a service on this crate costs per message
 on its own thread, in instructions and allocations against the same stand, and rewrites the code
-table of the same document; it takes about half a minute.
+table of the same document; it takes about half a minute. `just bench-code --baseline=main`
+compares a branch with the run `just bench-code --save-baseline=main` recorded on `main`, and a
+pull request that changes the cost cites its numbers.
 
 ## Testing against a local core
 

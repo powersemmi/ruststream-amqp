@@ -63,7 +63,15 @@ bench *ARGS: brokers-up
 # build, so the recipe clears it.
 #
 # The arguments reach the runner: `just bench-code --save-baseline=main` records a baseline,
-# `just bench-code --baseline=main` compares against it.
+# `just bench-code --baseline=main` compares against it. A run against a baseline, named with
+# `--baseline` or in `GUNGRAUN_BASELINE`, fails on two percent more instructions than the baseline
+# in a scenario. The limit is relative, so it applies only there: a plain run would be held to the
+# run before it, and the socket moves a count a little between runs of one binary. The allocation
+# limits are absolute, and every run is held to them.
+#
+# A benchmark that breaches a limit fails the run, and the run still goes to the end: the table
+# prints, every breach under it with the value it was compared against beside the new one, and the
+# recipe fails after that. A build error stops it before anything runs.
 [positional-arguments]
 bench-code *ARGS: brokers-up
     #!/usr/bin/env bash
@@ -80,9 +88,22 @@ bench-code *ARGS: brokers-up
     unset GUNGRAUN_RUNNER
     export PATH="$runner/bin:$PATH" RUSTFLAGS="" \
         AMQP_TEST_URL=amqp://artemis:artemis@127.0.0.1:5672
-    cargo bench -p ruststream-amqp-bench --bench consume --bench reply --bench batch \
-        -- --output-format=json "$@" > target/bench-code.json
+    # A baseline named on the command line or in the environment brings the instruction limit.
+    baseline="${GUNGRAUN_BASELINE:-}"
+    for arg in "$@"; do
+        case "$arg" in --baseline | --baseline=*) baseline="$arg" ;; esac
+    done
+    limits=()
+    if [ -n "$baseline" ]; then
+        limits=(--callgrind-limits='ir=2.0%')
+    fi
+    benches=(-p ruststream-amqp-bench --bench consume --bench reply --bench batch)
+    cargo bench "${benches[@]}" --no-run
+    status=0
+    cargo bench "${benches[@]}" --no-fail-fast \
+        -- --output-format=json "${limits[@]}" "$@" > target/bench-code.json || status=$?
     python3 scripts/bench_results.py --code target/bench-code.json docs/benchmarks/results.json
+    exit "$status"
 
 fmt:
     cargo fmt --all

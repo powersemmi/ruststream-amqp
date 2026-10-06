@@ -12,11 +12,16 @@ loop of the comparison as its best, median and worst round, and the `code` secti
 
 `--code` reads the other run instead: the summary `cargo bench -- --output-format=json` writes for
 the code-cost benches under `crates/ruststream-amqp-bench/benches`, one JSON object per benchmark,
-in the summary layout gungraun 0.20 writes (its version 7). It writes the `code` section, one entry per scenario with instructions and allocations per
-message plus what starting the service cost once, by the core's method: every scenario is
-measured over one delivery, over MESSAGES and over twice MESSAGES, the slope between the last two
-is the steady state, and the one-delivery run is the cold start. Either run keeps the section the
-other one wrote.
+in the summary layout gungraun 0.20 writes (its version 7). It writes the `code` section, one
+entry per scenario with instructions and allocations per message plus what starting the service
+cost once, by the core's method: every scenario is measured over one delivery, over MESSAGES and
+over twice MESSAGES, the slope between the last two is the steady state, and the one-delivery run
+is the cold start. Either run keeps the section the other one wrote.
+
+A code benchmark that breaches one of its limits fails the run, and in this output format the
+runner says nothing more about it: what went over is recorded in the summary alone. So every
+breach is printed under the table, the value the run was compared against next to the new one,
+and a summary that cannot be converted still prints its breaches before it stops.
 
 A field the machine does not publish is written as `unknown` rather than guessed: memory speed
 comes from the DMI tables, which most systems only let root read.
@@ -160,9 +165,9 @@ def code_metric(summary: dict, tool: str, name: str) -> int | None:
     return None
 
 
-def code_runs(path: Path) -> dict[str, dict]:
-    """Every benchmark in the run, keyed by `file/function/id`."""
-    found = {}
+def code_summaries(path: Path) -> list[dict]:
+    """Every benchmark summary the code run wrote, one per line, in the layout this script reads."""
+    found = []
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
@@ -171,21 +176,88 @@ def code_runs(path: Path) -> dict[str, dict]:
         if version != CODE_SUMMARY_VERSION:
             sys.exit(
                 f"the benchmark summary has layout version {version}, and this script reads "
-                f"version {CODE_SUMMARY_VERSION}: read the new layout in `code_metric` and raise "
-                "CODE_SUMMARY_VERSION"
+                f"version {CODE_SUMMARY_VERSION}: read the new layout in `code_metric` and "
+                "`code_breaches` and raise CODE_SUMMARY_VERSION"
             )
-        key = f"{Path(summary['benchmark_file']).stem}/{summary['function_name']}/{summary['id']}"
-        found[key] = {
+        found.append(summary)
+    return found
+
+
+def code_benchmark(summary: dict) -> str:
+    """The `file/function` a summary belongs to, which is how a scenario names its benchmark."""
+    return f"{Path(summary['benchmark_file']).stem}/{summary['function_name']}"
+
+
+def code_runs(summaries: list[dict]) -> dict[str, dict]:
+    """Every benchmark in the run, keyed by `file/function/id`."""
+    return {
+        f"{code_benchmark(summary)}/{summary['id']}": {
             "instructions": code_metric(summary, "Callgrind", "Ir"),
             "allocations": code_metric(summary, "DHAT", "TotalBlocks"),
         }
+        for summary in summaries
+    }
+
+
+# The two metrics the table reads, by the names it gives them. A limit on any other metric is
+# reported under the runner's own name for it.
+METRIC_NAMES = {("Callgrind", "Ir"): "instructions", ("Dhat", "TotalBlocks"): "allocations"}
+
+# The runs of a scenario, by the deliveries each one handles.
+RUN_NAMES = {
+    "first": "one delivery",
+    "base": f"{CODE_MESSAGES} deliveries",
+    "twice": f"{2 * CODE_MESSAGES} deliveries",
+}
+
+
+def as_text(value: float) -> str:
+    """A metric value as a breach line writes it: a count as it is, a fraction in short form."""
+    return str(value) if isinstance(value, int) else f"{value:g}"
+
+
+def breach(regression: dict, metrics: dict) -> str:
+    """One limit a run went over: the metric, the value it was compared against, the new one.
+
+    A limit in percent holds the run to the one it is compared against, and the regression
+    carries both values. A plain number is a ceiling the run is held to on its own, and the value
+    it was compared against is the one the metric records next to the new one, where there is one.
+    """
+    [(kind, detail)] = regression.items()
+    [(tool, name)] = detail["metric"].items()
+    label = METRIC_NAMES.get((tool, name), f"{tool} {name}")
+    if kind == "Soft":
+        return (
+            f"{label} {as_text(detail['old'])} -> {as_text(detail['new'])}, "
+            f"{float(detail['diff_pct']):+.2f}% against a limit of +{float(detail['limit']):g}%"
+        )
+    old = metrics.get(name, {}).get("values", {}).get("old")
+    change = "" if old is None else f"{as_text(old)} -> "
+    return f"{label} {change}{as_text(detail['new'])} against a limit of {as_text(detail['limit'])}"
+
+
+def code_breaches(summaries: list[dict]) -> list[str]:
+    """Every limit the code run breached, one line each, named by its scenario and its run."""
+    names = {key: name for name, key, _ in CODE_SCENARIOS}
+    found = []
+    for summary in summaries:
+        benchmark = code_benchmark(summary)
+        run = RUN_NAMES.get(summary["id"], summary["id"])
+        where = f"{names.get(benchmark, benchmark)}, {run}"
+        for profile in summary["profiles"]:
+            total = profile["data"]["total"]
+            for regression in total["regressions"]:
+                found.append(f"{where}: {breach(regression, total['metrics'])}")
     return found
 
 
 def code_total(found: dict, key: str, floor: int) -> dict:
     """One run's totals, checked for the two ways this measurement fails silently."""
     if key not in found:
-        sys.exit(f"benchmark {key} is not in the run: rename it here or in benches/")
+        sys.exit(
+            f"benchmark {key} is not in the run: it failed before it wrote a summary, or it was "
+            "renamed (then rename it here or in benches/)"
+        )
     measured = found[key]
     if measured["instructions"] is None or measured["instructions"] < floor:
         sys.exit(
@@ -200,8 +272,8 @@ def per_message(figure: float) -> float:
     return round(figure, 3) if abs(figure) < 1 else round(figure, 1)
 
 
-def code_section(path: Path) -> list[dict]:
-    found = code_runs(path)
+def code_section(summaries: list[dict]) -> list[dict]:
+    found = code_runs(summaries)
     rows = []
     for name, key, gated in CODE_SCENARIOS:
         base = code_total(found, f"{key}/base", CODE_FLOOR)
@@ -224,6 +296,16 @@ def code_section(path: Path) -> list[dict]:
     return rows
 
 
+def report_breaches(lines: list[str]) -> None:
+    """The limits the run breached, which is why it fails, each with both values it compared."""
+    if not lines:
+        return
+    print()
+    print("limits breached (totals of one run, old -> new):")
+    for line in lines:
+        print(f"  {line}")
+
+
 def valgrind() -> str:
     return run("valgrind", "--version").strip().removeprefix("valgrind-") or "unknown"
 
@@ -238,10 +320,21 @@ def main() -> int:
         return 2
     source, out = Path(args[0]), Path(args[1])
     previous = json.loads(out.read_text(encoding="utf-8")) if out.exists() else {}
+    breached = []
     if code:
+        summaries = code_summaries(source)
+        breached = code_breaches(summaries)
+        try:
+            rows = code_section(summaries)
+        except SystemExit:
+            # One failure does not hide another: a run that cannot be converted still shows what
+            # it breached.
+            report_breaches(breached)
+            sys.stdout.flush()
+            raise
         document = previous
         document["schema"] = 3
-        document["code"] = code_section(source)
+        document["code"] = rows
         # The code costs carry their own provenance: the paired numbers beside them may come
         # from another run, on another version, on another day.
         document["code_measured"] = {
@@ -286,6 +379,7 @@ def main() -> int:
                 f"{row['cold']['instructions']} instructions, {row['cold']['allocations']} "
                 "allocations"
             )
+    report_breaches(breached)
     return 0
 
 
