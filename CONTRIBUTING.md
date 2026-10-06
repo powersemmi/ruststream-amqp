@@ -38,7 +38,7 @@ git clone https://github.com/powersemmi/ruststream-amqp.git
 | `just deny` | cargo-deny | `cargo install cargo-deny --locked` |
 | `just typo`, `just zizmor` | uv | the uv documentation |
 | `just bench` | Python 3 | the system package manager |
-| `just bench-code` | valgrind and the benchmark runner | the system package manager, then `cargo install --locked gungraun-runner --version =0.19.4` |
+| `just bench-code` | valgrind | the system package manager; the recipe installs the benchmark runner itself, at the release `Cargo.lock` pins |
 | the documentation site | Python 3.12 | `pip install -r docs/requirements.txt`, then `properdocs serve` |
 
 ## Checking a change
@@ -58,7 +58,9 @@ stops the stand.
 client on the same stand and rewrites `docs/benchmarks/results.json`. It takes about a minute and
 wants the machine to itself. `just bench-code` counts what a service on this crate costs per message
 on its own thread, in instructions and allocations against the same stand, and rewrites the code
-table of the same document; it takes about half a minute.
+table of the same document; it takes about half a minute. `just bench-code --baseline=main`
+compares a branch with the run `just bench-code --save-baseline=main` recorded on `main`, and a
+pull request that changes the cost cites its numbers.
 
 ## Testing against a local core
 

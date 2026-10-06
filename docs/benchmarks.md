@@ -83,7 +83,9 @@ instructions per message stayed within two tenths of a percent and the cold star
 percent, and the longest run's allocations moved by up to four blocks in two thousand deliveries.
 `just bench-code` fails when a run allocates more than the floor its scenario declares, which is
 the highest count seen plus a tenth of a percent. With `--baseline=main` it also fails on more than
-two percent more instructions. A pull request that changes the cost cites its numbers.
+two percent more instructions than the run `--save-baseline=main` recorded. A run that fails still
+prints the table, then every limit it breached, the old value beside the new one. A pull request
+that changes the cost cites its numbers.
 
 ## The machine
 
@@ -146,5 +148,5 @@ just bench-code
 ```
 
 The recipe starts the same stand, counts the code table under valgrind, stops the stand and rewrites
-the `code` section of the same document. It takes about half a minute and needs valgrind and the benchmark
-runner: `cargo install --locked gungraun-runner --version =0.19.4`.
+the `code` section of the same document. It takes about half a minute and needs valgrind. The
+recipe installs the benchmark runner itself, at the release `Cargo.lock` pins.

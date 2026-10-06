@@ -40,7 +40,9 @@
 //! at the same frame; the number read is `Total blocks`, allocations per run.
 //!
 //! The socket is real, so a count is not exact to the digit: how many transfers one read brings
-//! in depends on what the broker had written by then.
+//! in depends on what the broker had written by then. So the instruction limit sits at two
+//! percent rather than at zero, and it holds a run to a named baseline rather than to the run
+//! before it.
 
 // Each benchmark target compiles this module on its own and uses the part it needs; what another
 // target uses looks unused here.
@@ -63,7 +65,7 @@ use std::sync::{Arc, OnceLock};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use gungraun::{Callgrind, Dhat, DhatMetric, EntryPoint, EventKind, LibraryBenchmarkConfig};
+use gungraun::{Callgrind, Dhat, DhatMetric, EntryPoint, LibraryBenchmarkConfig};
 use ruststream::runtime::{AppInfo, BrokerScope, Identity, RunningApp, RustStream};
 use ruststream::{Broker, ConnectedBroker, OutgoingMessage, Publisher};
 use ruststream_amqp::AmqpBroker;
@@ -81,10 +83,6 @@ const QUANTITY: u32 = 37;
 /// How long a drain may take before the run is called stuck. Valgrind slows the service down
 /// about fifty times, so this is far above what a run takes.
 const DRAIN_LIMIT: Duration = Duration::from_mins(10);
-
-/// How far, in percent, the instructions of a run may rise over the run compared against before
-/// it fails.
-const INSTRUCTION_LIMIT: f64 = 2.0;
 
 /// The payload every scenario decodes: two integer fields, so a decode allocates nothing and the
 /// number is about the crate and the framework rather than about `serde_json`'s string handling.
@@ -134,14 +132,15 @@ fn stamp() -> u128 {
 /// `blocks` is the hard limit on the allocations of the longest run of the scenario (twice
 /// [`MESSAGES`] deliveries), and every run of it is held to that limit, so a run fails when the
 /// path allocates more than it does today. A scenario states it through [`floor`]. The limit is
-/// lowered in the same change that lowers the count. The instruction limit is relative:
-/// `just bench-code --save-baseline=main` records a baseline and `just bench-code --baseline=main`
-/// compares against it.
+/// lowered in the same change that lowers the count. The instruction limit is relative, and
+/// `just bench-code` sets it only for a run against a named baseline:
+/// `just bench-code --save-baseline=main` records one, and `just bench-code --baseline=main` fails
+/// on two percent more instructions than it.
 pub fn config(blocks: u64) -> LibraryBenchmarkConfig {
     let mut config = LibraryBenchmarkConfig::default();
     config
         .env(URL_VARIABLE, url())
-        .tool(callgrind().soft_limits([(EventKind::Ir, INSTRUCTION_LIMIT)]))
+        .tool(callgrind())
         .tool(dhat().hard_limits([(DhatMetric::TotalBlocks, blocks)]));
     config
 }
