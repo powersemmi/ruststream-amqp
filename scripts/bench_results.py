@@ -11,8 +11,8 @@ https://powersemmi.github.io/ruststream/latest/benchmarks/#publishing-results: s
 loop of the comparison as its best, median and worst round, and the `code` section.
 
 `--code` reads the other run instead: the summary `cargo bench -- --output-format=json` writes for
-the code-cost benches under `crates/ruststream-amqp-bench/benches`, one JSON object per benchmark.
-It writes the `code` section, one entry per scenario with instructions and allocations per
+the code-cost benches under `crates/ruststream-amqp-bench/benches`, one JSON object per benchmark,
+in the summary layout gungraun 0.20 writes (its version 7). It writes the `code` section, one entry per scenario with instructions and allocations per
 message plus what starting the service cost once, by the core's method: every scenario is
 measured over one delivery, over MESSAGES and over twice MESSAGES, the slope between the last two
 is the steady state, and the one-delivery run is the cold start. Either run keeps the section the
@@ -128,6 +128,11 @@ def environment() -> dict[str, str]:
 # Deliveries per measured run of the code-cost benches, the default of their `MESSAGES`.
 CODE_MESSAGES = 1000
 
+# The summary layout the code run is read in. Every summary states its layout in `version`, and a
+# gungraun release that changes the layout changes the number, so a summary of another version
+# stops the conversion with a message naming both rather than with a missing field.
+CODE_SUMMARY_VERSION = "7"
+
 # An instruction count below this on a code run means the measured region stopped matching its
 # frame and the run reported the process exit, not that the code got faster. The cold run handles
 # one delivery, so it is held to a lower floor.
@@ -144,14 +149,14 @@ CODE_SCENARIOS = [
 
 
 def code_metric(summary: dict, tool: str, name: str) -> int | None:
-    """The new value of one metric, out of the nested summary the runner emits."""
+    """The new value of one metric: the total of one tool's run, as the runner reports it."""
     for profile in summary["profiles"]:
-        metrics = profile["summaries"]["parts"][0]["metrics_summary"].get(tool)
-        if not metrics or name not in metrics:
+        if profile["tool"] != tool:
             continue
-        values = metrics[name]["metrics"]
-        entry = values["Both"][0] if "Both" in values else next(iter(values.values()))
-        return int(entry["Int"])
+        values = profile["data"]["total"]["metrics"].get(name, {}).get("values", {})
+        # A run compared against a baseline carries the old value next to the new one.
+        new = values.get("new")
+        return None if new is None else int(new)
     return None
 
 
@@ -162,10 +167,17 @@ def code_runs(path: Path) -> dict[str, dict]:
         if not line.strip():
             continue
         summary = json.loads(line)
+        version = summary.get("version")
+        if version != CODE_SUMMARY_VERSION:
+            sys.exit(
+                f"the benchmark summary has layout version {version}, and this script reads "
+                f"version {CODE_SUMMARY_VERSION}: read the new layout in `code_metric` and raise "
+                "CODE_SUMMARY_VERSION"
+            )
         key = f"{Path(summary['benchmark_file']).stem}/{summary['function_name']}/{summary['id']}"
         found[key] = {
             "instructions": code_metric(summary, "Callgrind", "Ir"),
-            "allocations": code_metric(summary, "Dhat", "TotalBlocks"),
+            "allocations": code_metric(summary, "DHAT", "TotalBlocks"),
         }
     return found
 

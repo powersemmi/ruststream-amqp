@@ -116,5 +116,5 @@ just bench-code
 ```
 
 这条 recipe 起同一套测试台，在 valgrind 下统计代码表，停掉测试台，并重写同一份文档里的 `code`
-部分。它要花半分钟左右，需要 valgrind 和基准测试运行器：
-`cargo install --locked gungraun-runner --version =0.19.4`。
+部分。它要花半分钟左右，需要 valgrind。基准测试运行器由 recipe 自己安装，版本就是 `Cargo.lock`
+锁定的那一个。

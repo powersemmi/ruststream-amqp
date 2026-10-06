@@ -54,18 +54,34 @@ bench *ARGS: brokers-up
 # callgrind and allocations through DHAT, each scenario a service on the production broker against
 # the stand the tests use. The counts follow the service's thread alone, so the machine's load does
 # not move them; the page it feeds is the code table of docs/benchmarks.md. RUSTFLAGS is cleared
-# because valgrind aborts on the instructions a recent CPU advertises. Needs valgrind and the
-# runner the benches pin: cargo install --locked gungraun-runner --version =0.19.4
-# Extra arguments reach the runner: `just bench-code --save-baseline=main` records a baseline,
+# because valgrind aborts on the instructions a recent CPU advertises. Needs valgrind.
+#
+# The benchmarks hand the measurement to gungraun's runner, which has to be the release of the
+# library the lock file pins. The recipe installs that release into `target/gungraun-runner` on
+# the first run and after the library moves, and puts it first on PATH, where the benchmarks look
+# the runner up. A `GUNGRAUN_RUNNER` in the environment would win over PATH when the benchmarks
+# build, so the recipe clears it.
+#
+# The arguments reach the runner: `just bench-code --save-baseline=main` records a baseline,
 # `just bench-code --baseline=main` compares against it.
+[positional-arguments]
 bench-code *ARGS: brokers-up
     #!/usr/bin/env bash
     set -euo pipefail
     trap 'just brokers-down' EXIT
     mkdir -p target
-    RUSTFLAGS="" AMQP_TEST_URL=amqp://artemis:artemis@127.0.0.1:5672 \
-        cargo bench -p ruststream-amqp-bench --bench consume --bench reply --bench batch \
-        -- --output-format=json {{ ARGS }} > target/bench-code.json
+    version="$(cargo pkgid gungraun)"
+    version="${version##*@}"
+    runner="$PWD/target/gungraun-runner"
+    installed="$("$runner/bin/gungraun-runner" --version 2> /dev/null || true)"
+    if [ "$installed" != "gungraun-runner $version" ]; then
+        cargo install --locked --root "$runner" gungraun-runner --version "=$version"
+    fi
+    unset GUNGRAUN_RUNNER
+    export PATH="$runner/bin:$PATH" RUSTFLAGS="" \
+        AMQP_TEST_URL=amqp://artemis:artemis@127.0.0.1:5672
+    cargo bench -p ruststream-amqp-bench --bench consume --bench reply --bench batch \
+        -- --output-format=json "$@" > target/bench-code.json
     python3 scripts/bench_results.py --code target/bench-code.json docs/benchmarks/results.json
 
 fmt:
