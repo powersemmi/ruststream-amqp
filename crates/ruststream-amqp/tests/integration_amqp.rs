@@ -527,6 +527,28 @@ async fn an_explicit_sasl_profile_wins_over_the_urls_userinfo() {
         .expect("the URL's userinfo authenticates when no profile is set");
 }
 
+/// A URL carries its userinfo percent-encoded, which is how a password with a reserved character
+/// (`p%40ss` for `p@ss`) reaches it, and the server checks the decoded credentials. The stand's
+/// credentials hold no reserved character, so the case encodes a plain letter: `%61` is `a`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_urls_userinfo_authenticates_percent_decoded() {
+    let Some(url) = test_url() else { return };
+    let (_, user, password) = endpoint_and_credentials(&url);
+    let encode_first = |text: &str| {
+        let mut chars = text.chars();
+        let first = chars.next().expect("the stand's credentials are not empty");
+        format!("%{:02X}{}", u32::from(first), chars.as_str())
+    };
+    let encoded = with_userinfo(
+        &url,
+        &format!("{}:{}", encode_first(&user), encode_first(&password)),
+    );
+
+    authenticates(AmqpBroker::new(&encoded))
+        .await
+        .unwrap_or_else(|e| panic!("{encoded} authenticates once decoded: {e}"));
+}
+
 /// The partition key rides the `AMQP` `group-id` property, and a group is not a label: a broker
 /// that reads it keeps one group on one consumer, which is what makes the key worth setting. The
 /// mapping alone would round-trip just as well through any other header, so this is the case that

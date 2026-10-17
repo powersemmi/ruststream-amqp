@@ -400,8 +400,8 @@ impl AmqpBroker {
         }
     }
 
-    /// Sets the SASL profile. A URL with userinfo (`amqp://user:pass@host`) selects PLAIN
-    /// implicitly; an explicit profile set here wins.
+    /// Sets the SASL profile. A URL with userinfo (`amqp://user:pass@host`, percent-decoded)
+    /// selects PLAIN implicitly; an explicit profile set here wins.
     pub fn sasl(mut self, sasl: Sasl) -> Self {
         self.sasl = Some(sasl);
         self
@@ -456,7 +456,7 @@ impl Broker for AmqpBroker {
                 if let Some(domain) = url.domain() {
                     builder = builder.domain(domain);
                 }
-                if let Some(profile) = sasl_profile(self.sasl.as_ref(), &url) {
+                if let Some(profile) = sasl_profile(self.sasl.as_ref(), &url)? {
                     builder = builder.sasl_profile(profile);
                 }
                 let mut conn = builder

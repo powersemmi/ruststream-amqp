@@ -48,6 +48,8 @@ tokio.workspace = true
 # Reads the broker URL this crate opens the connection's socket from, the way the client's own
 # `open` reads it.
 url.workspace = true
+# Decodes the URL's userinfo into the credentials it stands for; `url` already depends on it.
+percent-encoding.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
