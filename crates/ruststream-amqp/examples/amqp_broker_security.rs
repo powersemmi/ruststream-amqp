@@ -33,7 +33,7 @@ async fn place(order: &Order) -> HandlerOutcome {
 }
 
 // --8<-- [start:broker]
-/// The broker at `url`, which carries no credentials: the service logs in with SASL PLAIN.
+/// The broker at `url`, a URL without credentials; the service logs in with SASL PLAIN.
 fn broker(url: &str, user: &str, password: &str) -> AmqpBroker {
     AmqpBroker::new(url).sasl(Sasl::plain(user, password))
 }
