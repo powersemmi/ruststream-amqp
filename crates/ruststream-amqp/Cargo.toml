@@ -135,3 +135,36 @@ name = "manual_amqp_batches"
 path = "examples/manual/amqp_batches.rs"
 required-features = ["testing", "asyncapi"]
 test = true
+
+[[example]]
+name = "amqp_settlement_dispositions"
+required-features = ["testing"]
+test = true
+
+[[example]]
+name = "manual_amqp_settlement_dispositions"
+path = "examples/manual/amqp_settlement_dispositions.rs"
+required-features = ["testing", "asyncapi"]
+test = true
+
+[[example]]
+name = "amqp_settlement_settle"
+required-features = ["testing"]
+test = true
+
+[[example]]
+name = "manual_amqp_settlement_settle"
+path = "examples/manual/amqp_settlement_settle.rs"
+required-features = ["testing", "asyncapi"]
+test = true
+
+[[example]]
+name = "amqp_retry"
+required-features = ["testing"]
+test = true
+
+[[example]]
+name = "manual_amqp_retry"
+path = "examples/manual/amqp_retry.rs"
+required-features = ["testing", "asyncapi"]
+test = true
