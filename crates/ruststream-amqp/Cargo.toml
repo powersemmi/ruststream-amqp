@@ -53,7 +53,8 @@ tracing.workspace = true
 
 [dev-dependencies]
 # The conformance harness drives the testing-feature broker; macros + json power the runnable
-# amqp_* examples, and serde decodes their message types.
+# amqp_* examples, and serde decodes their message types. `asyncapi` brings `ruststream::schemars`,
+# whose `JsonSchema` a manual registration owes the generated document.
 ruststream = { workspace = true, features = [
     "asyncapi",
     "conformance",
@@ -72,7 +73,7 @@ name = "amqp_transaction"
 required-features = ["testing", "transaction"]
 test = true
 
-# --- examples: broker ---
+# The examples of the broker and testing pages, each beside its manual twin.
 
 [[example]]
 name = "amqp_service"
@@ -173,7 +174,7 @@ path = "examples/manual/amqp_testing_live.rs"
 required-features = ["testing"]
 test = true
 
-# --- examples: publishing ---
+# The examples of the publishing, request-reply, transactions and AsyncAPI pages.
 
 [[example]]
 name = "amqp_publishing_publish"
@@ -236,10 +237,7 @@ path = "examples/manual/amqp_asyncapi.rs"
 required-features = ["asyncapi", "transaction"]
 test = true
 
-# --- examples: subscriptions ---
-# The examples of the subscriptions and dispositions pages. A manual twin derives `JsonSchema` for
-# its message types, which a registration without the macros owes the generated document, so it
-# needs the `asyncapi` feature that brings `ruststream::schemars`.
+# The examples of the subscriptions and dispositions pages.
 
 [[example]]
 name = "amqp_subscriptions_name"
