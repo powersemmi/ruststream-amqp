@@ -1,7 +1,7 @@
 ---
 title: Партиции воркеров
 sidebar_position: 5
-description: "Подписка читает свою очередь через одну принимающую связь и одну задачу приёма, а workers(n, by_key) раскладывает доставки по партициям воркеров по ключу из group-id."
+description: "Подписка читает очередь через одну принимающую связь и одну задачу приёма, а workers(n, by_key) раскладывает доставки по партициям по ключу group-id."
 ---
 
 import {Diagram} from '@site/src/components/Diagrams';
