@@ -1,4 +1,19 @@
 {
+  "$schema": "https://context7.com/schema/context7.json",
+  "folders": [
+    "docs",
+    "crates/ruststream-amqp/src",
+    "crates/ruststream-amqp/examples",
+    "website/static"
+  ],
+  "excludeFolders": [
+    "docs/benchmarks",
+    "website/i18n",
+    "website/build",
+    "website/.docusaurus",
+    "website/node_modules",
+    "target"
+  ],
   "rules": [
     "Import `ruststream_amqp::prelude::*` in a routes file; it re-exports the framework prelude, so a service file needs no second glob, and a handler body keeps `ruststream::prelude::*` alone.",
     "Describe a subscription with `AmqpAddress::queue(name)` for competing consumers, `AmqpAddress::topic(name)` for fan-out, and `AmqpAddress::raw(address)` only for a deployment's own convention; the plain `#[subscriber(\"name\")]` form maps to `raw` and declares no terminus capability.",
