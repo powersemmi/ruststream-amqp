@@ -1,6 +1,12 @@
 import {addresses} from './addresses';
 import {connection} from './connection';
+import {design} from './design';
 import type {Box, Lane, Link} from './flow';
+import {lanes} from './lanes';
+import {lifecycle} from './lifecycle';
+import {path} from './path';
+import {retries} from './retries';
+import {settlement} from './settlement';
 import {transactions} from './transactions';
 import {outcomes, transfers} from './transfers';
 import type {Words} from './words';
@@ -18,6 +24,12 @@ export const LAYOUTS = {
   transfers,
   outcomes,
   transactions,
+  design,
+  lifecycle,
+  path,
+  settlement,
+  retries,
+  lanes,
 } satisfies Record<string, (words: Words) => Layout>;
 
 export type DiagramName = keyof typeof LAYOUTS;
