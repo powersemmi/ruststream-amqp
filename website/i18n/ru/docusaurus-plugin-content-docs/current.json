@@ -6,5 +6,9 @@
   "sidebar.architecture.category.Benchmarks": {
     "message": "Бенчмарки",
     "description": "The label for category 'Benchmarks' in sidebar 'architecture'"
+  },
+  "sidebar.architecture.category.AMQP 1.0": {
+    "message": "AMQP 1.0",
+    "description": "The label for category 'AMQP 1.0' in sidebar 'architecture'"
   }
 }
