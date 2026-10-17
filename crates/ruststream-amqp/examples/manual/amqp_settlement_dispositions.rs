@@ -95,11 +95,7 @@ fn app() -> impl App<State = AppState> {
             })
         })
         .with_broker(broker, |b| {
-            b.include(
-                subscriber("payments", Charge)
-                    .build()
-                    .map_source(|_| AmqpAddress::queue("payments")),
-            );
+            b.include(subscriber(AmqpAddress::queue("payments"), Charge).build());
         })
 }
 

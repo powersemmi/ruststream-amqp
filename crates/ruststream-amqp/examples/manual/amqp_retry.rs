@@ -122,20 +122,12 @@ fn app() -> impl App {
     RustStream::new(AppInfo::new("payments", "0.1.0")).with_broker(broker, |b| {
         // Five deliveries of one payment, the first included; the fifth failure goes to
         // "payments.dead" instead. Every copy leaves through `Publish`, stamped by `Retried`.
-        b.include(
-            subscriber("payments", Charge)
-                .build()
-                .map_source(|_| AmqpAddress::queue("payments")),
-        )
-        .max_attempts(nonzero!(5u32))
-        .dead_letter("payments.dead")
-        .out_retry(Publish)
-        .transform(Retried);
-        b.include(
-            subscriber("payments.dead", OnDeadLetter)
-                .build()
-                .map_source(|_| AmqpAddress::queue("payments.dead")),
-        );
+        b.include(subscriber(AmqpAddress::queue("payments"), Charge).build())
+            .max_attempts(nonzero!(5u32))
+            .dead_letter("payments.dead")
+            .out_retry(Publish)
+            .transform(Retried);
+        b.include(subscriber(AmqpAddress::queue("payments.dead"), OnDeadLetter).build());
     })
 }
 // --8<-- [end:declaration]

@@ -1,5 +1,5 @@
 //! The service of `examples/amqp_settlement_settle.rs` written without the macros: the settle
-//! mode rides the descriptor that joins the chain through `map_source`.
+//! mode rides the descriptor passed to `subscriber`.
 //!
 //! ```text
 //! cargo test --example manual_amqp_settlement_settle --features testing,asyncapi
@@ -67,11 +67,7 @@ fn readings() -> AmqpAddress {
 fn app() -> impl App {
     let broker = AmqpBroker::new("amqp://artemis:artemis@localhost:5672");
     RustStream::new(AppInfo::new("telemetry", "0.1.0")).with_broker(broker, |b| {
-        b.include(
-            subscriber("readings", Record)
-                .build()
-                .map_source(|_| readings()),
-        );
+        b.include(subscriber(readings(), Record).build());
     })
 }
 
