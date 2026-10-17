@@ -64,3 +64,74 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "ti
 [[example]]
 name = "amqp_transaction"
 required-features = ["transaction"]
+
+# --- examples: subscriptions ---
+# The examples of the subscriptions and dispositions pages. A manual twin derives `JsonSchema` for
+# its message types, which a registration without the macros owes the generated document, so it
+# needs the `asyncapi` feature that brings `ruststream::schemars`.
+
+[[example]]
+name = "amqp_subscriptions_name"
+required-features = ["testing"]
+test = true
+
+[[example]]
+name = "manual_amqp_subscriptions_name"
+path = "examples/manual/amqp_subscriptions_name.rs"
+required-features = ["testing", "asyncapi"]
+test = true
+
+[[example]]
+name = "amqp_subscriptions_queue"
+required-features = ["testing"]
+test = true
+
+[[example]]
+name = "amqp_subscriptions_topic"
+required-features = ["testing"]
+test = true
+
+[[example]]
+name = "amqp_subscriptions_raw"
+required-features = ["testing"]
+test = true
+
+[[example]]
+name = "manual_amqp_subscriptions_queue"
+path = "examples/manual/amqp_subscriptions_queue.rs"
+required-features = ["testing", "asyncapi"]
+test = true
+
+[[example]]
+name = "manual_amqp_subscriptions_topic"
+path = "examples/manual/amqp_subscriptions_topic.rs"
+required-features = ["testing", "asyncapi"]
+test = true
+
+[[example]]
+name = "manual_amqp_subscriptions_raw"
+path = "examples/manual/amqp_subscriptions_raw.rs"
+required-features = ["testing", "asyncapi"]
+test = true
+
+[[example]]
+name = "amqp_subscriptions_credit"
+required-features = ["testing"]
+test = true
+
+[[example]]
+name = "manual_amqp_subscriptions_credit"
+path = "examples/manual/amqp_subscriptions_credit.rs"
+required-features = ["testing", "asyncapi"]
+test = true
+
+[[example]]
+name = "amqp_batches"
+required-features = ["testing"]
+test = true
+
+[[example]]
+name = "manual_amqp_batches"
+path = "examples/manual/amqp_batches.rs"
+required-features = ["testing", "asyncapi"]
+test = true
