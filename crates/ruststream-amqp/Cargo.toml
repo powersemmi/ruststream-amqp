@@ -54,7 +54,7 @@ tracing.workspace = true
 [dev-dependencies]
 # The conformance harness drives the testing-feature broker; macros + json power the runnable
 # amqp_* examples, and serde decodes their message types.
-ruststream = { workspace = true, features = ["conformance", "testing", "macros", "json"] }
+ruststream = { workspace = true, features = ["conformance", "testing", "macros", "json", "asyncapi"] }
 serde = { version = "1", features = ["derive"] }
 # Reads back the generated AsyncAPI document the binding cases assert on.
 serde_json = "1"
@@ -63,4 +63,68 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "ti
 # The transactional publisher only exists under the `transaction` feature.
 [[example]]
 name = "amqp_transaction"
-required-features = ["transaction"]
+required-features = ["testing", "transaction"]
+test = true
+
+# --- examples: publishing ---
+
+[[example]]
+name = "amqp_publishing_publish"
+required-features = ["testing"]
+test = true
+
+[[example]]
+name = "manual_amqp_publishing_publish"
+path = "examples/manual/amqp_publishing_publish.rs"
+required-features = ["testing"]
+test = true
+
+[[example]]
+name = "amqp_publishing_headers"
+required-features = ["testing"]
+test = true
+
+[[example]]
+name = "manual_amqp_publishing_headers"
+path = "examples/manual/amqp_publishing_headers.rs"
+required-features = ["testing"]
+test = true
+
+[[example]]
+name = "amqp_publishing_keys"
+required-features = ["testing"]
+test = true
+
+[[example]]
+name = "manual_amqp_publishing_keys"
+path = "examples/manual/amqp_publishing_keys.rs"
+required-features = ["testing"]
+test = true
+
+[[example]]
+name = "amqp_request_reply"
+required-features = ["testing"]
+test = true
+
+[[example]]
+name = "manual_amqp_request_reply"
+path = "examples/manual/amqp_request_reply.rs"
+required-features = ["testing"]
+test = true
+
+[[example]]
+name = "manual_amqp_transaction"
+path = "examples/manual/amqp_transaction.rs"
+required-features = ["testing", "transaction"]
+test = true
+
+[[example]]
+name = "amqp_asyncapi"
+required-features = ["asyncapi", "transaction"]
+test = true
+
+[[example]]
+name = "manual_amqp_asyncapi"
+path = "examples/manual/amqp_asyncapi.rs"
+required-features = ["asyncapi", "transaction"]
+test = true
