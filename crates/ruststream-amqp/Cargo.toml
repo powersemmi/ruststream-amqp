@@ -146,3 +146,25 @@ name = "manual_amqp_broker_errors"
 path = "examples/manual/amqp_broker_errors.rs"
 required-features = ["testing", "asyncapi"]
 test = true
+
+[[example]]
+name = "amqp_testing"
+required-features = ["testing"]
+test = true
+
+[[example]]
+name = "manual_amqp_testing"
+path = "examples/manual/amqp_testing.rs"
+required-features = ["testing", "asyncapi"]
+test = true
+
+[[example]]
+name = "amqp_testing_live"
+required-features = ["testing"]
+test = true
+
+[[example]]
+name = "manual_amqp_testing_live"
+path = "examples/manual/amqp_testing_live.rs"
+required-features = ["testing", "asyncapi"]
+test = true
