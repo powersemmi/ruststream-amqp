@@ -6,7 +6,7 @@ description: "Ask another service over AMQP 1.0 and wait for its answer, answer 
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-# Request-reply
+# Requests and replies
 
 This guide asks another service over AMQP 1.0 and waits for its answer, answers requests on their reply address, and handles a request nobody answers.
 

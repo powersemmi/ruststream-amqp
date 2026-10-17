@@ -1,5 +1,5 @@
 ---
-title: 请求-响应
+title: 请求与回复
 sidebar_position: 5
 description: "通过 AMQP 1.0 询问另一个服务并等待它的答复，在请求的回复地址上作答，并处理无人应答的请求。"
 ---
@@ -7,7 +7,7 @@ description: "通过 AMQP 1.0 询问另一个服务并等待它的答复，在�
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-# 请求-响应
+# 请求与回复
 
 本指南通过 AMQP 1.0 询问另一个服务并等待它的答复，在请求的回复地址上作答，并处理无人应答的请求。
 

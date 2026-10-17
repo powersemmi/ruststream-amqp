@@ -13,8 +13,8 @@ This site holds the guides, one page per component and the architecture of the c
 - [Queues and topics](https://powersemmi.github.io/ruststream-amqp/latest/guides/queues-and-topics/): a work queue, a broadcast, a broadcast that waits for its reader, headers and other clients
 - [Acknowledgement and delivery guarantees](https://powersemmi.github.io/ruststream-amqp/latest/guides/acknowledgement/): the three dispositions, the attempt cap, at most once, link credit and batches
 - [Retries and dead letters](https://powersemmi.github.io/ruststream-amqp/latest/guides/retries/): a retry now or later, the cap, the dead-letter address and copies marked by a transform
-- [Request-reply](https://powersemmi.github.io/ruststream-amqp/latest/guides/request-reply/): a request over a dynamic reply address, a responder, and a request nobody answers
-- [Transactions](https://powersemmi.github.io/ruststream-amqp/latest/guides/transactions/): messages published from one handler together or not at all
+- [Requests and replies](https://powersemmi.github.io/ruststream-amqp/latest/guides/request-reply/): a request over a dynamic reply address, a responder, and a request nobody answers
+- [Publishing all or nothing](https://powersemmi.github.io/ruststream-amqp/latest/guides/transactions/): messages published from one handler together or not at all
 - [Testing an AMQP service](https://powersemmi.github.io/ruststream-amqp/latest/guides/testing/): `TestApp` on the production app with replies, delays and dead letters, and the same test against a broker
 - [Connecting to production](https://powersemmi.github.io/ruststream-amqp/latest/guides/production/): TLS, SASL credentials from the environment, the container id, shutdown and a test of the configuration
 

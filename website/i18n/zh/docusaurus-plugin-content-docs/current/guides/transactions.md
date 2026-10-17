@@ -1,5 +1,5 @@
 ---
-title: 事务
+title: 全有或全无的发布
 sidebar_position: 6
 description: "在一个处理器中把多条 AMQP 1.0 消息一起发布或全都不发布：事务性投放，以及什么也不发布的中止。"
 ---
@@ -7,7 +7,7 @@ description: "在一个处理器中把多条 AMQP 1.0 消息一起发布或全�
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-# 事务
+# 全有或全无的发布
 
 本指南在一个处理器中把多条消息一起发布，或者一条也不发布。
 

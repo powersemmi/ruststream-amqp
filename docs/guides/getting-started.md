@@ -130,7 +130,7 @@ Here is where each part goes in RustStream:
 | `accept`, `modify`, `reject` | the handler's outcome: `ack`, `retry`, `drop` ([Acknowledgement and delivery guarantees](acknowledgement.md)) |
 | `auto_accept(true)` | [`Settle::AtMostOnce`](../components/settlement/settle.md) |
 | `Sender::attach` and `send` | a reply or an `Out` parameter, sent through the [`Publish`](../components/publishing/index.md) policy |
-| a dynamic receiver for replies | [`request`](../components/request-reply/index.md) ([Request-reply](request-reply.md)) |
-| `Controller` and `Transaction::declare` | [`TransactionalPublish`](../components/transactions/index.md) ([Transactions](transactions.md)) |
+| a dynamic receiver for replies | [`request`](../components/request-reply/index.md) ([Requests and replies](request-reply.md)) |
+| `Controller` and `Transaction::declare` | [`TransactionalPublish`](../components/transactions/index.md) ([Publishing all or nothing](transactions.md)) |
 
 A service that speaks AMQP 0.9.1 to RabbitMQ uses [ruststream-lapin](https://powersemmi.github.io/ruststream-lapin/) instead: the two protocols share the port and the `amqp://` scheme, and they are different protocols.

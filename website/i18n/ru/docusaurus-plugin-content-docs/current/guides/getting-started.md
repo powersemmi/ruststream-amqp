@@ -131,7 +131,7 @@ cargo test
 | `accept`, `modify`, `reject` | исход обработчика: `ack`, `retry`, `drop` ([Подтверждение и гарантии доставки](acknowledgement.md)) |
 | `auto_accept(true)` | [`Settle::AtMostOnce`](api:ruststream_amqp::Settle::AtMostOnce) |
 | `Sender::attach` и `send` | ответ или параметр `Out`, отправленный через политику [`Publish`](api:ruststream_amqp::AmqpPublish) |
-| динамический получатель для ответов | [`request`](api:ruststream::RequestReply::request) ([Запрос и ответ](request-reply.md)) |
-| `Controller` и `Transaction::declare` | `TransactionalPublish` ([Транзакции](transactions.md)) |
+| динамический получатель для ответов | [`request`](api:ruststream::RequestReply::request) ([Запросы и ответы](request-reply.md)) |
+| `Controller` и `Transaction::declare` | `TransactionalPublish` ([Публикация «всё или ничего»](transactions.md)) |
 
 Сервису, который работает с RabbitMQ по AMQP 0.9.1, нужен [ruststream-lapin](https://powersemmi.github.io/ruststream-lapin/). У двух протоколов общие порт и схема `amqp://`, но это разные протоколы.

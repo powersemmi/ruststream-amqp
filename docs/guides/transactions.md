@@ -6,7 +6,7 @@ description: "Publish several AMQP 1.0 messages from one handler together or not
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-# Transactions
+# Publishing all or nothing
 
 This guide publishes several messages from one handler together or not at all.
 

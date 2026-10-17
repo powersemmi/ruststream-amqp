@@ -131,7 +131,7 @@ cargo test
 | `accept`、`modify`、`reject` | 处理器的结果：`ack`、`retry`、`drop`（[确认与投递保证](acknowledgement.md)） |
 | `auto_accept(true)` | [`Settle::AtMostOnce`](api:ruststream_amqp::Settle::AtMostOnce) |
 | `Sender::attach` 和 `send` | 回复或 `Out` 参数，经由 [`Publish`](api:ruststream_amqp::AmqpPublish) 策略发送 |
-| 用于接收回复的动态接收者 | [`request`](api:ruststream::RequestReply::request)（[请求-响应](request-reply.md)） |
-| `Controller` 和 `Transaction::declare` | `TransactionalPublish`（[事务](transactions.md)） |
+| 用于接收回复的动态接收者 | [`request`](api:ruststream::RequestReply::request)（[请求与回复](request-reply.md)） |
+| `Controller` 和 `Transaction::declare` | `TransactionalPublish`（[全有或全无的发布](transactions.md)） |
 
 通过 AMQP 0.9.1 与 RabbitMQ 通信的服务应改用 [ruststream-lapin](https://powersemmi.github.io/ruststream-lapin/)：两种协议共用端口和 `amqp://` 协议名，但它们是不同的协议。
