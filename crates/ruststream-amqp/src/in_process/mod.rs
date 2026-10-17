@@ -50,7 +50,8 @@ use crate::message::{build_message, headers_from_amqp, to_amqp_message};
 
 /// Checks the broker URL the way `connect` reads it, so a broker a service could not connect is
 /// not one a test can connect either: it has to parse, name a host, and use a scheme the client
-/// opens (`amqps` only with a TLS feature).
+/// opens (`amqps` only with a TLS feature, and on a host name or an IPv4 address, where the client
+/// finds the TLS server name).
 ///
 /// # Errors
 ///
@@ -74,6 +75,13 @@ pub(crate) fn check_url(url: &str) -> Result<(), AmqpError> {
     }
     if url.host_str().is_none_or(str::is_empty) {
         return Err(AmqpError::Connect(Box::from("the URL names no host")));
+    }
+    // The client takes the TLS server name from the URL's domain, which the parser leaves empty
+    // for a bracketed IPv6 address: the live open fails on it with `InvalidDomain`.
+    if url.scheme() == "amqps" && url.domain().is_none() {
+        return Err(AmqpError::Connect(Box::from(
+            "an amqps:// URL on an IPv6 address gives TLS no server name; name the host instead",
+        )));
     }
     Ok(())
 }
