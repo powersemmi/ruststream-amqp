@@ -62,8 +62,7 @@ then 1000, then 2000. The difference between the last two is the steady cost of 
 single delivery is the cold start.
 
 The socket is real, so a count moves a little between runs of one binary: how many transfers one
-read brings in depends on what the broker had written by then. Over five runs the instructions per
-message stayed within two tenths of a percent. A run against a saved baseline fails on two percent
+read brings in depends on what the broker had written by then. A run against a saved baseline fails on two percent
 more instructions in a scenario. Allocations are held to a floor each scenario declares, the
 highest count seen plus a tenth of a percent, on every run.
 
