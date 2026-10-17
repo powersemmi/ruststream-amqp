@@ -1,5 +1,5 @@
 //! The service of `examples/amqp_subscriptions_raw.rs` written without the macros: a verbatim
-//! address joins the chain through `map_source` and reaches the broker as written.
+//! address goes straight to `subscriber` and reaches the broker as written.
 //!
 //! ```text
 //! cargo test --example manual_amqp_subscriptions_raw --features testing,asyncapi
@@ -48,11 +48,7 @@ impl Handle<Order> for Fulfil {
 fn app() -> impl App {
     let broker = AmqpBroker::new("amqp://guest:guest@localhost:5672");
     RustStream::new(AppInfo::new("fulfilment", "0.1.0")).with_broker(broker, |b| {
-        b.include(
-            subscriber("/queues/orders", Fulfil)
-                .build()
-                .map_source(|_| AmqpAddress::raw("/queues/orders")),
-        );
+        b.include(subscriber(AmqpAddress::raw("/queues/orders"), Fulfil).build());
     })
 }
 // --8<-- [end:raw]

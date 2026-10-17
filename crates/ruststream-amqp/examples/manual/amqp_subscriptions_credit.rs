@@ -1,5 +1,5 @@
 //! The service of `examples/amqp_subscriptions_credit.rs` written without the macros: the credit
-//! rides the descriptor that joins the chain through `map_source`.
+//! rides the descriptor passed to `subscriber`.
 //!
 //! ```text
 //! cargo test --example manual_amqp_subscriptions_credit --features testing,asyncapi
@@ -50,11 +50,7 @@ impl Handle<Invoice> for Render {
 fn app() -> impl App {
     let broker = AmqpBroker::new("amqp://artemis:artemis@localhost:5672");
     RustStream::new(AppInfo::new("billing", "0.1.0")).with_broker(broker, |b| {
-        b.include(
-            subscriber("invoices", Render)
-                .build()
-                .map_source(|_| AmqpAddress::queue("invoices").credit(nonzero!(16))),
-        );
+        b.include(subscriber(AmqpAddress::queue("invoices").credit(nonzero!(16)), Render).build());
     })
 }
 // --8<-- [end:credit]

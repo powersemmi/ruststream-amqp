@@ -1,5 +1,5 @@
 //! The service of `examples/amqp_broker_security.rs` without the macros: the handler is a named
-//! type, the address descriptor is mounted with `map_source`, and `main` is written by hand.
+//! type, `subscriber` takes the address descriptor, and `main` is written by hand.
 //!
 //! ```text
 //! cargo test --example manual_amqp_broker_security --features testing,rustls,asyncapi
@@ -52,7 +52,7 @@ fn broker(url: &str, user: &str, password: &str) -> AmqpBroker {
 
 fn service(broker: AmqpBroker) -> impl App<State = ()> {
     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(broker, |b| {
-        let place = subscriber("orders", Place).map_source(|_| AmqpAddress::queue(orders()));
+        let place = subscriber(AmqpAddress::queue(orders()), Place);
         b.include(place.build());
     })
 }

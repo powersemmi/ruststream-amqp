@@ -1,6 +1,6 @@
-//! The service and tests of `examples/amqp_testing.rs` without the macros: the handlers are
-//! named types, the address descriptors are mounted with `map_source`, and `main` is written by
-//! hand. The tests are the same: a test hands the harness the production app either way.
+//! The service and tests of `examples/amqp_testing.rs` without the macros: the handlers are named
+//! types, `subscriber` takes the address descriptors, and `main` is written by hand. The tests are
+//! the same: a test hands the harness the production app either way.
 //!
 //! ```text
 //! cargo test --example manual_amqp_testing --features testing,asyncapi
@@ -97,11 +97,9 @@ fn app() -> impl App<State = ()> {
     RustStream::new(AppInfo::new("payments", "0.1.0")).with_broker(
         AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
         |b| {
-            let accept =
-                subscriber("payments", Accept).map_source(|_| AmqpAddress::queue("payments"));
+            let accept = subscriber(AmqpAddress::queue("payments"), Accept);
             b.include(accept.build());
-            let receipts =
-                subscriber("orders", IssueReceipt).map_source(|_| AmqpAddress::queue("orders"));
+            let receipts = subscriber(AmqpAddress::queue("orders"), IssueReceipt);
             b.include(receipts.reply().build()).out_reply(Publish);
         },
     )

@@ -1,5 +1,5 @@
-//! The service of `examples/amqp_broker_errors.rs` without the macros: the handler is a named
-//! type, the address descriptor is mounted with `map_source`, and `main` is written by hand.
+//! The service of `examples/amqp_broker_errors.rs` without the macros: the handler is a named type,
+//! `subscriber` takes the address descriptor, and `main` is written by hand.
 //!
 //! ```text
 //! cargo test --example manual_amqp_broker_errors --features testing,asyncapi
@@ -64,7 +64,7 @@ fn app() -> impl App<State = ()> {
     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
         AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
         |b| {
-            let ship = subscriber("orders", Ship).map_source(|_| AmqpAddress::queue("orders"));
+            let ship = subscriber(AmqpAddress::queue("orders"), Ship);
             b.include(ship.build()).out(DefaultSlot, Publish).build();
         },
     )
@@ -174,7 +174,7 @@ mod tests {
         let app = RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
             AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
             |b| {
-                let nowhere = subscriber("nowhere", Nowhere).map_source(|_| AmqpAddress::queue(""));
+                let nowhere = subscriber(AmqpAddress::queue(""), Nowhere);
                 b.include(nowhere.build());
             },
         );

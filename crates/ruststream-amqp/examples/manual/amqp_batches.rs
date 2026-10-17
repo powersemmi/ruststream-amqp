@@ -58,12 +58,7 @@ fn app() -> impl App {
     let broker = AmqpBroker::new("amqp://artemis:artemis@localhost:5672");
     RustStream::new(AppInfo::new("billing", "0.1.0")).with_broker(broker, |b| {
         // At most 32 orders per call.
-        b.include(
-            subscriber("orders", Store)
-                .batch(nonzero!(32))
-                .build()
-                .map_source(|_| orders()),
-        );
+        b.include(subscriber(orders(), Store).batch(nonzero!(32)).build());
     })
 }
 // --8<-- [end:app]
