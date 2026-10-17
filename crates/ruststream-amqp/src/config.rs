@@ -1,6 +1,7 @@
 //! Connection configuration: SASL profiles.
 
 use fe2o3_amqp::sasl_profile::SaslProfile;
+use url::Url;
 
 /// How the broker authenticates the connection, mapped onto the client's SASL profiles.
 ///
@@ -162,6 +163,63 @@ impl Sasl {
     pub fn external() -> Self {
         Self {
             profile: SaslProfile::External,
+        }
+    }
+}
+
+/// The SASL profile a connection opens with: the one set with
+/// [`AmqpBroker::sasl`](crate::AmqpBroker::sasl), or else PLAIN from the URL's userinfo, or else
+/// none, which leaves the choice to the client.
+pub(crate) fn sasl_profile(explicit: Option<&Sasl>, url: &Url) -> Option<SaslProfile> {
+    explicit.map_or_else(
+        || SaslProfile::try_from(url).ok(),
+        |sasl| Some(sasl.profile.clone()),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn profile(explicit: Option<&Sasl>, url: &str) -> Option<SaslProfile> {
+        sasl_profile(explicit, &Url::parse(url).expect("the URL parses"))
+    }
+
+    fn plain(profile: Option<SaslProfile>) -> Option<(String, String)> {
+        match profile {
+            Some(SaslProfile::Plain { username, password }) => Some((username, password)),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn an_explicit_profile_wins_over_the_userinfo() {
+        let explicit = Sasl::plain("svc", "secret");
+        let chosen = profile(Some(&explicit), "amqp://other:wrong@broker:5672");
+        assert_eq!(plain(chosen), Some(("svc".to_owned(), "secret".to_owned())));
+
+        let chosen = profile(Some(&Sasl::anonymous()), "amqp://other:wrong@broker:5672");
+        assert!(
+            matches!(chosen, Some(SaslProfile::Anonymous)),
+            "got {chosen:?}"
+        );
+    }
+
+    #[test]
+    fn the_userinfo_selects_plain_without_an_explicit_profile() {
+        let chosen = profile(None, "amqp://svc:secret@broker:5672");
+        assert_eq!(plain(chosen), Some(("svc".to_owned(), "secret".to_owned())));
+    }
+
+    #[test]
+    fn a_url_without_a_user_and_a_password_selects_nothing() {
+        for url in [
+            "amqp://broker:5672",
+            "amqp://svc@broker:5672",
+            "amqp://:secret@broker:5672",
+        ] {
+            let chosen = profile(None, url);
+            assert!(chosen.is_none(), "{url}: got {chosen:?}");
         }
     }
 }

@@ -491,6 +491,42 @@ async fn an_explicit_sasl_profile_authenticates_and_a_wrong_password_is_refused(
     assert!(matches!(refused, AmqpError::Connect(_)), "got {refused}");
 }
 
+/// The URL with `userinfo` in place of the credentials it carried.
+fn with_userinfo(url: &str, userinfo: &str) -> String {
+    let (endpoint, _, _) = endpoint_and_credentials(url);
+    let (scheme, host) = endpoint.split_once("://").expect("the URL names a scheme");
+    format!("{scheme}://{userinfo}@{host}")
+}
+
+/// Opens a connection on `broker` and closes it again, so a case reads as which brokers
+/// authenticate.
+async fn authenticates(broker: AmqpBroker) -> Result<(), AmqpError> {
+    let connected = broker
+        .container_id(format!("sasl-{}", std::process::id()))
+        .connect()
+        .await?;
+    connected.shutdown().await.expect("shutdown succeeds");
+    Ok(())
+}
+
+/// A profile passed to [`AmqpBroker::sasl`] is what authenticates, whatever userinfo the URL
+/// carries: a deployment that sets credentials explicitly does not depend on what its URL holds.
+/// The URL's own userinfo still authenticates a broker that names no profile.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_explicit_sasl_profile_wins_over_the_urls_userinfo() {
+    let Some(url) = test_url() else { return };
+    let (_, user, password) = endpoint_and_credentials(&url);
+
+    authenticates(
+        AmqpBroker::new(with_userinfo(&url, "nobody:wrong")).sasl(Sasl::plain(&user, &password)),
+    )
+    .await
+    .expect("the explicit profile authenticates over the wrong userinfo");
+    authenticates(AmqpBroker::new(&url))
+        .await
+        .expect("the URL's userinfo authenticates when no profile is set");
+}
+
 /// The partition key rides the `AMQP` `group-id` property, and a group is not a label: a broker
 /// that reads it keeps one group on one consumer, which is what makes the key worth setting. The
 /// mapping alone would round-trip just as well through any other header, so this is the case that
