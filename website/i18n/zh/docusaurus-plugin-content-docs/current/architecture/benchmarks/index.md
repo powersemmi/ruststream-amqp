@@ -1,126 +1,39 @@
 ---
-description: "ruststream-amqp 在每条消息上的开销：与原生 fe2o3-amqp 客户端的吞吐量对比，以及其代码的指令数与内存分配次数。"
+title: 基准测试
+description: "ruststream-amqp 在每条消息上的开销：与裸 fe2o3-amqp 客户端对照的吞吐量，以及它自身代码的指令数和内存分配次数。"
 ---
 
-# 基准测试 {/* #benchmarks */}
+import {Environment, MovedSections, Results} from '@site/src/components/Benchmarks';
+import {amqp} from '@site/src/components/Benchmarks/amqp';
 
-在 `fe2o3-amqp` 客户端和你的处理器之间有两层，每一层在每条消息上都要花时间：这个 crate 把一条
-链路变成一个订阅、把一条消息变成一次投递，框架的运行时再把这次投递分发给处理器。这一页把两者
-分开测量，参照物是同样的活用这个客户端手写一遍。
+export const labels = {"loading": "正在读取结果...", "scenario": "场景", "raw": "裸客户端", "adapter": "Broker crate", "framework": "RustStream", "overhead": "额外开销", "against": "（比客户端 {percent}）", "indistinguishable": "无法区分", "brokerBound": "受 Broker 限制", "measured": "测量于", "details": "这些数字是怎样测得的", "pending": "尚未公布结果：{brokers}。", "instructions": "指令数", "allocations": "内存分配", "cold": "冷启动", "table": "以表格显示数字", "axis": "各循环比裸客户端最佳一轮低多少", "rounds": "各轮，从最佳到最慢", "best": "最佳一轮", "median": "中位一轮", "noise": "轮次的波动范围", "comparison": "与裸客户端对照", "code": "代码的开销", "broker": "Broker", "plugin": "{plugin} 插件", "pluginRaw": "不用插件", "pluginAdapter": "手写的插件", "pluginFramework": "crate 自带的插件", "pluginAxis": "各循环比不用插件的应用最佳一轮低多少", "pluginAgainst": "（比不用插件 {percent}）", "pluginOverhead": "比手写插件", "pluginOverHand": "（比手写插件 {percent}）"};
 
-同一个进程把这个场景跑三遍，三个循环各自只差一件事：由什么来承载消息。
+export const machine = {"cpu": "处理器", "architecture": "架构", "cpu_frequency": "频率", "cores": "核心数", "memory": "内存", "memory_speed": "内存速度", "os": "操作系统", "broker": "Broker", "rustc": "编译器", "profile": "构建配置", "features": "特性", "rustflags": "RUSTFLAGS", "round_trip": "往返时间", "valgrind": "Valgrind"};
 
-- **裸客户端**直接驱动 `fe2o3-amqp`：接收、解码、读一个字段、接受投递。
-- **适配器**驱动这个 crate 自己的消费者 —— Broker、地址描述符、订阅的流、投递的 `ack` ——
-  由这里写的一个循环驱动，外面没有服务。
-- **RustStream** 是用户写的整个服务：`#[subscriber]` 处理器、应用、运行时。
+# 基准测试
 
-其余一切都保持相同：连接、每条链路所在的会话、链路的信用、投递保证、结算的位置、解码成同一个
-类型、载荷字节、tokio 运行时和构建。这套流程属于框架本身，写在
-[RustStream 基准测试页](https://powersemmi.github.io/ruststream/latest/zh/benchmarks/#methodology)
-上；这一页公布它在这台机器上得出的结果。
+`ruststream-amqp` 在每条消息上的开销：与裸 `fe2o3-amqp` 客户端对照的吞吐量，以及它自身代码的指令数和内存分配次数。
 
-## 数字 {/* #the-numbers */}
+## 与裸客户端对照 {/* #against-a-raw-client */}
 
-三个交错轮次中的最佳值，括号里是中位的一轮。越大越好。
+第一张图在真实的 AMQP 1.0 Broker（ActiveMQ Artemis）上把同一个场景用三种方式运行。`裸客户端` 直接驱动一个 `fe2o3-amqp` 接收者。`Broker crate` 用一个自己的循环驱动本 crate 的订阅，上面没有运行时。`RustStream` 是用户写的服务：应用里的一个 `#[subscriber]` 处理器。第一项差值是本 crate 比它所封装的客户端多付出的开销，第二项是运行时在其上增加的开销。
 
-<div id="benchmark-results" data-benchmark-results="../../benchmarks/results.json" data-benchmark-labels='{"loading": "正在加载公布的结果...", "scenario": "场景", "raw": "裸客户端", "adapter": "适配器", "framework": "RustStream", "adapterOverhead": "适配器开销", "overhead": "总开销", "indistinguishable": "无法区分", "brokerBound": "受 Broker 限制", "machine": "机器", "os": "操作系统", "broker": "Broker", "build": "构建", "roundTrip": "往返", "versions": "版本", "measured": "测量于", "codeMeasured": "代码开销测量于", "codeUnpublished": "此结果文档不含代码开销。", "instructions": "每条消息的指令数", "allocations": "每条消息的内存分配次数", "cold": "冷启动（指令 / 分配）", "unavailable": "读不到结果。它们公布在 {url}。", "unknownSchema": "公布的结果声明的 schema 是 {schema}，这一页不渲染它。"}'></div>
+每个循环画成一条横条，从最佳一轮延伸到最慢的一轮，圆点标出最佳一轮，缺口标出中位一轮。坐标轴的零点是裸客户端的最佳一轮，圆点在零点右侧表示更慢。空心圆点表示该循环与裸客户端的差异小于各轮的波动范围。图表下方的表格列出最佳一轮，括号里是中位数。
 
-表格由浏览器从上一次运行写下的文档读出，所以这一页上没有任何会过期的副本。
+圆点如果出现在零点左侧，表示该循环比裸客户端更快。裸循环一次只持有一次投递，它解码和结算时没有任何东西在读套接字。本 crate 的订阅则提前读取，读进一个深度等于链路信用的通道，所以循环要下一次投递时，它已经在手里了。
 
-「适配器开销」是适配器对裸客户端：这个 crate 自己的消费者，在它包装的客户端之上要花多少，这个
-数字由本仓库负责。「总开销」是服务对裸客户端，中间多出运行时的那份工作。两者之差就是
-运行时在这个 Broker 上所占的份额，之所以公布在这里，是因为它取决于两边如何衔接：订阅的流怎样
-交出元素、投递怎样到达、背压怎样传回循环。
+## 代码的开销 {/* #cost-of-the-code */}
 
-开销为负，说明这一列比裸客户端还快。手写的循环一次只拿住一次投递：它在解码和结算的时候，
-没有人在读 socket。这个 crate 的订阅则提前读，读进一个由同样的链路信用限定的缓冲，于是循环
-开口要下一条时，下一次 transfer 已经在手里；运行时又加了一层同样的东西。这里两列量的不是税，
-而是「会等的循环」和「不等的流水线」之间的差别。
+第二张图统计一条消息在服务线程上的开销：稳态下 callgrind 测得的指令数和 DHAT 测得的内存分配次数。每个场景都是一个基于 [`AmqpBroker`](api:ruststream_amqp::AmqpBroker)、连接同一个 Broker 的服务。计数包括框架的分发、本 crate 的代码，以及 `fe2o3-amqp` 客户端的分帧和解码，它们作为连接的任务运行在该线程上。Broker 是另一个进程，它的工作都不计入。`冷启动` 是连接服务、附加订阅并取得第一次投递一次性付出的开销。
 
-这一行只有一个消费者：一次投递到达、消息体解码、读一个字段、接受投递。生产者在三个循环中都是
-手写的，所以变化的只有接收的一侧。
+## 结果 {/* #results */}
 
-标为「无法区分」的一行，是两半之间的差值小于各自多次运行之间离散范围、而且各轮没有一致倒向
-同一边的那一行。凡是协议本身比它上面的代码贵得多的地方，这就是诚实的结果；低于运行噪声的数字
-读起来像是从未测到过的精度。规则的后半句在这里很要紧：在这个传输上，一列越快，它自己的离散
-范围就越宽，而每一轮都认同的差值是结果，不是噪声。
-
-同一次运行的机器可读形式在
-[`benchmarks/results.json`](https://powersemmi.github.io/ruststream-amqp/latest/benchmarks/results.json)，
-框架的站点用它拼出跨 Broker 的汇总表。
-
-## crate 自身的代码 {/* #the-crates-own-code */}
-
-<div id="benchmark-code"></div>
-
-第二张表是本 crate 自身在每条消息上的开销，是数出来的，不是计时得来的：指令数由 callgrind 统计，
-内存分配次数由 DHAT 统计。每个场景都是用户会写的那种服务：建在 `AmqpBroker` 上，连到同一个
-Artemis 测试台，跑在单线程运行时上。统计的是服务线程上运行的一切：框架的分发，本 crate 的订阅、
-消息和发布者，以及 `fe2o3-amqp` 客户端的分帧和解码，它们作为连接的任务也跑在这个线程上。Broker
-是另一个进程，它做的事都不在数字里。队列在服务开始排空之前，由另一个线程上的另一条连接填好，
-这个线程同样不计入。
-
-指令数和分配次数都是稳态下每条消息的值：1000 次投递的运行和 2000 次投递的运行之间的斜率。最后一列
-是连接服务、打开它的订阅并处理第一次投递一次性付出的开销。这些数字是绝对值，框架和客户端的开销也
-算在内；框架单独的开销由核心库在它的[基准测试页面](https://powersemmi.github.io/ruststream/latest/zh/benchmarks/)上公布。
-
-套接字是真实的，所以同一个二进制文件多次运行，计数会有少许浮动。五次运行里，每条消息的指令数相差
-不到千分之二，冷启动相差不到百分之一，最长那次运行的分配次数在两千次投递上最多差四个块。
-`just bench-code` 在一次运行的分配超过场景声明的下限时失败，这个下限是见到过的最高计数再加千分之一。
-加上 `--baseline=main` 时，指令数比 `--save-baseline=main` 记下的那次运行多出百分之二以上也算失败。
-失败的运行照样打印表格，并在表格下面列出每一个被超过的上限，旧值和新值并排。改变开销的合并请求要
-附上自己的数字。
+<Results entry={amqp} labels={labels} details="/architecture/benchmarks/methodology/" />
 
 ## 机器 {/* #the-machine */}
 
-<div id="benchmark-environment"></div>
+<Environment entry={amqp} labels={machine} />
 
-「往返」是传输自身的延迟，在所有循环之外测得：一次发送，客户端等它的 disposition，在一条连接上
-取几万次。当一次投递所做的往返占到这次投递开销的一半以上时，这一行会被标为「受 Broker 限制」。
-这里的投递一次往返也不做：transfer 按订阅在后台补充的信用到达，接受则是写出去就算，不等回答。
-这个标记意味着节奏由传输决定，旁边的数字是代码开销的下界，而不是对它的测量。
+数字来自本版本的 `docs/benchmarks/results.json`，由基准测试命令写入。[方法论](methodology.md)说明它们是怎样测得的，[数字](numbers.md)说明可以从中得出什么结论。
 
-构建标志和数字一起公布，因为它们会改变这些数字。用 `-C target-cpu=native` 构建出的二进制给出的
-结果，换一台机器就复现不了，所以这条 recipe 在构建前先把这个变量清空。
-
-## 这些数字不代表什么 {/* #what-they-do-not-mean */}
-
-这里只有一个消费者、一个地址、一个很小的消息体，以及一台跑在回环地址上的 Broker。它测的是一次
-投递在这个 crate 里的开销，不是 Broker 能扛多少。这里的一行也不能拿去和另一个 Broker 公布的一行
-比较：不同的传输在每条消息上做的事并不一样。换一个 AMQP 1.0 的 Broker，一行里的三个数字会一起
-移动，所以镜像和它们一起公布。
-
-这里只测了接收的一侧。为发布路径写过第二个场景 —— 应答方对每一次投递都往请求指定的地址回答 ——
-但它被丢掉了，因为它测的是一个 TCP 计时器而不是任何代码：客户端打开的套接字上还开着 Nagle 算法，
-而一个要等自己 disposition 的回复，写在一条同时还在写 disposition 的连接上，就会卡在内核的缓冲
-里，直到对端延迟的确认把它放出来。现在这个 crate 自己打开那个套接字，并在上面设置 `TCP_NODELAY`：
-与 Artemis 测试台之间的一次「请求-响应」往返，从 140 毫秒降到 2 毫秒。这个场景还没有重写，所以
-这里的对比只覆盖接收的一侧；一次发布在服务线程上的开销，由代码表里回复那一行统计。
-
-一次运行的测量窗口从第一次投递开始，到最后一次投递的活干完为止，三个循环都是这样。结算在这个
-时刻之后发生，所以一次运行携带的几十万个 disposition 里的这一个，在哪个循环里都落在数字之外。
-
-负载在三个循环里都以预先结算的方式发出。如果生产者对每条消息都等一个 disposition，这一行测的
-就成了这台 Broker 确认发送有多快，而被测的消费者会整个运行都闲着。
-
-这些数字是一台机器在某一天的快照。
-它们由人手工重测，测量期间机器只跑这一项：这一页要讲的差值，比与其他任务共用的机器上的噪声还小。
-
-## 自己跑一遍 {/* #running-it-yourself */}
-
-```bash
-just bench
-```
-
-这条 recipe 从 `docker-compose.test.yml` 起停测试台，跑完这个场景，然后把测到的结果写回
-`docs/benchmarks/results.json`。它要花一分钟左右，并且需要整台机器。消息条数不是固定的：一次
-试探运行会把它定下来，使得每一次被测量的运行在所在机器上都不短于五秒。
-
-```bash
-just bench-code
-```
-
-这条 recipe 起同一套测试台，在 valgrind 下统计代码表，停掉测试台，并重写同一份文档里的 `code`
-部分。它要花半分钟左右，需要 valgrind。基准测试运行器由 recipe 自己安装，版本就是 `Cargo.lock`
-锁定的那一个。
+<MovedSections />
