@@ -129,3 +129,15 @@ name = "manual_guide_request_reply"
 path = "examples/manual/guide/request_reply.rs"
 required-features = ["testing"]
 test = true
+
+[[example]]
+name = "guide_transactions"
+path = "examples/guide/transactions.rs"
+required-features = ["testing", "transaction"]
+test = true
+
+[[example]]
+name = "manual_guide_transactions"
+path = "examples/manual/guide/transactions.rs"
+required-features = ["testing", "transaction"]
+test = true
