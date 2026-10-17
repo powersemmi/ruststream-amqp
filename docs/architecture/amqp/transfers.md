@@ -47,7 +47,7 @@ each one with a disposition that carries its outcome.
 
 Credit is the receiver's flow control. The receiver sends a `flow` frame with a credit, and the
 sender may make that many transfers before it waits for the next one. A subscription grants 256 by
-default, and [`credit`](api:ruststream_amqp::AmqpAddress::credit) sets another count.
+default, and [`credit`](../../components/subscriptions/credit.md) sets another count.
 
 The `fe2o3-amqp` client manages the credit itself. Each time half of the credit has been settled,
 it grants the full credit again, counted from the transfers received so far. So the sender never

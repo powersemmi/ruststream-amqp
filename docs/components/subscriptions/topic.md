@@ -15,7 +15,7 @@ The descriptor attaches its receiver with the terminus capability `topic` on the
 ActiveMQ Artemis and the other brokers that read the capability treat the address as multicast.
 That is a broadcast: an audit trail and a notifier read the same events, each at its own pace.
 A [deferred retry](../settlement/retry-after.md) publishes its copy to the address, so every topic subscription on it receives the copy, not only the one that asked.
-In process, `TestApp` copies each message to every topic subscription of the address.
+In process, [`TestApp`](../testing/index.md) copies each message to every topic subscription of the address.
 
 ## Example
 

@@ -22,12 +22,12 @@ ruststream-amqp = { version = "0.7", features = ["rustls"] }
 ```
 
 The deployment provides the address and the credentials in environment variables.
-An `amqps://` URL connects over TLS.
+An `amqps://` URL connects over [TLS](../components/broker/security.md).
 It names the broker by a host name or an IPv4 address: TLS checks that name against the broker's certificate.
 An IPv6 address gives TLS no server name, so the connect fails on it.
 TLS needs one of two features: `rustls` uses [rustls](https://docs.rs/rustls), and `native-tls` uses the platform's TLS.
 
-[`Sasl::plain`](api:ruststream_amqp::Sasl::plain) logs the service in with a user name and a password.
+[`Sasl::plain`](../components/broker/security.md) logs the service in with a user name and a password.
 The URL then carries no credentials.
 A password with characters that have a meaning in a URL, such as `/`, `?` or `@`, goes through `Sasl::plain` as it is.
 [`Sasl::anonymous`](api:ruststream_amqp::Sasl::anonymous) connects without credentials, and [`Sasl::external`](api:ruststream_amqp::Sasl::external) uses a credential the connection already established outside SASL.
@@ -51,7 +51,7 @@ On Azure Service Bus the user name is the name of a shared access policy and the
 </TabItem>
 </Tabs>
 
-[`container_id`](api:ruststream_amqp::AmqpBroker::container_id) names the service to the broker, `ruststream` by default.
+[`container_id`](../components/broker/container-id.md) names the service to the broker, `ruststream` by default.
 The broker's console lists the connection under that name, and the links of the service are named after it.
 Give each deployment of a service its own container id, so an operator tells them apart.
 
@@ -60,9 +60,9 @@ Flow control works per session, so a slow consumer does not hold back the publis
 
 ## Shutdown
 
-When the service stops, it closes the connection from the inside out: the subscriptions' sessions, the publishers' links and their session, then the connection.
-A publisher used after that reports [`AmqpError::NotConnected`](api:ruststream_amqp::AmqpError::NotConnected) instead of succeeding against a closed connection.
-The AsyncAPI document of the service names the broker's host and port and never the credentials.
+When the service stops, it [closes the connection](../components/broker/shutdown.md) from the inside out: the subscriptions' sessions, the publishers' links and their session, then the connection.
+A publisher used after that reports [`AmqpError::NotConnected`](../components/broker/errors.md) instead of succeeding against a closed connection.
+The [AsyncAPI document](../components/asyncapi/server.md) of the service names the broker's host and port and never the credentials.
 
 ## Testing the configuration
 

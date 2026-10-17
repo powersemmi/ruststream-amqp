@@ -37,6 +37,8 @@ A [`TestApp`](../testing/index.md) test reads the URL as the connect reads it, s
 The login itself happens only against a broker, in a [live test](../testing/live.md).
 The generated [AsyncAPI document](../asyncapi/server.md) reports the host and port and never the credentials in the URL.
 
+[Connecting to production](../../guides/production.md) takes the URL and the credentials from the environment.
+
 ## Example
 
 The dependency line:

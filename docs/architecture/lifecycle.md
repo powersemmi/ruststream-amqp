@@ -26,7 +26,7 @@ export const words = {
 
 # Lifecycle
 
-[`AmqpBroker::new`](api:ruststream_amqp::AmqpBroker::new) records configuration, connect opens the
+[`AmqpBroker::new`](../components/broker/index.md) records configuration, connect opens the
 connection and the publishers' session, startup attaches each subscription, and shutdown runs
 inwards.
 
@@ -35,22 +35,23 @@ inwards.
 `new` does no I/O, so the service's builder stays synchronous. The runtime connects the broker when
 the app starts. Connect parses the URL, opens the socket, authenticates, opens the connection and
 begins the session the publishers share. A URL that does not parse, a refused socket or a refused
-login fails the start with `AmqpError::Connect`.
+login fails the [start](../components/broker/startup.md) with `AmqpError::Connect`.
 
 Each subscription's descriptor resolves once, against the connected broker. An empty address is
-refused before any I/O. The subscription begins a session, attaches its receiver with its credit,
-and starts the pump task that owns the receiver. A broker that refuses the attach fails the start
-with `AmqpError::Attach`, naming the address.
+refused before any I/O. The subscription begins a session, attaches its receiver with its
+[credit](../components/subscriptions/credit.md), and starts the pump task that owns the receiver. A
+broker that refuses the attach fails the start with `AmqpError::Attach`, naming the address.
 
 A sender link is attached by the first publish to its address, not at startup. A service that only
 consumes attaches none.
 
-Shutdown marks the connection closed and tears it down from the inside out: each pump detaches its
-receiver and ends its session, the sender links close, the publishers' session ends, and the
-connection closes last. Each layer still routes the broker's answer for the one inside it. Every
-step runs even after an earlier one failed, and the error reported is the innermost one. A
-subscription still open at shutdown yields the deliveries it holds and ends; settling one of them
-afterwards reports an error.
+[Shutdown](../components/broker/shutdown.md) marks the connection closed and tears it down from the
+inside out: each pump detaches its receiver and ends its session, the sender links close, the
+publishers' session ends, and the connection closes last. Each layer still routes the broker's
+answer for the one inside it. Every step runs even after an earlier one failed, and the error
+reported is the innermost one. A subscription still open at shutdown yields the deliveries it holds
+and ends; settling one of them afterwards reports an error.
 
-A broker cloned before it connected shares its connection with the clone. A clone that the test
-harness connected in process cannot then connect to a server, and the reverse is refused too.
+A broker cloned before it connected shares its connection with the clone. A clone that the [test
+harness](../components/testing/index.md) connected in process cannot then connect to a server, and
+the reverse is refused too.

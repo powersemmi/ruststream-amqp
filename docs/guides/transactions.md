@@ -10,7 +10,7 @@ import TabItem from '@theme/TabItem';
 
 This guide publishes several messages from one handler together or not at all.
 
-AMQP 1.0 has transactions in the protocol: a sender posts messages inside a transaction, and the broker makes them visible on the commit.
+AMQP 1.0 has [transactions](../components/transactions/index.md) in the protocol: a sender posts messages inside a transaction, and the broker makes them visible on the commit.
 The `transaction` feature turns this on:
 
 ```toml title="Cargo.toml"
@@ -64,7 +64,7 @@ A commit or an abort that fails has still ended the transaction, so the next `be
 </TabItem>
 </Tabs>
 
-`TransactionalPublish` is the policy that carries transactions, [`AmqpTransactionalPublish`](api:ruststream_amqp::AmqpTransactionalPublish) under its prelude name.
+`TransactionalPublish` is the policy that carries transactions, [`AmqpTransactionalPublish`](api:ruststream_amqp::AmqpTransactionalPublish) under its [prelude](../components/broker/prelude.md) name.
 Its publisher holds one transaction at a time.
 A second `begin_transaction` while one is open returns an error and leaves the open one untouched.
 Each registration gets a publisher of its own, so two handlers can each hold a transaction at the same time.
@@ -81,6 +81,6 @@ Give the messages an id the readers can use to drop a repeat, such as the order'
 
 ## Testing the transaction
 
-The tests in the example file run the service in process.
+The tests in the example file run the service [in process](../components/testing/index.md).
 The in-process broker publishes nothing before the commit and discards the messages of an abort, so the tests read the outcome from what was published.
 [Testing an AMQP service](testing.md) covers the harness.

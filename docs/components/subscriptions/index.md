@@ -20,6 +20,8 @@ The manual form passes the name to [`subscriber(name, body)`](api:ruststream::ru
 The subscription's name is its address: a test reads its deliveries under that name, and a [deferred retry](../settlement/retry-after.md) is published back to it.
 An empty address stops the service at startup with [`AmqpError::InvalidAddress`](api:ruststream_amqp::AmqpError::InvalidAddress).
 
+[Queues and topics](../../guides/queues-and-topics.md) builds a service on a work queue, a broadcast and a raw address.
+
 ## Example
 
 The address `orders`, read as written.

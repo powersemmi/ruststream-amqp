@@ -30,8 +30,8 @@ The client's error behind it is its `source`, so the `fe2o3-amqp` types stay out
 | `Transaction` | a [transaction](../transactions/index.md) step was called in a state that cannot serve it (`transaction` feature) |
 
 A service meets the error in two places.
-A failed startup carries it as a source of the runtime's error, and the service exits before it reads anything.
-A publish from a handler returns it as the source of the core's `PublishError`, and the handler decides how the delivery settles.
+A failed [startup](./startup.md) carries it as a source of the runtime's error, and the service exits before it reads anything.
+A [publish](../publishing/index.md) from a handler returns it as the source of the core's `PublishError`, and the handler decides how the delivery settles.
 The enum is `#[non_exhaustive]`, so a `match` on it ends with a wildcard arm.
 
 ## Example

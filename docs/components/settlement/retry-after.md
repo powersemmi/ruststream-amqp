@@ -19,7 +19,7 @@ On a [topic](../subscriptions/topic.md) every subscription on the address receiv
 The copy waits in the service's memory, so the retry is at-most-once over the delay: a process that stops before the timer fires loses it.
 The rejected original is the broker's to handle: ActiveMQ Artemis moves it to its `DLQ` address by default, beside the copy that comes back.
 A [cap](./retries.md) reads the header of the copy, so it holds across delays.
-In a test the delay runs on the test's clock: `tb.advance(delay)` brings the copy back.
+In a [test](../testing/index.md) the delay runs on the test's clock: `tb.advance(delay)` brings the copy back.
 
 ## Example
 

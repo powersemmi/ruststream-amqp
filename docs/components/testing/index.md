@@ -29,6 +29,8 @@ A message to the empty address is rejected, and a publisher, a subscription, a s
 A publish through the harness returns once every handler it woke has settled, so the assertions that follow read finished state.
 What only a broker has, such as link credit, the dead-letter policy behind a rejection, message groups and the login, is for a [live test](./live.md).
 
+[Testing an AMQP service](../../guides/testing.md) tests a payments service in process and against a broker.
+
 ## Example
 
 The dependency line:

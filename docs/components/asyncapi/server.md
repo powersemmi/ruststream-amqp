@@ -20,7 +20,7 @@ The specification's key `amqp` means `AMQP` 0.9.1, and both protocols use the `a
 The key and the version tell a reader, or a tool that generates a client, which protocol the service speaks.
 
 The extension carries `containerId`, the name the service presents on the connection.
-It is the broker's [`container_id`](api:ruststream_amqp::AmqpBroker::container_id), `ruststream` when the service sets none.
+It is the broker's [`container_id`](../broker/container-id.md), `ruststream` when the service sets none.
 An operator finds the service's links by that name in the broker's console.
 
 ## Example

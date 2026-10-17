@@ -35,7 +35,7 @@ The tests need the `testing` feature of `ruststream-amqp` in `[dev-dependencies]
 </TabItem>
 </Tabs>
 
-[`TestApp::start`](api:ruststream::testing::TestApp::start) connects [`AmqpBroker`](api:ruststream_amqp::AmqpBroker) to an in-process broker.
+[`TestApp::start`](../components/testing/index.md) connects [`AmqpBroker`](../components/broker/index.md) to an in-process broker.
 The broker's URL is never dialled.
 The test addresses the broker by its production type, `tb.broker::<AmqpBroker>()`.
 `publish` returns once the handler and its reply have settled.
@@ -81,9 +81,9 @@ The body takes the started app and the payment's id as arguments, so the live te
 
 The test starts on a paused clock, and [`advance`](api:ruststream::testing::TestApp::advance) moves it forward.
 A minute of `HOLD` costs nothing.
-AMQP 1.0 has no delayed redelivery, so `retry_after` publishes a copy of the payment to its queue when the delay ends.
+AMQP 1.0 has no delayed redelivery, so [`retry_after`](../components/settlement/retry-after.md) publishes a copy of the payment to its queue when the delay ends.
 The copy carries the retry count in a header, and `published` shows it on `card-payments` next to the test's own message.
-The third delivery is the last one the mount site allows, so the payment goes to `card-payments.review` as it arrived.
+The third delivery is the last one the mount site allows, so the payment goes to `card-payments.review`, the [dead-letter address](../components/settlement/dead-letters.md), as it arrived.
 Each held delivery is recorded as `Outcome::Nack`.
 
 ## What the in-process broker models
@@ -120,7 +120,7 @@ In process, a message to an address that no queue subscription has opened is dro
 </TabItem>
 </Tabs>
 
-[`TestApp::start_live`](api:ruststream::testing::TestApp::start_live) connects the same app to a running broker.
+[`TestApp::start_live`](../components/testing/live.md) connects the same app to a running broker.
 The test reads the URL from `AMQP_TEST_URL` with `live::url`, a helper of the example's own, and skips when it is unset.
 The payment's id is the process id, so the messages of one run are told apart on the broker.
 The assertions are the in-process ones, unchanged.

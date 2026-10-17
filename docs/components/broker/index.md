@@ -25,6 +25,8 @@ At [shutdown](./shutdown.md) the runtime closes the connection, and the connecte
 The broker's own configuration then decides whether the subscriptions on the address compete or each get a copy.
 [`AmqpAddress::queue`](../subscriptions/queue.md) and [`AmqpAddress::topic`](../subscriptions/topic.md) state that choice in the service; the [Subscriptions](../subscriptions/index.md) pages describe them.
 
+[Getting started](../../guides/getting-started.md) runs a first service against a local ActiveMQ Artemis.
+
 ## Example
 
 The service reads the queue address `orders`.

@@ -55,9 +55,10 @@ and copies the runtime publishes to the same address.
 
 <Diagram name="settlement" words={table} />
 
-A subscription is at least once by default. A delivery stays unsettled until the handler's outcome
-reaches the pump task as a disposition. A delivery that never gets one stays on the link, and the
-broker returns it to the queue when the link detaches or the connection drops.
+A subscription is at least once by default. A delivery stays unsettled until the handler's
+[outcome](../components/settlement/index.md) reaches the pump task as a disposition. A delivery that
+never gets one stays on the link, and the broker returns it to the queue when the link detaches or
+the connection drops.
 
 A `retry()` sends `modified` with `delivery-failed`, never `released`. A release tells the broker
 the delivery was not acted on, and it leaves `delivery-count` as it was. A handler that asks for a
@@ -65,7 +66,7 @@ retry did act on it and failed, and an attempt cap reads that count: without the
 message that always fails would come back forever. `undeliverable-here` stays false, so the
 message may come back to this same subscription.
 
-[`Settle::AtMostOnce`](api:ruststream_amqp::Settle::AtMostOnce) settles each delivery as it
+[`Settle::AtMostOnce`](../components/settlement/settle.md) settles each delivery as it
 arrives.
 
 | Outcome | At most once |
@@ -84,18 +85,19 @@ no `header` section, so it carries no count, and the framework's retry-count hea
 <Diagram name="retries" words={retries} />
 
 The cap is declared at the mount site with
-[`max_attempts`](api:ruststream::runtime::Mounting::max_attempts), and the first delivery counts
+[`max_attempts`](../components/settlement/retries.md), and the first delivery counts
 as one. Below the cap, a `retry()` goes back to the broker with `modified`, and the broker counts
 it. A copy carries no count of the broker's, so under a cap a `retry()` of a copy publishes the
 next copy at once.
 
-AMQP 1.0 holds no message back, so a `retry_after` is the runtime's own. It rejects the delivery,
-waits for the delay, and publishes a copy with the retry-count header raised by one. The copy goes
-to the subscription's own address, because one node is where a receiver attaches its source and a
-sender its target. On a `queue` address the copy competes for receivers like any other message,
-and on a `topic` address every subscription receives it.
+AMQP 1.0 holds no message back, so a [`retry_after`](../components/settlement/retry-after.md) is the
+runtime's own. It rejects the delivery, waits for the delay, and publishes a copy with the
+retry-count header raised by one. The copy goes to the subscription's own address, because one node
+is where a receiver attaches its source and a sender its target. On a `queue` address the copy
+competes for receivers like any other message, and on a `topic` address every subscription receives
+it.
 
 At the cap, the delivery is published as it arrived to the
-[dead-letter address](api:ruststream::runtime::Mounting::dead_letter). With no dead-letter address
+[dead-letter address](../components/settlement/dead-letters.md). With no dead-letter address
 declared it is rejected, and the broker's own dead-letter policy decides. A dead-letter address
 declared without a cap takes every retry.

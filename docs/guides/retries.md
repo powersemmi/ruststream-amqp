@@ -18,7 +18,7 @@ The example is a refunds service that sends refunds through a card processor.
 ## The subscriber
 
 The processor refuses a refund in three ways, and each needs a different outcome.
-`Busy` means it takes no more large refunds for now: a retry right now would be refused again, so [`retry_after`](api:ruststream::runtime::HandlerOutcome::retry_after) waits 30 seconds.
+`Busy` means it takes no more large refunds for now: a retry right now would be refused again, so [`retry_after`](../components/settlement/retry-after.md) waits 30 seconds.
 `Unavailable` means the card's bank did not answer: [`retry`](api:ruststream::runtime::HandlerOutcome::retry) tries again at once.
 `Declined` means the card account is closed, and another try gets the same answer, so the refund is dropped.
 
@@ -59,8 +59,8 @@ On a queue the copy goes to one consumer like any other message.
 </TabItem>
 </Tabs>
 
-[`max_attempts`](api:ruststream::runtime::RouterWith::max_attempts) counts every delivery of one refund, the first included.
-The fifth delivery is not retried: [`dead_letter`](api:ruststream::runtime::RouterWith::dead_letter) publishes it to `refunds.dead`, payload and headers as they arrived.
+[`max_attempts`](../components/settlement/retries.md) counts every delivery of one refund, the first included.
+The fifth delivery is not retried: [`dead_letter`](../components/settlement/dead-letters.md) publishes it to `refunds.dead`, payload and headers as they arrived.
 A dropped refund is rejected and goes to the broker's own dead-letter policy, not to `refunds.dead`.
 
 Under a cap the framework reads the count from the delivery.
@@ -111,7 +111,7 @@ The retry-count header of a dead letter holds the number of deliveries it went t
 
 A copy has no call site in the handler, so a [publish transform](api:ruststream::runtime::PublishTransform) is the one place that reaches it.
 The app mounts `process_refund` with `.out_retry(Publish).transform(Retried)`.
-`.out_retry(Publish)` names the publisher of the copies, and the steps after it apply to them.
+[`.out_retry(Publish)`](../components/settlement/out-retry.md) names the publisher of the copies, and the steps after it apply to them.
 `Retried` writes the address the delivery came from into `x-retried-from`.
 Every copy goes back to the address of its subscription, so a transform on this position may not change the destination.
 

@@ -16,7 +16,7 @@ The handler reads it with `ctx.headers().reply_to()` and publishes with `.to(rep
 That call site exists only for a reply type whose `Outgoing` derive names no destination.
 The slot is bound as `Out<impl Publisher>` and mounted with `.out(DefaultSlot, Publish).build()`.
 
-The answer copies the request's `correlation-id`, which `ctx.headers().correlation_id()` reads.
+The answer copies the request's [`correlation-id`](../publishing/headers.md), which `ctx.headers().correlation_id()` reads.
 A requester matches the answer by that id, and an answer without it never resolves the request, which then times out.
 A message without `reply-to` is no request; the example drops it, which rejects the delivery.
 

@@ -21,10 +21,10 @@ export function lanes(words: Words): {boxes: Box[]; links: Link[]} {
   });
   const boxes: Box[] = [
     row('queue', 0, 'broker', '/architecture/amqp/addresses/'),
-    row('link', 72, 'broker', '/architecture/amqp/transfers/'),
+    row('link', 72, 'broker', '/components/subscriptions/credit/'),
     row('pump', 144, 'broker'),
     row('stream', 216, 'broker'),
-    row('keyed', 288, 'core'),
+    row('keyed', 288, 'core', '/components/publishing/keys/'),
     ...LANE_X.map(
       (x, lane): Box => ({
         id: `lane${lane}`,
@@ -44,6 +44,7 @@ export function lanes(words: Words): {boxes: Box[]; links: Link[]} {
       h: 44,
       kind: 'note',
       lines: lines(words, 'replicas'),
+      href: '/components/subscriptions/queue/',
     },
   ];
   const links: Link[] = [

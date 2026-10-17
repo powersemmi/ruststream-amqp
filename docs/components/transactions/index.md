@@ -30,6 +30,8 @@ A registration that runs deliveries side by side with `workers(n)` has them comp
 A transaction covers what the publisher posts.
 The delivery the handler answers settles on its own after the handler returns, so a delivery redelivered after a commit posts its messages again.
 
+[Transactions](../../guides/transactions.md) bills an order with its ledger entries and invoice in one transaction.
+
 ## Example
 
 The dependency line:

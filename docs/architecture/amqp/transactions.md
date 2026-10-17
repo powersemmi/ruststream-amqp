@@ -34,7 +34,7 @@ the coordinator answers with a transaction id. A transfer on any ordinary sender
 that id in its transactional state. `discharge` ends the transaction: with `fail` false it commits,
 and with `fail` true it rolls back.
 
-[`AmqpTxnPublisher`](api:ruststream_amqp::AmqpTxnPublisher) posts under a transaction. Each
+[`AmqpTxnPublisher`](../../components/transactions/index.md) posts under a transaction. Each
 `begin_transaction` attaches a controller link on the connection's publisher session and declares
 one transaction, and `commit` and `abort` discharge it. The controller asks for the `mixed`
 sender settle mode, because Artemis answers with that mode and the client requires the broker to

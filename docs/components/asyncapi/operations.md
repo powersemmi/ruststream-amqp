@@ -14,7 +14,7 @@ A send operation says how it posts: `confirmed` for `Publish`, `transactional` f
 The extension of a send operation has one field, `posting`, and the publish policy at its mount site decides it.
 [`Publish`](../publishing/index.md) posts `confirmed`: each transfer waits for the broker's outcome, and anything but `accepted` fails the publish.
 [`TransactionalPublish`](../transactions/index.md) posts `transactional`: the transfers carry a transaction and become visible at its commit.
-A dead-letter destination has a send operation of its own, and it posts `confirmed`.
+A [dead-letter](../settlement/dead-letters.md) destination has a send operation of its own, and it posts `confirmed`.
 
 A reply has no send operation.
 What a reply policy adds to the document is on its [reply](./replies.md).

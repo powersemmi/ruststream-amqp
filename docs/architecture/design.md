@@ -39,14 +39,16 @@ per subscription and a shared session for publishers.
 The crate implements the core's broker traits over
 [`fe2o3-amqp`](https://docs.rs/fe2o3-amqp/0.18.2/fe2o3_amqp/). The runtime above it is the same for
 every broker. What is particular to AMQP 1.0 is in this crate: the
-[address descriptor](api:ruststream_amqp::AmqpAddress), [what an ack means](settlement.md),
-[where a retry copy goes](settlement.md#retries) and
-[how a transaction posts](amqp/transactions.md).
+[address descriptor](../components/subscriptions/index.md),
+[what an ack means](../components/settlement/index.md),
+[where a retry copy goes](../components/settlement/retry-after.md) and
+[how a transaction posts](../components/transactions/index.md).
 
-A connected broker holds one connection. Its publishers share one session, and the first publish
-to an address attaches a sender link that every later publish to that address reuses. The
-connection owns those links, so a shutdown can close each one and wait for the broker's answer.
-Each subscription begins a session of its own and attaches one receiver link on it.
+A connected broker holds one connection. Its [publishers](../components/publishing/index.md) share
+one session, and the first publish to an address attaches a sender link that every later publish to
+that address reuses. The connection owns those links, so a shutdown can close each one and wait for
+the broker's answer. Each subscription begins a session of its own and attaches one receiver link on
+it.
 
 Subscriptions and their sessions start on the runtime the broker connected on, whichever thread
 opens them. A handler on a thread of its own therefore leaves no part of the connection on that
@@ -69,7 +71,7 @@ How the pieces start and stop is on [Lifecycle](lifecycle.md), and the way of on
 
 ## The in-process transport
 
-With the `testing` feature, [`TestApp::start`](api:ruststream::testing::TestApp::start) connects
+With the `testing` feature, [`TestApp::start`](../components/testing/index.md) connects
 the same broker to an in-process transport instead of a server. The descriptors, the policies and
 the deliveries are the production ones, and a publish goes through the same conversion into AMQP
 sections. It routes by exact address: the queue receivers of an address compete, and each topic
@@ -78,10 +80,10 @@ receiver takes it. It settles in the subscription's mode, counts a `modified` de
 `delivery-count`, returns an unsettled delivery to the queue when its subscription detaches, and
 answers a request over a private reply address. A transaction publishes nothing before its commit.
 
-What is the server's own is left to a live run: link credit, how a server creates an address a
-publish reaches first, the dead-letter policy behind a rejection, the server's own delivery limit
-and durability. In process a message to an address no queue subscription has attached to is
-dropped, and a `raw` address is delivered once, where Artemis may fan it out.
+What is the server's own is left to a [live run](../components/testing/live.md): link credit, how a
+server creates an address a publish reaches first, the dead-letter policy behind a rejection, the
+server's own delivery limit and durability. In process a message to an address no queue subscription
+has attached to is dropped, and a `raw` address is delivered once, where Artemis may fan it out.
 
 Without the feature the transport is not compiled. A production build's connected broker is one
 shared pointer to the connection, and the compiler checks that size.

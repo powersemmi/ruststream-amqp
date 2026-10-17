@@ -34,7 +34,7 @@ links that move messages one way.
 
 A container is a peer of the protocol: the service is one and the broker is another. The service
 presents the container id `ruststream` unless
-[`container_id`](api:ruststream_amqp::AmqpBroker::container_id) names another, and a broker's
+[`container_id`](../../components/broker/container-id.md) names another, and a broker's
 console lists the service's connection and links under it.
 
 The connection is one TCP socket. On an `amqps://` URL it starts with TLS. SASL then

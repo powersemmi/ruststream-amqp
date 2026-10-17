@@ -10,7 +10,7 @@ import TabItem from '@theme/TabItem';
 
 [`request`](api:ruststream::RequestReply::request) attaches a dynamic reply link, sends with `reply-to` and `correlation-id`, and resolves with the matching reply or [`RequestTimeout`](api:ruststream_amqp::AmqpError::RequestTimeout).
 
-Request-reply is part of `AMQP` 1.0, and [`AmqpPublisher`](api:ruststream_amqp::AmqpPublisher) implements the [`RequestReply`](api:ruststream::RequestReply) capability.
+Request-reply is part of `AMQP` 1.0, and [`AmqpPublisher`](../publishing/index.md) implements the [`RequestReply`](api:ruststream::RequestReply) capability.
 A request attaches a receiver link with a dynamic source, and the broker names a private address for that link.
 The message goes out with that address in `reply-to` and a fresh id in `correlation-id`.
 The call resolves with the first message on the link whose `correlation-id` matches, so a late answer to an earlier request is ignored.
@@ -22,6 +22,8 @@ The mount site gives the slot the plain policy: `.out(DefaultSlot, Publish).buil
 The reply arrives already settled; the handler reads its payload and headers.
 A request that opens a conversation has no delivery to answer, so it runs from [`after_startup`](api:ruststream::runtime::BrokerScope::after_startup), where the publisher is already live.
 The other side of the exchange is a [responder](./responders.md).
+
+[Request-reply](../../guides/request-reply.md) asks a pricing service for the price of each order.
 
 ## Example
 

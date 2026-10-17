@@ -17,13 +17,13 @@ The [partition key](./keys.md) fills `group-id`.
 Any other header becomes an application property: a UTF-8 value as a string, any other value as binary.
 
 On delivery a handler reads both sections as one header map, through `ctx.headers()`.
-`correlation_id()` and `reply_to()` read the two properties request-reply uses.
+`correlation_id()` and `reply_to()` read the two properties [request-reply](../request-reply/index.md) uses.
 A message id or a correlation id the sender wrote as a UUID, a number or binary reads as text.
 An application property the sender wrote as a number, a boolean or a timestamp reads as text too; a timestamp reads as milliseconds.
 
 A message type declares its headers with `#[outgoing(headers = ..)]`, and a field renamed to `correlation-id` lands in the property.
 A `HeaderMap` with the same entries works the same.
-The in-process mode frames a publish through the same mapping, so a test reads the headers a live delivery carries.
+The [in-process mode](../testing/index.md) frames a publish through the same mapping, so a test reads the headers a live delivery carries.
 
 ## Example
 

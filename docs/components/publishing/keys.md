@@ -17,11 +17,11 @@ On delivery `group-id` comes back as the `partition-key` header.
 
 Message groups are the broker's feature.
 On `ActiveMQ` Artemis every message of one group goes to one consumer of the queue, so the consumer sees the group in the order it was sent.
-Competing consumers of an [`AmqpAddress::queue`](api:ruststream_amqp::AmqpAddress::queue) address then share the groups instead of the messages.
+Competing consumers of an [`AmqpAddress::queue`](../subscriptions/queue.md) address then share the groups instead of the messages.
 
 A message type declares the header with `#[outgoing(headers = ..)]` and a field renamed to `partition-key`; a `HeaderMap` with that entry works the same.
 In process the key travels as on a server, and the consumers of a queue take turns whatever the group.
-Pinning a group to one consumer is the server's work, so a running broker is where it shows.
+Pinning a group to one consumer is the server's work, so a [running broker](../testing/live.md) is where it shows.
 
 ## Example
 
