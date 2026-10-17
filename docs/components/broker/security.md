@@ -29,7 +29,8 @@ A refused login, such as a wrong password, and `Sasl::external` on an `amqp://` 
 An `amqps://` URL encrypts the connection with TLS.
 The `rustls` feature checks the broker's certificate against the Mozilla root certificates built into the binary.
 The `native-tls` feature uses the operating system's TLS library and its trust store; with both features enabled, `native-tls` is the one used.
-The connect checks the certificate against the host name in the URL, so an `amqps://` URL names the broker by host name; an IP address fails the connect.
+The connect checks the certificate against the host in the URL, so the URL names the broker by a host name or an IPv4 address.
+An IPv6 address gives TLS no server name, so the connect fails on it.
 The connection presents no client certificate.
 
 A [`TestApp`](../testing/index.md) test reads the URL as the connect reads it, so an `amqps://` URL without a TLS feature fails startup there too.

@@ -390,7 +390,8 @@ pub struct AmqpBroker {
 }
 
 impl AmqpBroker {
-    /// Records the connection URL (`amqp://` or, with a TLS feature, `amqps://`). No I/O.
+    /// Records the connection URL (`amqp://` or, with a TLS feature, `amqps://` on a host name or an
+    /// IPv4 address). No I/O.
     pub fn new(url: impl Into<String>) -> Self {
         Self {
             url: url.into(),

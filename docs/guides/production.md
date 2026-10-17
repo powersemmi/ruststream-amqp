@@ -23,7 +23,8 @@ ruststream-amqp = { version = "0.7", features = ["rustls"] }
 
 The deployment provides the address and the credentials in environment variables.
 An `amqps://` URL connects over TLS.
-It names the broker by its host name, not an IP address: TLS checks that name against the broker's certificate.
+It names the broker by a host name or an IPv4 address: TLS checks that name against the broker's certificate.
+An IPv6 address gives TLS no server name, so the connect fails on it.
 TLS needs one of two features: `rustls` uses [rustls](https://docs.rs/rustls), and `native-tls` uses the platform's TLS.
 
 [`Sasl::plain`](api:ruststream_amqp::Sasl::plain) logs the service in with a user name and a password.

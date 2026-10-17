@@ -24,7 +24,8 @@ use crate::broker::ConnectedAmqpBroker;
 use crate::error::AmqpError;
 use crate::subscriber::AmqpSubscriber;
 
-/// Default protocol-level credit (prefetch) granted to a subscription.
+/// Default link credit granted to a subscription: the window of deliveries the broker may send
+/// ahead of the handler's settlements.
 pub const DEFAULT_CREDIT: NonZeroU32 = nonzero!(256);
 
 /// Default deadline closing a partial batch on a batch subscription.
@@ -33,11 +34,15 @@ pub const DEFAULT_BATCH_WAIT: Duration = Duration::from_millis(10);
 /// Delivery guarantee of a subscription.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Settle {
-    /// Deliveries are settled by the handler: `ack` accepts, `nack` releases or rejects. The
-    /// default.
+    /// Deliveries are settled by the handler. The default.
+    ///
+    /// `ack` sends `accepted`. A retry, `nack(true)`, sends `modified` with `delivery-failed`,
+    /// never `released`, so the broker counts the attempt in `delivery-count`. A drop,
+    /// `nack(false)`, sends `rejected`, and the broker's dead-letter policy decides what follows.
     #[default]
     AtLeastOnce,
-    /// Deliveries are settled on receipt; `ack`/`nack` report
+    /// Deliveries are settled on receipt, so a message is gone whether the handler finished or
+    /// not; `ack` and `nack` report
     /// [`AckError::Unsupported`](ruststream::AckError::Unsupported).
     AtMostOnce,
 }
@@ -220,8 +225,13 @@ impl AmqpAddress {
         Self::of(address.into(), Kind::Raw)
     }
 
-    /// Sets the protocol-level credit (prefetch): how many unsettled deliveries the broker may
-    /// have in flight to this subscription. Defaults to [`DEFAULT_CREDIT`].
+    /// Sets the link credit: the window of deliveries the broker may send ahead of the handler's
+    /// settlements. Defaults to [`DEFAULT_CREDIT`].
+    ///
+    /// The subscription grants the full credit when it attaches, and grants it again each time
+    /// half of it has been settled. The broker then never runs more than `credit` deliveries
+    /// ahead of the last grant, but the deliveries held unsettled can outnumber the credit: with a
+    /// credit of 4, the second settlement brings four more while two are still open.
     ///
     /// The count is a [`NonZeroU32`] because a subscription granted no credit receives nothing:
     /// zero is not a quieter setting but a stalled subscription, so it is unrepresentable here.
@@ -238,7 +248,7 @@ impl AmqpAddress {
     ///     id: u64,
     /// }
     ///
-    /// // At most 64 unsettled orders in flight to this service at once.
+    /// // The broker sends up to 64 orders ahead of the handler's settlements.
     /// #[subscriber(AmqpAddress::queue("orders").credit(nonzero!(64)))]
     /// async fn fulfil(order: &Order) -> HandlerOutcome {
     ///     println!("fulfilling order {}", order.id);
