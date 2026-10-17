@@ -15,6 +15,7 @@ use std::pin::pin;
 use std::time::Duration;
 
 use futures::{FutureExt, Stream, StreamExt};
+use ruststream::schemars::JsonSchema;
 use ruststream::testing::{InProcess, TestApp, TestableBroker};
 use ruststream::{AckError, ConnectedBroker, IncomingMessage, OutgoingMessage, Subscriber};
 use ruststream_amqp::prelude::*;
@@ -467,9 +468,8 @@ async fn a_delivery_dropped_unsettled_waits_for_the_next_queue_subscription() {
 }
 
 /// A handler written without the macros, as a type with an `impl Handle`.
-#[cfg_attr(feature = "asyncapi", derive(ruststream::schemars::JsonSchema))]
-#[cfg_attr(feature = "asyncapi", schemars(crate = "ruststream::schemars"))]
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, JsonSchema)]
+#[schemars(crate = "ruststream::schemars")]
 struct Notice {
     id: u64,
 }
