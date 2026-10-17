@@ -1,5 +1,5 @@
 //! The service of `examples/amqp_subscriptions_queue.rs` written without the macros: the queue
-//! descriptor joins the chain through `map_source`, and the subscriptions on the address compete.
+//! descriptor goes straight to `subscriber`, and the subscriptions on the address compete.
 //!
 //! ```text
 //! cargo test --example manual_amqp_subscriptions_queue --features testing,asyncapi
@@ -54,11 +54,7 @@ fn orders() -> AmqpAddress {
 fn app() -> impl App {
     let broker = AmqpBroker::new("amqp://artemis:artemis@localhost:5672");
     RustStream::new(AppInfo::new("fulfilment", "0.1.0")).with_broker(broker, |b| {
-        b.include(
-            subscriber("orders", Fulfil)
-                .build()
-                .map_source(|_| orders()),
-        );
+        b.include(subscriber(orders(), Fulfil).build());
     })
 }
 // --8<-- [end:queue]
@@ -101,11 +97,7 @@ mod tests {
             AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
             |b| {
                 for _ in 0..2 {
-                    b.include(
-                        subscriber("orders", Fulfil)
-                            .build()
-                            .map_source(|_| orders()),
-                    );
+                    b.include(subscriber(orders(), Fulfil).build());
                 }
             },
         );

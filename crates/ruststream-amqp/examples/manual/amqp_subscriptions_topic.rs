@@ -64,16 +64,8 @@ impl Handle<OrderPlaced> for Notify {
 fn app() -> impl App {
     let broker = AmqpBroker::new("amqp://artemis:artemis@localhost:5672");
     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(broker, |b| {
-        b.include(
-            subscriber("orders.placed", Audit)
-                .build()
-                .map_source(|_| AmqpAddress::topic("orders.placed")),
-        );
-        b.include(
-            subscriber("orders.placed", Notify)
-                .build()
-                .map_source(|_| AmqpAddress::topic("orders.placed")),
-        );
+        b.include(subscriber(AmqpAddress::topic("orders.placed"), Audit).build());
+        b.include(subscriber(AmqpAddress::topic("orders.placed"), Notify).build());
     })
 }
 // --8<-- [end:topic]

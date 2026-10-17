@@ -16,7 +16,7 @@ AMQP 1.0 standardises the wire, not what an address means, so whether the subscr
 A descriptor asks the question explicitly: [`AmqpAddress::queue`](./queue.md) asks for competing consumers, [`AmqpAddress::topic`](./topic.md) for a copy each.
 A descriptor goes where the name goes, as the attribute's first argument.
 It also carries the link settings: the [credit](./credit.md), the [settle mode](../settlement/settle.md) and the deadline of a [batch](./batches.md).
-The manual form passes the name to [`subscriber(name, body)`](api:ruststream::runtime::subscriber), and a descriptor joins the chain through [`map_source`](api:ruststream::runtime::SubscriberSettings::map_source).
+The manual form passes either one to [`subscriber(source, body)`](api:ruststream::runtime::subscriber) as its first argument.
 The subscription's name is its address: a test reads its deliveries under that name, and a [deferred retry](../settlement/retry-after.md) is published back to it.
 An empty address stops the service at startup with [`AmqpError::InvalidAddress`](api:ruststream_amqp::AmqpError::InvalidAddress).
 
