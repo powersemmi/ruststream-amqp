@@ -1,5 +1,5 @@
 //! The service and tests of `examples/amqp_testing_live.rs` without the macros: the handler is a
-//! named type, the address descriptor is mounted with `map_source`, and `main` is written by hand.
+//! named type, `subscriber` takes the address descriptor, and `main` is written by hand.
 //!
 //! ```text
 //! cargo test --example manual_amqp_testing_live --features testing,asyncapi
@@ -63,7 +63,7 @@ impl Handle<Payment> for Accept {
 /// The service on the broker at `url`.
 fn app(url: &str) -> impl App<State = ()> + use<> {
     RustStream::new(AppInfo::new("payments", "0.1.0")).with_broker(AmqpBroker::new(url), |b| {
-        let accept = subscriber("payments", Accept).map_source(|_| AmqpAddress::queue(payments()));
+        let accept = subscriber(AmqpAddress::queue(payments()), Accept);
         b.include(accept.build());
     })
 }

@@ -1,5 +1,5 @@
-//! The service of `examples/amqp_service.rs` without the macros: the handler is a named type, the
-//! address descriptor is mounted with `map_source`, and `main` is written by hand.
+//! The service of `examples/amqp_service.rs` without the macros: the handler is a named type,
+//! `subscriber` takes the address descriptor, and `main` is written by hand.
 //!
 //! ```text
 //! just brokers-up
@@ -37,7 +37,7 @@ fn app() -> impl App {
     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
         AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
         |b| {
-            let place = subscriber("orders", Place).map_source(|_| AmqpAddress::queue("orders"));
+            let place = subscriber(AmqpAddress::queue("orders"), Place);
             b.include(place.build());
         },
     )

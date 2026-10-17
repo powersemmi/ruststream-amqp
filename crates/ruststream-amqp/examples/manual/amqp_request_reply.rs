@@ -110,10 +110,9 @@ fn app() -> impl App {
     RustStream::new(AppInfo::new("request-reply", "0.1.0")).with_broker(
         AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
         |b| {
-            let greet = subscriber("greeter", Greet).map_source(|_| AmqpAddress::queue("greeter"));
+            let greet = subscriber(AmqpAddress::queue("greeter"), Greet);
             b.include(greet.build()).out(DefaultSlot, Publish).build();
-            let welcome =
-                subscriber("visitors", Welcome).map_source(|_| AmqpAddress::queue("visitors"));
+            let welcome = subscriber(AmqpAddress::queue("visitors"), Welcome);
             b.include(welcome.build()).out(DefaultSlot, Publish).build();
             // A request that opens a conversation has no delivery to answer, so it runs once the
             // subscriptions are open.

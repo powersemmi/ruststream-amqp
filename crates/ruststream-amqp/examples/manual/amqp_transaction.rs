@@ -90,7 +90,7 @@ fn app() -> impl App {
     RustStream::new(AppInfo::new("billing", "0.1.0")).with_broker(
         AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
         |b| {
-            let bill = subscriber("orders", Bill).map_source(|_| AmqpAddress::queue("orders"));
+            let bill = subscriber(AmqpAddress::queue("orders"), Bill);
             // The transactional policy is what gives the slot begin, commit and abort.
             b.include(bill.build())
                 .out(DefaultSlot, TransactionalPublish)

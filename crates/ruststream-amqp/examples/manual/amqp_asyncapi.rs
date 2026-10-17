@@ -1,6 +1,6 @@
 //! The service of `examples/amqp_asyncapi.rs` without the macros: the handlers are named types,
-//! the descriptors are mounted with `map_source`, and `main` is written by hand. The tests read
-//! the same document.
+//! `subscriber` takes the descriptors, and `main` is written by hand. The tests read the same
+//! document.
 //!
 //! ```text
 //! cargo run --example manual_amqp_asyncapi --features asyncapi,transaction -- asyncapi gen
@@ -174,19 +174,15 @@ fn broker(password: &str) -> AmqpBroker {
 // --8<-- [start:operations]
 fn service(broker: AmqpBroker) -> impl App<State = ()> {
     RustStream::new(AppInfo::new("billing", "1.0.0")).with_broker_labeled("amqp", broker, |b| {
-        let confirm = subscriber("orders", Confirm).map_source(|_| orders());
+        let confirm = subscriber(orders(), Confirm);
         b.include(confirm.reply().to("receipts").build())
             .out_reply(Publish)
             .transform(ToReplyTo);
-        b.include(subscriber("events", Watch).map_source(|_| events()).build())
+        b.include(subscriber(events(), Watch).build())
             .max_attempts(nonzero!(3u32))
             .dead_letter("orders.dead");
-        b.include(
-            subscriber("/queues/audit", Audit)
-                .map_source(|_| audit_queue())
-                .build(),
-        );
-        let book = subscriber("payments", Book).map_source(|_| AmqpAddress::queue("payments"));
+        b.include(subscriber(audit_queue(), Audit).build());
+        let book = subscriber(AmqpAddress::queue("payments"), Book);
         b.include(book.build())
             .out(Ledger, TransactionalPublish)
             .build();
