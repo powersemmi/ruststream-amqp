@@ -64,3 +64,107 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "ti
 [[example]]
 name = "amqp_transaction"
 required-features = ["transaction"]
+
+# --- examples: broker ---
+# The examples of the broker and testing pages. A manual twin derives `JsonSchema` for its
+# message types, which a registration without the macros owes the generated document, so it
+# needs the `asyncapi` feature that brings `ruststream::schemars`.
+
+[[example]]
+name = "amqp_service"
+required-features = ["testing"]
+test = true
+
+[[example]]
+name = "manual_amqp_service"
+path = "examples/manual/amqp_service.rs"
+required-features = ["testing", "asyncapi"]
+test = true
+
+[[example]]
+name = "amqp_broker_container"
+required-features = ["testing", "asyncapi"]
+test = true
+
+[[example]]
+name = "manual_amqp_broker_container"
+path = "examples/manual/amqp_broker_container.rs"
+required-features = ["testing", "asyncapi"]
+test = true
+
+[[example]]
+name = "amqp_broker_security"
+required-features = ["testing", "rustls"]
+test = true
+
+[[example]]
+name = "manual_amqp_broker_security"
+path = "examples/manual/amqp_broker_security.rs"
+required-features = ["testing", "rustls", "asyncapi"]
+test = true
+
+[[example]]
+name = "amqp_broker_startup"
+required-features = ["testing"]
+test = true
+
+[[example]]
+name = "manual_amqp_broker_startup"
+path = "examples/manual/amqp_broker_startup.rs"
+required-features = ["testing", "asyncapi"]
+test = true
+
+[[example]]
+name = "amqp_broker_shutdown"
+required-features = ["testing"]
+test = true
+
+[[example]]
+name = "manual_amqp_broker_shutdown"
+path = "examples/manual/amqp_broker_shutdown.rs"
+required-features = ["testing", "asyncapi"]
+test = true
+
+[[example]]
+name = "amqp_broker_prelude"
+required-features = ["testing"]
+test = true
+
+[[example]]
+name = "manual_amqp_broker_prelude"
+path = "examples/manual/amqp_broker_prelude.rs"
+required-features = ["testing", "asyncapi"]
+test = true
+
+[[example]]
+name = "amqp_broker_errors"
+required-features = ["testing"]
+test = true
+
+[[example]]
+name = "manual_amqp_broker_errors"
+path = "examples/manual/amqp_broker_errors.rs"
+required-features = ["testing", "asyncapi"]
+test = true
+
+[[example]]
+name = "amqp_testing"
+required-features = ["testing"]
+test = true
+
+[[example]]
+name = "manual_amqp_testing"
+path = "examples/manual/amqp_testing.rs"
+required-features = ["testing", "asyncapi"]
+test = true
+
+[[example]]
+name = "amqp_testing_live"
+required-features = ["testing"]
+test = true
+
+[[example]]
+name = "manual_amqp_testing_live"
+path = "examples/manual/amqp_testing_live.rs"
+required-features = ["testing", "asyncapi"]
+test = true
