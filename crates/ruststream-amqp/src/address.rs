@@ -12,6 +12,7 @@ use std::time::Duration;
 
 #[cfg(feature = "asyncapi")]
 use ruststream::asyncapi::Bindings;
+use ruststream::runtime::IntoSource;
 use ruststream::{
     AddressedCopies, RedeliveryAddress, RedeliveryAddressed, SubscriptionSource, nonzero,
 };
@@ -399,6 +400,60 @@ impl AmqpAddress {
             ));
         }
         Ok(())
+    }
+}
+
+/// The descriptor mounts on the manual path the way it does on the attribute: the
+/// `subscriber(..)` constructor takes it as its source, unchanged.
+///
+/// # Examples
+///
+/// ```
+/// # mod demo {
+/// use std::future::{Future, ready};
+///
+/// use ruststream_amqp::prelude::*;
+/// # #[cfg(feature = "asyncapi")]
+/// # use ruststream::schemars::JsonSchema;
+/// use serde::Deserialize;
+///
+/// # #[cfg_attr(feature = "asyncapi", derive(JsonSchema))]
+/// # #[cfg_attr(feature = "asyncapi", schemars(crate = "ruststream::schemars"))]
+/// #[derive(Deserialize)]
+/// struct Order {
+///     id: u64,
+/// }
+///
+/// struct TakeOrder;
+///
+/// impl Handle<Order> for TakeOrder {
+///     fn handle(
+///         &self,
+///         order: &Order,
+///         _outs: &(),
+///         _ctx: &mut Context<'_>,
+///     ) -> impl Future<Output = Result<(), HandlerOutcome>> {
+///         tracing::info!(order.id, "order taken");
+///         ready(Ok(()))
+///     }
+/// }
+///
+/// fn app() -> RustStream {
+///     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
+///         AmqpBroker::new("amqp://localhost:5672"),
+///         |b| {
+///             b.include(subscriber(AmqpAddress::queue("orders"), TakeOrder).build());
+///         },
+///     )
+/// }
+/// # }
+/// # fn main() {}
+/// ```
+impl IntoSource for AmqpAddress {
+    type Source = Self;
+
+    fn into_source(self) -> Self {
+        self
     }
 }
 
