@@ -77,7 +77,7 @@ fn app() -> impl App {
     RustStream::new(AppInfo::new("shipping", "0.1.0")).with_broker(
         AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
         |b| {
-            let ship = subscriber("orders", Ship).map_source(|_| AmqpAddress::queue("orders"));
+            let ship = subscriber(AmqpAddress::queue("orders"), Ship);
             b.include(ship.build()).out(Shipments, Publish).build();
         },
     )

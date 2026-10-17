@@ -48,8 +48,7 @@ fn app() -> impl App {
     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
         AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
         |b| {
-            let issue_receipt =
-                subscriber("orders", IssueReceipt).map_source(|_| AmqpAddress::queue("orders"));
+            let issue_receipt = subscriber(AmqpAddress::queue("orders"), IssueReceipt);
             // The reply waits for the broker's disposition; anything but `accepted` fails it.
             b.include(issue_receipt.reply().build()).out_reply(Publish);
         },
