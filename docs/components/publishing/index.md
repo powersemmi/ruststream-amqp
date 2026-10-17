@@ -11,7 +11,7 @@ import TabItem from '@theme/TabItem';
 [`AmqpPublish`](api:ruststream_amqp::AmqpPublish), `Publish` in the prelude, waits for the broker's disposition and reports anything but `accepted` as [`PublishNotAccepted`](api:ruststream_amqp::AmqpError::PublishNotAccepted).
 
 The policy has no fields, so a mount site writes it bare.
-It is named wherever a registration publishes: `.out_reply(Publish)` for a reply, `.out(Slot, Publish).build()` for a slot, `.out_retry(Publish)` for retry copies.
+It is named wherever a registration publishes: `.out_reply(Publish)` for a reply, `.out(Slot, Publish).build()` for a slot, [`.out_retry(Publish)`](../settlement/out-retry.md) for retry copies.
 The policy holds no connection; the runtime pairs it with the connected broker at startup into an [`AmqpPublisher`](api:ruststream_amqp::AmqpPublisher).
 It is also the broker's default policy, so a reply registration that names no policy publishes through it.
 

@@ -50,12 +50,18 @@ use crate::publisher::accepted;
 /// use std::io;
 ///
 /// use ruststream_amqp::prelude::*;
-/// use serde::Serialize;
+/// use serde::{Deserialize, Serialize};
 ///
-/// #[derive(Serialize, Outgoing)]
+/// #[derive(Deserialize, Serialize, Outgoing)]
 /// #[outgoing(name = "invoices")]
 /// struct Invoice {
 ///     id: u64,
+/// }
+///
+/// #[subscriber(AmqpAddress::queue("invoices"))]
+/// async fn handle(invoice: &Invoice) -> HandlerOutcome {
+///     tracing::info!(invoice.id, "received");
+///     HandlerOutcome::ack()
 /// }
 ///
 /// #[ruststream::app]
@@ -63,6 +69,7 @@ use crate::publisher::accepted;
 ///     RustStream::new(AppInfo::new("billing", "0.1.0")).with_broker(
 ///         AmqpBroker::new("amqp://localhost:5672"),
 ///         |b| {
+///             b.include(handle);
 ///             b.after_startup(
 ///                 TransactionalPublish,
 ///                 async move |publisher| -> io::Result<()> {

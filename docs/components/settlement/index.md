@@ -19,7 +19,9 @@ A `retry` never sends `released`: that outcome says the delivery was not acted o
 A delivery that is never settled, because the process stopped, stays on its link until the link detaches, and the broker then hands it to the next receiver.
 AMQP 1.0 has no delayed redelivery, so [`retry_after`](./retry-after.md) is the runtime's own copy.
 Under [`Settle::AtMostOnce`](./settle.md) the delivery is settled on receipt, and the outcome reaches no broker.
-In process, `TestApp` keeps the same rules: a `retry` comes back with one more counted attempt, and a `drop` removes the delivery.
+In process, [`TestApp`](../testing/index.md) keeps the same rules: a `retry` comes back with one more counted attempt, and a `drop` removes the delivery.
+
+[Acknowledgement and delivery guarantees](../../guides/acknowledgement.md) settles the deliveries of a warehouse.
 
 ## Example
 

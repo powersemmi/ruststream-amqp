@@ -28,7 +28,7 @@ use crate::error::AmqpError;
 /// #
 /// # #[subscriber(AmqpAddress::queue("orders"))]
 /// # async fn handle(order: &Order) -> HandlerOutcome {
-/// #     println!("got order {}", order.id);
+/// #     tracing::info!(order.id, "accepted");
 /// #     HandlerOutcome::ack()
 /// # }
 ///
@@ -67,7 +67,7 @@ impl Sasl {
     /// #
     /// # #[subscriber(AmqpAddress::queue("orders"))]
     /// # async fn handle(order: &Order) -> HandlerOutcome {
-    /// #     println!("got order {}", order.id);
+    /// #     tracing::info!(order.id, "accepted");
     /// #     HandlerOutcome::ack()
     /// # }
     ///
@@ -106,7 +106,7 @@ impl Sasl {
     /// #
     /// # #[subscriber(AmqpAddress::queue("orders"))]
     /// # async fn handle(order: &Order) -> HandlerOutcome {
-    /// #     println!("got order {}", order.id);
+    /// #     tracing::info!(order.id, "accepted");
     /// #     HandlerOutcome::ack()
     /// # }
     ///
@@ -131,8 +131,10 @@ impl Sasl {
         }
     }
 
-    /// SASL EXTERNAL: authentication established outside SASL, typically a TLS client
-    /// certificate.
+    /// SASL EXTERNAL: the broker takes an identity established outside SASL.
+    ///
+    /// The connection presents no client certificate: the crate exposes no TLS configuration,
+    /// and the client opens TLS without client authentication.
     ///
     /// # Examples
     ///
@@ -148,14 +150,14 @@ impl Sasl {
     /// #
     /// # #[subscriber(AmqpAddress::queue("orders"))]
     /// # async fn handle(order: &Order) -> HandlerOutcome {
-    /// #     println!("got order {}", order.id);
+    /// #     tracing::info!(order.id, "accepted");
     /// #     HandlerOutcome::ack()
     /// # }
     ///
     /// #[ruststream::app]
     /// fn app() -> impl App {
     ///     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
-    ///         // Authenticated by the TLS client certificate; no SASL credentials.
+    ///         // The broker identifies the service outside SASL; no credentials travel here.
     ///         AmqpBroker::new("amqps://broker.internal:5671").sasl(Sasl::external()),
     ///         |b| {
     ///             b.include(handle);

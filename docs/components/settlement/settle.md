@@ -18,7 +18,7 @@ The broker forgets the message at once, so a crash in the middle of the handler,
 The outcome the handler returns has nothing left to settle: the settlement reports [`AckError::Unsupported`](api:ruststream::AckError::Unsupported), and the runtime logs a warning that names the subscription.
 The mode suits traffic where a lost message costs less than a redelivered one, such as a reading that a sensor sends again a second later.
 The [credit](../subscriptions/credit.md) of an at-most-once subscription tops itself up as the deliveries arrive.
-In process, `TestApp` settles on receipt the same way, so a test sees a `retry` bring nothing back.
+In process, [`TestApp`](../testing/index.md) settles on receipt the same way, so a test sees a `retry` bring nothing back.
 
 ## Example
 

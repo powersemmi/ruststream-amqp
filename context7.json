@@ -15,15 +15,18 @@
     "target"
   ],
   "rules": [
-    "Import `ruststream_amqp::prelude::*` in a routes file; it re-exports the framework prelude, so a service file needs no second glob, and a handler body keeps `ruststream::prelude::*` alone.",
-    "Describe a subscription with `AmqpAddress::queue(name)` for competing consumers, `AmqpAddress::topic(name)` for fan-out, and `AmqpAddress::raw(address)` only for a deployment's own convention; the plain `#[subscriber(\"name\")]` form maps to `raw` and declares no terminus capability.",
-    "Put the link settings on the descriptor: `.credit(nonzero!(n))` for the prefetch, `.settle(Settle::AtMostOnce)` for at-most-once delivery, `.batch_wait(duration)` for the deadline that closes a partial batch.",
-    "Name the publish policy `Publish` at the mount site (`.out_reply(Publish)`, `.out_retry(Publish)`, `.out(marker, Publish).build()`); `AmqpPublish` is also this broker's default policy, so a `reply` handler with no reply publisher named still replies through it.",
-    "There are no per-message publish settings on this broker: `Options` is `()`, no publish-builder step is added, and a handler body binds `Out<impl Publisher>` without importing anything from this crate.",
-    "Cap redeliveries with `.max_attempts(n)` and `.dead_letter(address)` after `include`; AMQP 1.0 declares no delivery limit of its own, so the runtime applies both and a subscription's own address is where a `retry_after` copy is published.",
-    "`HandlerOutcome::retry()` sends `modified` with `delivery-failed` so the broker counts the attempt, `drop()` sends `reject`, and on an at-most-once subscription both report `AckError::Unsupported`.",
-    "Reach the transactional surface only through `TransactionalPublish` (feature `transaction`): the handle carries at most one broker-side transaction, and a second `begin_transaction` or a commit with nothing open is an error.",
-    "Use `request(msg, timeout)` on a `RequestReply` publisher for native request/reply, and answer from a handler through an injected slot with `.to(reply_to)`, since the reply address is new for every request.",
-    "Test the production app: with feature `testing`, hand the builder `main` runs to `ruststream::testing::TestApp::start`, which connects `AmqpBroker` in process, and address it as `tb.broker::<AmqpBroker>()`; `TestApp::start_live` runs the same test against a real broker, which is where an address's storage, link credit and the server's dead-letter policy are exercised."
+    "Import `ruststream_amqp::prelude::*` at a mount site and name the policy `Publish` there; a handler body imports `ruststream::prelude::*` and bounds a slot with a capability such as `Out<impl Publisher>` (Components > AMQP broker > Prelude).",
+    "Describe a subscription with `AmqpAddress::queue(name)` for competing consumers or `AmqpAddress::topic(name)` for a copy each; keep `AmqpAddress::raw` and a bare `#[subscriber(\"name\")]` for a broker's own address syntax (Components > Subscriptions).",
+    "Mount a handler written without the macros as `subscriber(AmqpAddress::queue(..), Body)`, the descriptor passed as the source as it is (Components > Subscriptions).",
+    "Set the link credit with `.credit(nonzero!(n))` on the descriptor; it is the window the broker may send ahead, refilled once half of it is settled, so more than `n` deliveries can be unsettled (Components > Subscriptions > credit).",
+    "Settle through the handler's outcome: `ack()` sends `accepted`, `retry()` sends `modified` with `delivery-failed` so the broker counts the attempt, and `drop()` sends `rejected` (Components > Dispositions).",
+    "Read a subscription at most once with `.settle(Settle::AtMostOnce)` only where a lost message costs less than a repeated one; its `ack` and `nack` report `AckError::Unsupported` (Components > Dispositions > Settle).",
+    "Cap redeliveries with `.max_attempts(n).dead_letter(address)` after `include`; a `retry_after(delay)` copy goes back to the subscription's own address, and `.out_retry(Publish).transform(..)` marks the copies (Guides > Retries and dead letters).",
+    "Take a batch with a slice handler and `.batch(n)` at the mount site; the client assembles it, and `.batch_wait(duration)` on the descriptor closes a partial one (Components > Subscriptions > Batches).",
+    "Publish through `Publish` at the mount site (`.out_reply(Publish)`, `.out(marker, Publish).build()`); a publish the broker does not accept fails with `AmqpError::PublishNotAccepted` (Components > Publish).",
+    "Ask with `request(msg, timeout)` on a slot bound `Out<impl RequestReply>`, and answer from a responder through an `Out<impl Publisher>` slot with `.to(reply_to)`, echoing `correlation-id` (Components > Request-reply).",
+    "Publish several messages together or not at all through `TransactionalPublish` (feature `transaction`) and a slot bound `Out<impl TransactionalPublisher>`, with `begin_transaction`, `commit` and `abort` (Guides > Transactions).",
+    "Test the production app: hand the app `main` runs to `TestApp::start` with the `testing` feature, address the broker as `tb.broker::<AmqpBroker>()`, and run the same body on `TestApp::start_live` for credit and dead-letter policy (Components > Testing).",
+    "Configure the login with `AmqpBroker::sasl(Sasl::plain(user, password))` for credentials from the environment, and enable `rustls` or `native-tls` for an `amqps://` URL on a host name or an IPv4 address (Guides > Connecting to production)."
   ]
 }

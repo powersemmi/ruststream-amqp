@@ -34,7 +34,7 @@ The pricing service answers questions about prices, and the orders service asks 
 </TabItem>
 </Tabs>
 
-A request arrives with its reply address in the `reply-to` header, and `ctx.headers().reply_to()` reads it.
+A request arrives at a [responder](../components/request-reply/responders.md) with its reply address in the `reply-to` header, and `ctx.headers().reply_to()` reads it.
 `quote` publishes the price through its `Answers` slot with `to(reply_to)`, because the address is new for every request.
 `Price` therefore declares no address of its own.
 The answer carries the request's `correlation-id`, and the requester takes only an answer whose id matches.
@@ -62,14 +62,14 @@ Each replica of the pricing service is one more consumer of it, and each request
 
 `price_order` reads orders and asks for each price on `prices.quote`.
 The `Pricing` slot is bounded `Out<impl RequestReply, _>`: the body says it needs request-reply and names no broker.
-The app pairs the slot with the plain `Publish` policy, whose publisher, [`AmqpPublisher`](api:ruststream_amqp::AmqpPublisher), carries request-reply.
-[`request`](api:ruststream::RequestReply::request) attaches a dynamic receiver link, so the broker creates a private reply address for this one request.
+The app pairs the slot with the plain `Publish` policy, whose publisher, [`AmqpPublisher`](../components/publishing/index.md), carries request-reply.
+[`request`](../components/request-reply/index.md) attaches a dynamic receiver link, so the broker creates a private reply address for this one request.
 It publishes the question with `reply-to` and `correlation-id` set and resolves with the first matching answer.
 ActiveMQ Artemis backs a dynamic link with a temporary queue.
 The question is a raw message, so the body encodes it and decodes the answer itself, here with `serde_json`.
 The order's reply, `Priced`, goes out once the price is known.
 
-A request nobody answers fails after its timeout, two seconds here, with [`AmqpError::RequestTimeout`](api:ruststream_amqp::AmqpError::RequestTimeout).
+A request nobody answers fails after its timeout, two seconds here, with [`AmqpError::RequestTimeout`](../components/broker/errors.md).
 The reply link is detached either way.
 The order then waits 30 seconds on its queue and asks again.
 

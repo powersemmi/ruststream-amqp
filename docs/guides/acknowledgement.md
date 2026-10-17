@@ -11,7 +11,7 @@ import TabItem from '@theme/TabItem';
 This guide settles deliveries, caps the attempts, reads a queue at most once, sizes the link credit and handles batches.
 
 In AMQP 1.0 a receiver settles each delivery with an outcome, and the broker acts on it.
-A handler's outcome is that disposition.
+A handler's outcome is that [disposition](../components/settlement/index.md).
 
 The example is a warehouse.
 It picks shipments, logs every pick, and restocks its shelves from deliveries that come in batches.
@@ -62,7 +62,7 @@ Artemis stops delivering a message after [`max-delivery-attempts`](https://artem
 </TabItem>
 </Tabs>
 
-[`max_attempts`](api:ruststream::runtime::RouterWith::max_attempts) caps the deliveries of one shipment at five, the first included.
+[`max_attempts`](../components/settlement/retries.md) caps the deliveries of one shipment at five, the first included.
 The fifth is rejected instead of asked for again.
 The count is the broker's `delivery-count` when the message carries an AMQP `header` section.
 A message this crate publishes carries none.
@@ -92,14 +92,14 @@ So a handler may see one message twice, and its work has to tolerate that.
 </TabItem>
 </Tabs>
 
-[`Settle::AtMostOnce`](api:ruststream_amqp::Settle::AtMostOnce) settles each delivery on receipt.
+[`Settle::AtMostOnce`](../components/settlement/settle.md) settles each delivery on receipt.
 The broker forgets the message the moment it hands it over, so a crash before the handler finishes loses it.
 That suits the pick log, where a missing line costs less than a second pass over the broker.
 The handler's outcome has nothing left to settle: `ack` and `nack` report `AckError::Unsupported`, and the runtime logs a warning for each.
 
 ## Credit
 
-`.credit(nonzero!(32))` on `shipments` is the link credit: how many deliveries the broker may send ahead of the service's settlements.
+`.credit(nonzero!(32))` on `shipments` is the [link credit](../components/subscriptions/credit.md): how many deliveries the broker may send ahead of the service's settlements.
 The default is [`DEFAULT_CREDIT`](api:ruststream_amqp::DEFAULT_CREDIT), 256.
 Once half of the credit is settled, the client grants the full credit again.
 A slow handler therefore holds the broker back instead of filling the service's memory, and the rest of the queue stays on the broker for the other replicas.
@@ -122,7 +122,7 @@ The credit is a `NonZeroU32`, because a link with no credit receives nothing: `c
 </TabItem>
 </Tabs>
 
-A handler that takes a slice gets a batch, and `.batch(nonzero!(20usize))` at the mount site sets its largest size.
+A handler that takes a slice gets a [batch](../components/subscriptions/batches.md), and `.batch(nonzero!(20usize))` at the mount site sets its largest size.
 AMQP 1.0 transfers one message at a time, so the batch is put together on the client.
 A batch holds at most 20 deliveries, and fewer when no more arrived in time.
 [`batch_wait`](api:ruststream_amqp::AmqpAddress::batch_wait) is how long a partial batch waits for more, 50 milliseconds here and 10 by default.

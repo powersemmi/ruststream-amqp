@@ -8,7 +8,7 @@ import {lines, word, type Words} from './words';
  * and the teardown from the inside out at shutdown.
  */
 export function lifecycle(words: Words): {boxes: Box[]; links: Link[]} {
-  const left = (id: string, y: number, h = 58): Box => ({
+  const left = (id: string, y: number, h = 58, href?: string): Box => ({
     id,
     x: 12,
     y,
@@ -17,6 +17,7 @@ export function lifecycle(words: Words): {boxes: Box[]; links: Link[]} {
     kind: 'broker',
     code: true,
     lines: lines(words, id),
+    href,
   });
   const right = (id: string, y: number, h = 58, href?: string): Box => ({
     id,
@@ -31,14 +32,14 @@ export function lifecycle(words: Words): {boxes: Box[]; links: Link[]} {
   const boxes: Box[] = [
     {id: 'states', x: 0, y: 0, w: 176, h: 490, kind: 'group', lines: lines(words, 'states')},
     {id: 'wire', x: 184, y: 0, w: 176, h: 490, kind: 'group', lines: lines(words, 'wire')},
-    left('unconnected', 28),
+    left('unconnected', 28, 58, '/components/broker/'),
     left('connected', 196),
-    left('closed', 384, 92),
+    left('closed', 384, 92, '/components/broker/shutdown/'),
     right('config', 28),
-    right('open', 104, 72, '/architecture/amqp/'),
-    right('subscriptions', 196, 72, '/architecture/lanes/'),
-    right('senders', 288, 72, '/architecture/path/'),
-    right('teardown', 384, 92),
+    right('open', 104, 72, '/components/broker/startup/'),
+    right('subscriptions', 196, 72, '/components/subscriptions/'),
+    right('senders', 288, 72, '/components/publishing/'),
+    right('teardown', 384, 92, '/components/broker/shutdown/'),
     {
       id: 'afterShutdown',
       x: 0,
@@ -47,6 +48,7 @@ export function lifecycle(words: Words): {boxes: Box[]; links: Link[]} {
       h: 44,
       kind: 'note',
       lines: lines(words, 'afterShutdown'),
+      href: '/components/broker/shutdown/',
     },
   ];
   const links: Link[] = [

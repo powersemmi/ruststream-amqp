@@ -11,7 +11,7 @@ import TabItem from '@theme/TabItem';
 This guide reads a work queue, broadcasts on a topic, keeps a broadcast for a reader that is away, and publishes to an address.
 
 AMQP 1.0 fixes the wire and leaves the meaning of an address to the broker.
-A subscription therefore says what it wants: [`AmqpAddress`](api:ruststream_amqp::AmqpAddress) has a constructor for each intent, and the link tells the broker which one it is.
+A subscription therefore says what it wants: [`AmqpAddress`](../components/subscriptions/index.md) has a constructor for each intent, and the link tells the broker which one it is.
 What this page states is proved against ActiveMQ Artemis, the broker the crate's tests run on.
 
 The example is an orders service.
@@ -34,7 +34,7 @@ It takes orders from a queue and announces each taken order on a topic, which bi
 </TabItem>
 </Tabs>
 
-[`AmqpAddress::queue`](api:ruststream_amqp::AmqpAddress::queue) asks for a queue: the link carries the terminus capability `queue`.
+[`AmqpAddress::queue`](../components/subscriptions/queue.md) asks for a queue: the link carries the terminus capability `queue`.
 Artemis then creates an anycast address `orders` with one queue behind it.
 Consumers on a queue compete, and each order goes to one of them.
 To take orders faster, run more replicas of the service: each replica is one more consumer of `orders`.
@@ -59,7 +59,7 @@ To take orders faster, run more replicas of the service: each replica is one mor
 </TabItem>
 </Tabs>
 
-[`AmqpAddress::topic`](api:ruststream_amqp::AmqpAddress::topic) asks for a topic: the link carries the capability `topic`.
+[`AmqpAddress::topic`](../components/subscriptions/topic.md) asks for a topic: the link carries the capability `topic`.
 Artemis makes `order-events` a multicast address and gives each subscription a queue of its own.
 So `bill` and `audit` each get a copy of every `OrderTaken`.
 
@@ -96,7 +96,7 @@ docker compose exec artemis /opt/activemq-artemis/bin/artemis queue create \
 
 Every message published to `order-events` now lands in `ledger` too, whether `post_to_ledger` runs or not.
 `order-events::ledger` is the queue's fully qualified name in Artemis: the address, two colons, the queue.
-[`AmqpAddress::raw`](api:ruststream_amqp::AmqpAddress::raw) sends an address as written, with no capability, so the link attaches to that queue.
+[`AmqpAddress::raw`](../components/subscriptions/raw.md) sends an address as written, with no capability, so the link attaches to that queue.
 A bare `#[subscriber("order-events::ledger")]` does the same.
 
 ## The app
@@ -116,17 +116,17 @@ A bare `#[subscriber("order-events::ledger")]` does the same.
 </TabItem>
 </Tabs>
 
-`.out_reply(Publish)` names the publisher of the replies, [`AmqpPublish`](api:ruststream_amqp::AmqpPublish) under its prelude name.
+`.out_reply(Publish)` names the publisher of the replies, [`AmqpPublish`](../components/publishing/index.md) under its [prelude](../components/broker/prelude.md) name.
 A publish attaches a sender link to the reply's address on first use and keeps it.
-A message the broker refuses fails the publish with [`AmqpError::PublishNotAccepted`](api:ruststream_amqp::AmqpError::PublishNotAccepted).
+A message the broker refuses fails the publish with [`AmqpError::PublishNotAccepted`](../components/broker/errors.md).
 
 ## Headers and other clients
 
-The well-known headers travel in the AMQP `properties` section: `content-type`, `correlation-id`, `reply-to`, `message-id`.
+The well-known [headers](../components/publishing/headers.md) travel in the AMQP `properties` section: `content-type`, `correlation-id`, `reply-to`, `message-id`.
 Every other header travels in `application-properties`.
 A message from this crate is a plain AMQP message, so a client in another language reads it without RustStream.
 
-The partition key travels as the [`PARTITION_KEY_HEADER`](api:ruststream_amqp::PARTITION_KEY_HEADER) header and becomes the message's `group-id`.
+The partition key travels as the [`PARTITION_KEY_HEADER`](../components/publishing/keys.md) header and becomes the message's `group-id`.
 Artemis uses `group-id` for [message grouping](https://artemis.apache.org/components/artemis/documentation/latest/message-grouping.html): every message of one group goes to the same consumer of a queue.
 So orders keyed by customer keep their order across replicas.
 

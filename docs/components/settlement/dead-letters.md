@@ -19,7 +19,9 @@ The dead-letter address is an ordinary address: a subscription of this service, 
 A cap without `dead_letter` rejects the spent delivery, and a warning names the subscription.
 Where a rejected delivery goes is the broker's policy: ActiveMQ Artemis moves it to its `DLQ` address by default.
 The original of a dead-letter copy is rejected as well, so on Artemis the spent delivery also reaches `DLQ`.
-In process a rejected delivery leaves the transport, so a test asserts the copy on the named address, as the example's test does.
+[In process](../testing/index.md) a rejected delivery leaves the transport, so a test asserts the copy on the named address, as the example's test does.
+
+[Retries and dead letters](../../guides/retries.md) reads the dead letters of a refunds service.
 
 ## Example
 

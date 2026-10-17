@@ -20,6 +20,8 @@ A `retry` on a registration with no cap stays the broker's own redelivery, and n
 The runtime rejects every original it replaces with a copy, so a broker that dead-letters rejected deliveries keeps those originals: ActiveMQ Artemis moves them to its `DLQ` address by default.
 The copies leave through the [retry publisher](./out-retry.md) of the registration.
 
+[Retries and dead letters](../../guides/retries.md) caps the attempts of a refunds service.
+
 ## Example
 
 Five deliveries of one payment; the fifth failure goes to `payments.dead`.

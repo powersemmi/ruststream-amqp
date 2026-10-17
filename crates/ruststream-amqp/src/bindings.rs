@@ -38,7 +38,7 @@ struct Channel<'a> {
     /// The terminus capability the subscription asks for, absent on a verbatim address.
     #[serde(skip_serializing_if = "Option::is_none")]
     capability: Option<&'static str>,
-    /// Link credit: how many unsettled deliveries the broker may have in flight.
+    /// Link credit: the window of deliveries the broker may send ahead of the settlements.
     credit: u32,
     /// The delivery guarantee, `at-least-once` or `at-most-once`.
     #[serde(rename = "settleMode")]

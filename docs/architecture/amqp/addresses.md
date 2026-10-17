@@ -36,9 +36,9 @@ receivers share a queue or each get a copy.
 <Diagram name="addresses" words={words} />
 
 A receiver attaches with a source terminus: the address of a node and a list of capabilities.
-[`AmqpAddress::queue`](api:ruststream_amqp::AmqpAddress::queue) asks for the capability `queue`,
-[`AmqpAddress::topic`](api:ruststream_amqp::AmqpAddress::topic) for `topic`, and
-[`AmqpAddress::raw`](api:ruststream_amqp::AmqpAddress::raw) for none.
+[`AmqpAddress::queue`](../../components/subscriptions/queue.md) asks for the capability `queue`,
+[`AmqpAddress::topic`](../../components/subscriptions/topic.md) for `topic`, and
+[`AmqpAddress::raw`](../../components/subscriptions/raw.md) for none.
 
 ActiveMQ Artemis reads the capability. With `queue`, the receivers of an address attach to one
 anycast queue and compete: each message goes to one of them. With `topic`, the address is
@@ -59,9 +59,9 @@ names a queue by its name and a topic subscription `events/subscriptions/billing
 
 A receiver may ask for a dynamic source instead of naming one. The broker then creates a node,
 Artemis a temporary queue, and returns its address in its answer to the attach.
-[`request`](api:ruststream_amqp::AmqpPublisher) attaches one such receiver for every request, sends
-the address in `reply-to`, and detaches the receiver when the reply has arrived or the timeout has
-passed.
+[`request`](../../components/request-reply/index.md) attaches one such receiver for every request,
+sends the address in `reply-to`, and detaches the receiver when the reply has arrived or the timeout
+has passed.
 
 The terminus fields are the specification's
 ([messaging, section 3.5](http://docs.oasis-open.org/amqp/core/v1.0/os/amqp-core-messaging-v1.0-os.html)),

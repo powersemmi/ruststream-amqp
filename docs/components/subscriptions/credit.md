@@ -20,7 +20,7 @@ The default, [`DEFAULT_CREDIT`](api:ruststream_amqp::DEFAULT_CREDIT), is 256, an
 On a [queue](./queue.md), a lower credit spreads a backlog across more replicas, and a higher one keeps a fast handler busy.
 Under [at-most-once](../settlement/settle.md) every delivery is settled as it arrives, so the credit tops itself up without waiting for the handler.
 The credit is a `NonZeroU32`: `credit(nonzero!(0))` does not compile, because a receiver with no credit receives nothing.
-Credit is a property of the link, which only a broker has: in process, `TestApp` hands every delivery over at once, and the example's live test holds the window to what a broker does.
+Credit is a property of the link, which only a broker has: in process, [`TestApp`](../testing/index.md) hands every delivery over at once, and the example's [live test](../testing/live.md) holds the window to what a broker does.
 
 ## Example
 
