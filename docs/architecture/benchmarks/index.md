@@ -1,3 +1,7 @@
+---
+description: "What ruststream-amqp costs on every message: throughput against the raw fe2o3-amqp client, and instructions and allocations of its code."
+---
+
 # Benchmarks
 
 Between the `fe2o3-amqp` client and your handler there are two layers, and each one costs time on

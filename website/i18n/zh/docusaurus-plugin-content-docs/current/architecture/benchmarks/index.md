@@ -1,4 +1,8 @@
-# 基准测试 { #benchmarks }
+---
+description: "ruststream-amqp 在每条消息上的开销：与原生 fe2o3-amqp 客户端的吞吐量对比，以及其代码的指令数与内存分配次数。"
+---
+
+# 基准测试 {/* #benchmarks */}
 
 在 `fe2o3-amqp` 客户端和你的处理器之间有两层，每一层在每条消息上都要花时间：这个 crate 把一条
 链路变成一个订阅、把一条消息变成一次投递，框架的运行时再把这次投递分发给处理器。这一页把两者
@@ -16,7 +20,7 @@
 [RustStream 基准测试页](https://powersemmi.github.io/ruststream/latest/zh/benchmarks/#methodology)
 上；这一页公布它在这台机器上得出的结果。
 
-## 数字 { #the-numbers }
+## 数字 {/* #the-numbers */}
 
 三个交错轮次中的最佳值，括号里是中位的一轮。越大越好。
 
@@ -46,7 +50,7 @@
 [`benchmarks/results.json`](https://powersemmi.github.io/ruststream-amqp/latest/benchmarks/results.json)，
 框架的站点用它拼出跨 Broker 的汇总表。
 
-## crate 自身的代码 { #the-crates-own-code }
+## crate 自身的代码 {/* #the-crates-own-code */}
 
 <div id="benchmark-code"></div>
 
@@ -68,7 +72,7 @@ Artemis 测试台，跑在单线程运行时上。统计的是服务线程上运
 失败的运行照样打印表格，并在表格下面列出每一个被超过的上限，旧值和新值并排。改变开销的合并请求要
 附上自己的数字。
 
-## 机器 { #the-machine }
+## 机器 {/* #the-machine */}
 
 <div id="benchmark-environment"></div>
 
@@ -80,7 +84,7 @@ Artemis 测试台，跑在单线程运行时上。统计的是服务线程上运
 构建标志和数字一起公布，因为它们会改变这些数字。用 `-C target-cpu=native` 构建出的二进制给出的
 结果，换一台机器就复现不了，所以这条 recipe 在构建前先把这个变量清空。
 
-## 这些数字不代表什么 { #what-they-do-not-mean }
+## 这些数字不代表什么 {/* #what-they-do-not-mean */}
 
 这里只有一个消费者、一个地址、一个很小的消息体，以及一台跑在回环地址上的 Broker。它测的是一次
 投递在这个 crate 里的开销，不是 Broker 能扛多少。这里的一行也不能拿去和另一个 Broker 公布的一行
@@ -103,7 +107,7 @@ Artemis 测试台，跑在单线程运行时上。统计的是服务线程上运
 这些数字是一台机器在某一天的快照。
 它们由人手工重测，测量期间机器只跑这一项：这一页要讲的差值，比与其他任务共用的机器上的噪声还小。
 
-## 自己跑一遍 { #running-it-yourself }
+## 自己跑一遍 {/* #running-it-yourself */}
 
 ```bash
 just bench

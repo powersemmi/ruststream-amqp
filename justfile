@@ -37,7 +37,7 @@ test-brokers: brokers-up
 
 # What this crate costs over the fe2o3-amqp client it wraps: two scenarios run as a RustStream
 # service and as a hand-written loop, against the stand the tests use. On demand only - it takes
-# minutes and it wants the machine to itself. The page it feeds is docs/benchmarks.md.
+# minutes and it wants the machine to itself. It feeds the site's benchmarks pages.
 bench *ARGS: brokers-up
     #!/usr/bin/env bash
     set -euo pipefail
@@ -53,7 +53,7 @@ bench *ARGS: brokers-up
 # What this crate's own code costs per message, counted under valgrind: instructions through
 # callgrind and allocations through DHAT, each scenario a service on the production broker against
 # the stand the tests use. The counts follow the service's thread alone, so the machine's load does
-# not move them; the page it feeds is the code table of docs/benchmarks.md. RUSTFLAGS is cleared
+# not move them; it feeds the code table of the site's benchmarks pages. RUSTFLAGS is cleared
 # because valgrind aborts on the instructions a recent CPU advertises. Needs valgrind.
 #
 # The benchmarks hand the measurement to gungraun's runner, which has to be the release of the
