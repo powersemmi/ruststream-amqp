@@ -16,19 +16,14 @@ ruststream-amqp = "0.6"
 serde = { version = "1", features = ["derive"] }
 ```
 
-```rust
---8<-- "crates/ruststream-amqp/examples/amqp_service.rs:app"
+```rust reference="examples/amqp_service.rs#app"
 ```
 
 ## Where to go next
 
-<div class="grid cards" markdown>
-
-- :material-transit-connection-variant: **[AMQP guide](amqp.md)** - addressing, dispositions, request/reply, transactions, and testing.
-- :material-book-open-variant: **[RustStream docs](https://powersemmi.github.io/ruststream/)** - the framework itself: subscribers, routing, codecs, middleware, the CLI.
-- :material-language-rust: **[API reference](https://docs.rs/ruststream-amqp)** - the crate's rustdoc on docs.rs.
-
-</div>
+- **[AMQP guide](amqp.md)** - addressing, dispositions, request/reply, transactions, and testing.
+- **[RustStream docs](https://powersemmi.github.io/ruststream/)** - the framework itself: subscribers, routing, codecs, middleware, the CLI.
+- **[API reference](https://docs.rs/ruststream-amqp)** - the crate's rustdoc on docs.rs.
 
 ## How this site relates to the RustStream docs
 

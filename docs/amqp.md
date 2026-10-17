@@ -68,15 +68,13 @@ Artemis and other products disambiguate:
 
 `AmqpAddress` implements `SubscriptionSource`, so the descriptor sits inline in the decorator:
 
-```rust
---8<-- "crates/ruststream-amqp/examples/amqp_service.rs:handler"
+```rust reference="examples/amqp_service.rs#handler"
 ```
 
 Wiring it onto the broker is the framework's `with_broker` / `include` pair, identical to every
 other broker:
 
-```rust
---8<-- "crates/ruststream-amqp/examples/amqp_service.rs:app"
+```rust reference="examples/amqp_service.rs#app"
 ```
 
 Two options ride the descriptor:
@@ -132,8 +130,7 @@ first reply carrying the matching correlation id. Nothing answering within the t
 The requester side is a first publish, so it belongs in the scope's `after_startup` hook, where the
 publisher arrives live, already paired with the connected broker:
 
-```rust
---8<-- "crates/ruststream-amqp/examples/amqp_request_reply.rs:request"
+```rust reference="examples/amqp_request_reply.rs#request"
 ```
 
 The responder end reads the reply address the requester named and publishes the answer there. The
@@ -141,8 +138,7 @@ address is minted per request, so the fixed-destination `publish(..)` reply form
 reply rides an injected publisher, and echoes `correlation-id` so a late reply cannot resolve a
 later request.
 
-```rust
---8<-- "crates/ruststream-amqp/examples/amqp_request_reply.rs:responder"
+```rust reference="examples/amqp_request_reply.rs#responder"
 ```
 
 Both sides of the exchange are in
@@ -154,8 +150,7 @@ With the `transaction` feature, `AmqpTransactionalPublish` pairs into an `AmqpTx
 implements `TransactionalPublisher` over the protocol's transactional posting. The transactional
 mode is a separate policy type, so the plain publisher carries no transactional surface at all.
 
-```rust
---8<-- "crates/ruststream-amqp/examples/amqp_transaction.rs:transaction"
+```rust reference="examples/amqp_transaction.rs#transaction"
 ```
 
 The handle carries at most one broker-side transaction: a second `begin_transaction` while one is
