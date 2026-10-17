@@ -19,7 +19,7 @@ AMQP 1.0 没有延迟重新投递，链路也无法声明投递上限或死信�
 ## 订阅者 {/* #the-subscriber */}
 
 处理商有三种拒绝退款的方式，每种需要不同的结果。
-`Busy` 表示它暂时不再受理大额退款：立即重试仍会被拒绝，所以 [`retry_after`](api:ruststream::runtime::HandlerOutcome::retry_after) 等待 30 秒。
+`Busy` 表示它暂时不再受理大额退款：立即重试仍会被拒绝，所以 [`retry_after`](../components/settlement/retry-after.md) 等待 30 秒。
 `Unavailable` 表示发卡银行没有应答：[`retry`](api:ruststream::runtime::HandlerOutcome::retry) 立即再试一次。
 `Declined` 表示卡账户已经关闭，再试一次也是同样的答复，所以这笔退款被丢弃。
 
@@ -60,8 +60,8 @@ AMQP 1.0 没有延迟重新投递，链路也无法声明投递上限或死信�
 </TabItem>
 </Tabs>
 
-[`max_attempts`](api:ruststream::runtime::RouterWith::max_attempts) 统计一笔退款的每次投递，第一次也算在内。
-第五次投递不再重试：[`dead_letter`](api:ruststream::runtime::RouterWith::dead_letter) 把它按到达时的载荷和消息头原样发布到 `refunds.dead`。
+[`max_attempts`](../components/settlement/retries.md) 统计一笔退款的每次投递，第一次也算在内。
+第五次投递不再重试：[`dead_letter`](../components/settlement/dead-letters.md) 把它按到达时的载荷和消息头原样发布到 `refunds.dead`。
 被丢弃的退款会被拒绝，由 Broker 自己的死信策略处理，而不是进入 `refunds.dead`。
 
 在声明了上限时，框架从投递中读取计数。
@@ -112,7 +112,7 @@ Broker 也有自己的上限：Artemis 在 [`max-delivery-attempts`](https://art
 
 副本在处理器中没有调用点，所以只有[发布转换](api:ruststream::runtime::PublishTransform)能触及它。
 应用用 `.out_retry(Publish).transform(Retried)` 挂载 `process_refund`。
-`.out_retry(Publish)` 指明副本的发布者，其后的步骤作用于副本。
+[`.out_retry(Publish)`](../components/settlement/out-retry.md) 指明副本的发布者，其后的步骤作用于副本。
 `Retried` 把投递的来源地址写入 `x-retried-from`。
 每份副本都回到其订阅的地址，所以这个位置上的转换不能改变目的地。
 

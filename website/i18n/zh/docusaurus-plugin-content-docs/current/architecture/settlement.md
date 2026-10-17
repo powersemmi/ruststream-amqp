@@ -54,11 +54,11 @@ export const retries = {
 
 <Diagram name="settlement" words={table} />
 
-订阅默认是至少一次。投递在处理器的结果作为 disposition 到达泵任务之前一直处于未结算状态。始终没有得到 disposition 的投递留在链路上，链路分离或连接断开时，Broker 把它放回队列。
+订阅默认是至少一次。投递在处理器的[结果](../components/settlement/index.md)作为 disposition 到达泵任务之前一直处于未结算状态。始终没有得到 disposition 的投递留在链路上，链路分离或连接断开时，Broker 把它放回队列。
 
 `retry()` 发送带 `delivery-failed` 的 `modified`，从不发送 `released`。release 告诉 Broker 这次投递没有被处理，`delivery-count` 保持不变。要求重试的处理器确实处理了它，只是失败了，而尝试上限读取的正是这个计数：计数不增加，一条总是失败的消息就会永远回来。`undeliverable-here` 保持为 false，因此消息可以再次回到同一个订阅。
 
-[`Settle::AtMostOnce`](api:ruststream_amqp::Settle::AtMostOnce) 在每次投递到达时就结算它。
+[`Settle::AtMostOnce`](../components/settlement/settle.md) 在每次投递到达时就结算它。
 
 | 结果 | 至多一次 |
 |---|---|
@@ -73,8 +73,8 @@ export const retries = {
 
 <Diagram name="retries" words={retries} />
 
-上限在挂载点用 [`max_attempts`](api:ruststream::runtime::Mounting::max_attempts) 声明，第一次投递算作一次。低于上限时，`retry()` 以 `modified` 回到 Broker，由 Broker 计数。副本不带 Broker 的计数，因此在有上限时，对副本的 `retry()` 会立即发布下一份副本。
+上限在挂载点用 [`max_attempts`](../components/settlement/retries.md) 声明，第一次投递算作一次。低于上限时，`retry()` 以 `modified` 回到 Broker，由 Broker 计数。副本不带 Broker 的计数，因此在有上限时，对副本的 `retry()` 会立即发布下一份副本。
 
-AMQP 1.0 不会扣留消息，所以 `retry_after` 由运行时自己完成。它拒绝这次投递，等待延迟结束，然后发布一份副本，副本的重试计数消息头加一。副本发往订阅自己的地址，因为接收者附加源、发送者附加目标的都是同一个节点。在 `queue` 地址上，副本像其他消息一样竞争接收者；在 `topic` 地址上，每个订阅都会收到它。
+AMQP 1.0 不会扣留消息，所以 [`retry_after`](../components/settlement/retry-after.md) 由运行时自己完成。它拒绝这次投递，等待延迟结束，然后发布一份副本，副本的重试计数消息头加一。副本发往订阅自己的地址，因为接收者附加源、发送者附加目标的都是同一个节点。在 `queue` 地址上，副本像其他消息一样竞争接收者；在 `topic` 地址上，每个订阅都会收到它。
 
-到达上限时，投递按到达时的原样发布到[死信地址](api:ruststream::runtime::Mounting::dead_letter)。没有声明死信地址时，投递被拒绝，由 Broker 自己的死信策略决定。声明了死信地址但没有上限时，每次重试都发往死信地址。
+到达上限时，投递按到达时的原样发布到[死信地址](../components/settlement/dead-letters.md)。没有声明死信地址时，投递被拒绝，由 Broker 自己的死信策略决定。声明了死信地址但没有上限时，每次重试都发往死信地址。

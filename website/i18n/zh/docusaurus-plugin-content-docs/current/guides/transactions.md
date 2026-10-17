@@ -11,7 +11,7 @@ import TabItem from '@theme/TabItem';
 
 本指南在一个处理器中把多条消息一起发布，或者一条也不发布。
 
-AMQP 1.0 在协议中定义了事务：发送方在事务中投放消息，Broker 在提交时让它们可见。
+AMQP 1.0 在协议中定义了[事务](../components/transactions/index.md)：发送方在事务中投放消息，Broker 在提交时让它们可见。
 `transaction` feature 开启这一功能：
 
 ```toml title="Cargo.toml"
@@ -65,7 +65,7 @@ ruststream-amqp = { version = "0.7", features = ["transaction"] }
 </TabItem>
 </Tabs>
 
-`TransactionalPublish` 是支持事务的策略，即 prelude 中名为 `TransactionalPublish` 的 [`AmqpTransactionalPublish`](api:ruststream_amqp::AmqpTransactionalPublish)。
+`TransactionalPublish` 是支持事务的策略，即 [prelude](../components/broker/prelude.md) 中名为 `TransactionalPublish` 的 [`AmqpTransactionalPublish`](api:ruststream_amqp::AmqpTransactionalPublish)。
 它的发布者一次只持有一个事务。
 在已有事务开启时再次调用 `begin_transaction` 会返回错误，已开启的事务不受影响。
 每次注册都得到自己的发布者，所以两个处理器可以同时各持有一个事务。
@@ -82,6 +82,6 @@ ruststream-amqp = { version = "0.7", features = ["transaction"] }
 
 ## 测试事务 {/* #testing-the-transaction */}
 
-示例文件中的测试在进程内运行服务。
+示例文件中的测试在[进程内](../components/testing/index.md)运行服务。
 进程内 Broker 在提交前什么也不发布，并丢弃中止事务的消息，所以测试从已发布的内容中读出结果。
 [测试 AMQP 服务](testing.md)介绍测试套件。

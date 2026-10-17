@@ -31,7 +31,7 @@ AMQP 1.0 用一个连接把两个容器连在一起，连接承载会话，每�
 
 <Diagram name="connection" words={words} />
 
-容器是协议中的一个对等方：服务是一个容器，Broker 是另一个。服务出示的容器 id 是 `ruststream`，除非 [`container_id`](api:ruststream_amqp::AmqpBroker::container_id) 指定了别的 id。Broker 的控制台在这个 id 下列出服务的连接和链路。
+容器是协议中的一个对等方：服务是一个容器，Broker 是另一个。服务出示的容器 id 是 `ruststream`，除非 [`container_id`](../../components/broker/container-id.md) 指定了别的 id。Broker 的控制台在这个 id 下列出服务的连接和链路。
 
 连接就是一个 TCP 套接字。URL 为 `amqps://` 时，连接从 TLS 开始。随后 SASL 用 PLAIN、ANONYMOUS 或 EXTERNAL 对服务进行认证，两个容器交换 `open`。
 

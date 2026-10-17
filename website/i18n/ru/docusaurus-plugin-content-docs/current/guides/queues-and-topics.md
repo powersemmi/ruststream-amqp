@@ -12,7 +12,7 @@ import TabItem from '@theme/TabItem';
 Это руководство читает рабочую очередь, делает рассылку по теме, сохраняет рассылку для читателя, которого нет на месте, и публикует в адрес.
 
 AMQP 1.0 задаёт формат обмена, а смысл адреса оставляет брокеру.
-Поэтому подписка сама говорит, что ей нужно. У [`AmqpAddress`](api:ruststream_amqp::AmqpAddress) есть конструктор для каждого намерения, и связь сообщает брокеру, какое из них выбрано.
+Поэтому подписка сама говорит, что ей нужно. У [`AmqpAddress`](../components/subscriptions/index.md) есть конструктор для каждого намерения, и связь сообщает брокеру, какое из них выбрано.
 Всё, что утверждает эта страница, проверено на ActiveMQ Artemis, на котором работают тесты крейта.
 
 Пример - сервис заказов.
@@ -35,7 +35,7 @@ AMQP 1.0 задаёт формат обмена, а смысл адреса ос
 </TabItem>
 </Tabs>
 
-[`AmqpAddress::queue`](api:ruststream_amqp::AmqpAddress::queue) запрашивает очередь: связь передаёт возможность терминуса `queue`.
+[`AmqpAddress::queue`](../components/subscriptions/queue.md) запрашивает очередь: связь передаёт возможность терминуса `queue`.
 Artemis создаёт адрес anycast `orders` с одной очередью за ним.
 Потребители очереди конкурируют, и каждый заказ достаётся одному из них.
 Чтобы принимать заказы быстрее, запустите больше реплик сервиса: каждая реплика - ещё один потребитель `orders`.
@@ -60,7 +60,7 @@ Artemis создаёт адрес anycast `orders` с одной очередь�
 </TabItem>
 </Tabs>
 
-[`AmqpAddress::topic`](api:ruststream_amqp::AmqpAddress::topic) запрашивает тему: связь передаёт возможность `topic`.
+[`AmqpAddress::topic`](../components/subscriptions/topic.md) запрашивает тему: связь передаёт возможность `topic`.
 Artemis делает `order-events` адресом multicast и даёт каждой подписке собственную очередь.
 Поэтому `bill` и `audit` получают каждый свою копию каждого `OrderTaken`.
 
@@ -97,7 +97,7 @@ docker compose exec artemis /opt/activemq-artemis/bin/artemis queue create \
 
 Теперь каждое сообщение, опубликованное в `order-events`, попадает и в `ledger`, независимо от того, работает ли `post_to_ledger`.
 `order-events::ledger` - полное имя очереди в Artemis: адрес, два двоеточия, очередь.
-[`AmqpAddress::raw`](api:ruststream_amqp::AmqpAddress::raw) отправляет адрес как написан, без возможности, поэтому связь присоединяется к этой очереди.
+[`AmqpAddress::raw`](../components/subscriptions/raw.md) отправляет адрес как написан, без возможности, поэтому связь присоединяется к этой очереди.
 Строковая форма `#[subscriber("order-events::ledger")]` делает то же самое.
 
 ## Приложение {/* #the-app */}
@@ -117,17 +117,17 @@ docker compose exec artemis /opt/activemq-artemis/bin/artemis queue create \
 </TabItem>
 </Tabs>
 
-`.out_reply(Publish)` называет издателя ответов - [`AmqpPublish`](api:ruststream_amqp::AmqpPublish) под именем из прелюдии.
+`.out_reply(Publish)` называет издателя ответов - [`AmqpPublish`](../components/publishing/index.md) под именем из [прелюдии](../components/broker/prelude.md).
 При первой публикации издатель присоединяет связь отправителя к адресу ответа и дальше держит её.
-Если брокер отказывается принять сообщение, публикация возвращает ошибку [`AmqpError::PublishNotAccepted`](api:ruststream_amqp::AmqpError::PublishNotAccepted).
+Если брокер отказывается принять сообщение, публикация возвращает ошибку [`AmqpError::PublishNotAccepted`](../components/broker/errors.md).
 
 ## Заголовки и другие клиенты {/* #headers-and-other-clients */}
 
-Общеизвестные заголовки передаются в секции AMQP `properties`: `content-type`, `correlation-id`, `reply-to`, `message-id`.
+Общеизвестные [заголовки](../components/publishing/headers.md) передаются в секции AMQP `properties`: `content-type`, `correlation-id`, `reply-to`, `message-id`.
 Все остальные заголовки передаются в `application-properties`.
 Сообщение этого крейта - обычное сообщение AMQP, поэтому клиент на другом языке читает его без RustStream.
 
-Ключ партиционирования передаётся заголовком [`PARTITION_KEY_HEADER`](api:ruststream_amqp::PARTITION_KEY_HEADER) и становится полем `group-id` сообщения.
+Ключ партиционирования передаётся заголовком [`PARTITION_KEY_HEADER`](../components/publishing/keys.md) и становится полем `group-id` сообщения.
 Artemis использует `group-id` для [группировки сообщений](https://artemis.apache.org/components/artemis/documentation/latest/message-grouping.html): все сообщения одной группы достаются одному потребителю очереди.
 Поэтому заказы с ключом по клиенту сохраняют свой порядок на нескольких репликах.
 

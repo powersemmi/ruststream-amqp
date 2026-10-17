@@ -27,16 +27,16 @@ tokio = { version = "1", features = ["macros", "rt"] }
 
 `ruststream` - это сам фреймворк. Фича `macros` даёт атрибуты, `json` - кодек по умолчанию, а `logging` выводит журнал сервиса в терминал.
 `ruststream-amqp` - брокер AMQP 1.0.
-Его фича `testing` добавляет брокер внутри процесса, на котором работают тесты.
+Его фича `testing` добавляет [брокер внутри процесса](../components/testing/index.md), на котором работают тесты.
 
 У крейта брокера такие фичи, все выключены по умолчанию:
 
 | Фича | Что она даёт |
 |---|---|
-| `rustls` | соединения `amqps://` по TLS через rustls |
+| `rustls` | соединения `amqps://` по [TLS](../components/broker/security.md) через rustls |
 | `native-tls` | соединения `amqps://` через TLS платформы |
 | `transaction` | [транзакционную публикацию](transactions.md) |
-| `asyncapi` | подробности AMQP 1.0 в генерируемом документе AsyncAPI |
+| `asyncapi` | [подробности AMQP 1.0](../components/asyncapi/index.md) в генерируемом документе AsyncAPI |
 | `testing` | брокер внутри процесса, на котором работает `TestApp` |
 
 Под ним работает клиент [fe2o3-amqp](https://docs.rs/fe2o3-amqp). Он написан на Rust, поэтому сборке не нужны системные библиотеки.
@@ -82,8 +82,8 @@ Artemis создаёт очередь, когда сервис впервые е
 
 `take_order` читает заказы в JSON из очереди `orders`.
 Заказ с суммой он принимает, а заказ без суммы отклоняет.
-Очередь называет [`AmqpAddress::queue`](api:ruststream_amqp::AmqpAddress::queue), а другие виды адресов показывает руководство [Очереди и темы](queues-and-topics.md).
-[`AmqpBroker::new`](api:ruststream_amqp::AmqpBroker::new) принимает URL брокера и только запоминает его.
+Очередь называет [`AmqpAddress::queue`](../components/subscriptions/queue.md), а другие виды адресов показывает руководство [Очереди и темы](queues-and-topics.md).
+[`AmqpBroker::new`](../components/broker/index.md) принимает URL брокера и только запоминает его.
 Соединение открывается при запуске сервиса.
 Пользователь и пароль из URL служат для входа сервиса в брокер.
 `#[ruststream::app]` превращает `app` в `main`. В ручной форме то же делает [`run_main`](api:ruststream::runtime::cli::run_main).
@@ -108,7 +108,7 @@ docker compose exec artemis /opt/activemq-artemis/bin/artemis producer \
 ## Первый тест {/* #the-first-test */}
 
 В файле примера есть ещё два теста.
-Каждый запускает то же `app` через `TestApp::start`, публикует заказ и проверяет, как `take_order` урегулировал его доставку.
+Каждый запускает то же `app` через [`TestApp::start`](../components/testing/index.md), публикует заказ и проверяет, как `take_order` урегулировал его доставку.
 `AmqpBroker` подключается там к брокеру внутри процесса, поэтому тестам не нужен Artemis:
 
 ```bash
@@ -124,14 +124,14 @@ cargo test
 
 | fe2o3-amqp | RustStream |
 |---|---|
-| `Connection::open` | [`AmqpBroker::new`](api:ruststream_amqp::AmqpBroker::new), с [`sasl`](api:ruststream_amqp::AmqpBroker::sasl) и [`container_id`](api:ruststream_amqp::AmqpBroker::container_id) |
+| `Connection::open` | [`AmqpBroker::new`](api:ruststream_amqp::AmqpBroker::new), с [`sasl`](../components/broker/security.md) и [`container_id`](../components/broker/container-id.md) |
 | `Session::begin` | ничего: у каждой подписки свой сеанс, а издатели делят один общий |
 | `Receiver::attach` и цикл `recv` | обработчик `#[subscriber(AmqpAddress::..)]` |
-| `CreditMode::Auto(n)` | [`AmqpAddress::credit`](api:ruststream_amqp::AmqpAddress::credit) |
+| `CreditMode::Auto(n)` | [`AmqpAddress::credit`](../components/subscriptions/credit.md) |
 | `accept`, `modify`, `reject` | исход обработчика: `ack`, `retry`, `drop` ([Подтверждение и гарантии доставки](acknowledgement.md)) |
-| `auto_accept(true)` | [`Settle::AtMostOnce`](api:ruststream_amqp::Settle::AtMostOnce) |
-| `Sender::attach` и `send` | ответ или параметр `Out`, отправленный через политику [`Publish`](api:ruststream_amqp::AmqpPublish) |
-| динамический получатель для ответов | [`request`](api:ruststream::RequestReply::request) ([Запросы и ответы](request-reply.md)) |
-| `Controller` и `Transaction::declare` | `TransactionalPublish` ([Публикация «всё или ничего»](transactions.md)) |
+| `auto_accept(true)` | [`Settle::AtMostOnce`](../components/settlement/settle.md) |
+| `Sender::attach` и `send` | ответ или параметр `Out`, отправленный через политику [`Publish`](../components/publishing/index.md) |
+| динамический получатель для ответов | [`request`](../components/request-reply/index.md) ([Запросы и ответы](request-reply.md)) |
+| `Controller` и `Transaction::declare` | [`TransactionalPublish`](../components/transactions/index.md) ([Публикация «всё или ничего»](transactions.md)) |
 
 Сервису, который работает с RabbitMQ по AMQP 0.9.1, нужен [ruststream-lapin](https://powersemmi.github.io/ruststream-lapin/). У двух протоколов общие порт и схема `amqp://`, но это разные протоколы.

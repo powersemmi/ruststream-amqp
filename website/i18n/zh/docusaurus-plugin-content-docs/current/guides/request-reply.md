@@ -35,7 +35,7 @@ import TabItem from '@theme/TabItem';
 </TabItem>
 </Tabs>
 
-请求到达时，`reply-to` 消息头中带着它的回复地址，`ctx.headers().reply_to()` 读取这个地址。
+请求到达[应答方](../components/request-reply/responders.md)时，`reply-to` 消息头中带着它的回复地址，`ctx.headers().reply_to()` 读取这个地址。
 `quote` 通过它的 `Answers` 槽位用 `to(reply_to)` 发布价格，因为每个请求的地址都不同。
 因此 `Price` 不声明自己的地址。
 答复带着请求的 `correlation-id`，请求方只接收 id 相符的答复。
@@ -63,14 +63,14 @@ import TabItem from '@theme/TabItem';
 
 `price_order` 读取订单，并在 `prices.quote` 上询问每个订单的价格。
 `Pricing` 槽位的约束是 `Out<impl RequestReply, _>`：函数体声明它需要请求-响应，而不指明 Broker。
-应用把这个槽位与普通的 `Publish` 策略配对，该策略的发布者 [`AmqpPublisher`](api:ruststream_amqp::AmqpPublisher) 支持请求-响应。
-[`request`](api:ruststream::RequestReply::request) 附加一条动态接收链路，于是 Broker 为这一个请求创建一个私有的回复地址。
+应用把这个槽位与普通的 `Publish` 策略配对，该策略的发布者 [`AmqpPublisher`](../components/publishing/index.md) 支持请求-响应。
+[`request`](../components/request-reply/index.md) 附加一条动态接收链路，于是 Broker 为这一个请求创建一个私有的回复地址。
 它发布问题，设置好 `reply-to` 和 `correlation-id`，并以第一个相符的答复完成。
 ActiveMQ Artemis 用一个临时队列支撑动态链路。
 问题是一条原始消息，所以函数体自己编码问题并解码答复，这里用的是 `serde_json`。
 价格得知后，订单的回复 `Priced` 随即发出。
 
-无人应答的请求在超时（这里是两秒）后返回 [`AmqpError::RequestTimeout`](api:ruststream_amqp::AmqpError::RequestTimeout) 错误。
+无人应答的请求在超时（这里是两秒）后返回 [`AmqpError::RequestTimeout`](../components/broker/errors.md) 错误。
 无论哪种情况，回复链路都会被分离。
 订单随后在队列中等待 30 秒，再询问一次。
 

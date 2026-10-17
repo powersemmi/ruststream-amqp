@@ -36,7 +36,7 @@ import TabItem from '@theme/TabItem';
 </TabItem>
 </Tabs>
 
-[`TestApp::start`](api:ruststream::testing::TestApp::start) 把 [`AmqpBroker`](api:ruststream_amqp::AmqpBroker) 连接到进程内 Broker。
+[`TestApp::start`](../components/testing/index.md) 把 [`AmqpBroker`](../components/broker/index.md) 连接到进程内 Broker。
 测试从不连接 Broker 的 URL。
 测试按生产类型访问 Broker：`tb.broker::<AmqpBroker>()`。
 `publish` 在处理器及其回复都完成结算后才返回。
@@ -82,9 +82,9 @@ import TabItem from '@theme/TabItem';
 
 测试在暂停的时钟下启动，[`advance`](api:ruststream::testing::TestApp::advance) 把时钟向前拨。
 一分钟的 `HOLD` 不花任何时间。
-AMQP 1.0 没有延迟重新投递，所以延迟结束时，`retry_after` 把付款的一份副本发布到它的队列。
+AMQP 1.0 没有延迟重新投递，所以延迟结束时，[`retry_after`](../components/settlement/retry-after.md) 把付款的一份副本发布到它的队列。
 副本在消息头里带着重试次数，`published` 把它显示在 `card-payments` 上，与测试自己发布的消息并列。
-第三次投递是挂载点允许的最后一次，所以付款按到达时的原样进入 `card-payments.review`。
+第三次投递是挂载点允许的最后一次，所以付款按到达时的原样进入[死信地址](../components/settlement/dead-letters.md) `card-payments.review`。
 每次被暂缓的投递都记录为 `Outcome::Nack`。
 
 ## 进程内 Broker 模拟了什么 {/* #what-the-in-process-broker-models */}
@@ -121,7 +121,7 @@ AMQP 1.0 没有延迟重新投递，所以延迟结束时，`retry_after` 把付
 </TabItem>
 </Tabs>
 
-[`TestApp::start_live`](api:ruststream::testing::TestApp::start_live) 把同一个应用连接到正在运行的 Broker。
+[`TestApp::start_live`](../components/testing/live.md) 把同一个应用连接到正在运行的 Broker。
 测试用 `live::url`（示例自己的辅助函数）从 `AMQP_TEST_URL` 读取 URL，未设置时跳过。
 付款的 id 是进程 id，因此可以在 Broker 上区分每次运行的消息。
 断言与进程内的完全相同。

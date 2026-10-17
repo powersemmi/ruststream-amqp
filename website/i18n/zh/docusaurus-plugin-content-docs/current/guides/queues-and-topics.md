@@ -12,7 +12,7 @@ import TabItem from '@theme/TabItem';
 本指南读取一个工作队列，在主题上广播，为暂时离开的读者保留广播，并向一个地址发布消息。
 
 AMQP 1.0 规定了线上格式，地址的含义则交给 Broker 决定。
-因此订阅要说明自己想要什么：[`AmqpAddress`](api:ruststream_amqp::AmqpAddress) 为每种意图提供一个构造函数，链路把这个意图告诉 Broker。
+因此订阅要说明自己想要什么：[`AmqpAddress`](../components/subscriptions/index.md) 为每种意图提供一个构造函数，链路把这个意图告诉 Broker。
 本页所述内容都在 ActiveMQ Artemis 上验证过，本 crate 的测试也运行在它上面。
 
 示例是一个订单服务。
@@ -35,7 +35,7 @@ AMQP 1.0 规定了线上格式，地址的含义则交给 Broker 决定。
 </TabItem>
 </Tabs>
 
-[`AmqpAddress::queue`](api:ruststream_amqp::AmqpAddress::queue) 请求一个队列：链路带上 terminus 能力 `queue`。
+[`AmqpAddress::queue`](../components/subscriptions/queue.md) 请求一个队列：链路带上 terminus 能力 `queue`。
 Artemis 随后创建一个任播地址 `orders`，其后有一个队列。
 一个队列的各个消费者相互竞争，每个订单只交给其中一个。
 要更快地处理订单，就多运行几个服务副本：每个副本都是 `orders` 的又一个消费者。
@@ -60,7 +60,7 @@ Artemis 随后创建一个任播地址 `orders`，其后有一个队列。
 </TabItem>
 </Tabs>
 
-[`AmqpAddress::topic`](api:ruststream_amqp::AmqpAddress::topic) 请求一个主题：链路带上能力 `topic`。
+[`AmqpAddress::topic`](../components/subscriptions/topic.md) 请求一个主题：链路带上能力 `topic`。
 Artemis 把 `order-events` 设为组播地址，并为每个订阅各建一个队列。
 因此 `bill` 和 `audit` 各自收到每个 `OrderTaken` 的一份副本。
 
@@ -97,7 +97,7 @@ docker compose exec artemis /opt/activemq-artemis/bin/artemis queue create \
 
 此后发布到 `order-events` 的每条消息也会进入 `ledger`，无论 `post_to_ledger` 是否在运行。
 `order-events::ledger` 是该队列在 Artemis 中的完全限定名：地址、两个冒号、队列名。
-[`AmqpAddress::raw`](api:ruststream_amqp::AmqpAddress::raw) 按原样发送地址，不带任何能力，因此链路附加到这个队列上。
+[`AmqpAddress::raw`](../components/subscriptions/raw.md) 按原样发送地址，不带任何能力，因此链路附加到这个队列上。
 直接写 `#[subscriber("order-events::ledger")]` 效果相同。
 
 ## 应用 {/* #the-app */}
@@ -117,17 +117,17 @@ docker compose exec artemis /opt/activemq-artemis/bin/artemis queue create \
 </TabItem>
 </Tabs>
 
-`.out_reply(Publish)` 指明回复的发布者，即 prelude 中名为 `Publish` 的 [`AmqpPublish`](api:ruststream_amqp::AmqpPublish)。
+`.out_reply(Publish)` 指明回复的发布者，即 [prelude](../components/broker/prelude.md) 中名为 `Publish` 的 [`AmqpPublish`](../components/publishing/index.md)。
 发布在第一次使用时向回复的地址附加一条发送链路，并一直保留它。
-Broker 拒收的消息会让发布返回 [`AmqpError::PublishNotAccepted`](api:ruststream_amqp::AmqpError::PublishNotAccepted) 错误。
+Broker 拒收的消息会让发布返回 [`AmqpError::PublishNotAccepted`](../components/broker/errors.md) 错误。
 
 ## 消息头与其他客户端 {/* #headers-and-other-clients */}
 
-常见的消息头放在 AMQP 的 `properties` 段中：`content-type`、`correlation-id`、`reply-to` 和 `message-id`。
+常见的[消息头](../components/publishing/headers.md)放在 AMQP 的 `properties` 段中：`content-type`、`correlation-id`、`reply-to` 和 `message-id`。
 其他所有消息头放在 `application-properties` 中。
 本 crate 发出的消息是普通的 AMQP 消息，因此其他语言的客户端不借助 RustStream 也能读取它。
 
-分区键以 [`PARTITION_KEY_HEADER`](api:ruststream_amqp::PARTITION_KEY_HEADER) 消息头传递，并成为消息的 `group-id`。
+分区键以 [`PARTITION_KEY_HEADER`](../components/publishing/keys.md) 消息头传递，并成为消息的 `group-id`。
 Artemis 用 `group-id` 实现[消息分组](https://artemis.apache.org/components/artemis/documentation/latest/message-grouping.html)：同一组的每条消息都交给队列的同一个消费者。
 因此以客户为键的订单在多个副本之间也保持顺序。
 

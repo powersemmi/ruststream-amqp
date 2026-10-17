@@ -23,11 +23,12 @@ ruststream-amqp = { version = "0.7", features = ["rustls"] }
 ```
 
 部署环境通过环境变量提供地址和凭据。
-`amqps://` URL 通过 TLS 连接。
-它用主机名而不是 IP 地址指明 Broker：TLS 会用这个名称核对 Broker 的证书。
+`amqps://` URL 通过 [TLS](../components/broker/security.md) 连接。
+它用主机名或 IPv4 地址指明 Broker：TLS 会用这个名称核对 Broker 的证书。
+IPv6 地址无法为 TLS 提供服务器名称，因此用它连接会失败。
 TLS 需要两个 feature 之一：`rustls` 使用 [rustls](https://docs.rs/rustls)，`native-tls` 使用平台自带的 TLS。
 
-[`Sasl::plain`](api:ruststream_amqp::Sasl::plain) 用用户名和密码让服务登录。
+[`Sasl::plain`](../components/broker/security.md) 用用户名和密码让服务登录。
 这时 URL 中不带凭据。
 密码中含有在 URL 里有特殊含义的字符（例如 `/`、`?` 或 `@`）时，可以原样交给 `Sasl::plain`。
 [`Sasl::anonymous`](api:ruststream_amqp::Sasl::anonymous) 不带凭据连接，[`Sasl::external`](api:ruststream_amqp::Sasl::external) 使用连接在 SASL 之外已经建立的凭据。
@@ -51,7 +52,7 @@ TLS 需要两个 feature 之一：`rustls` 使用 [rustls](https://docs.rs/rustl
 </TabItem>
 </Tabs>
 
-[`container_id`](api:ruststream_amqp::AmqpBroker::container_id) 向 Broker 报出服务的名称，默认是 `ruststream`。
+[`container_id`](../components/broker/container-id.md) 向 Broker 报出服务的名称，默认是 `ruststream`。
 Broker 的控制台以这个名称列出连接，服务的各条链路也以它命名。
 为一个服务的每个部署设置各自的容器 id，运维人员就能区分它们。
 
@@ -60,9 +61,9 @@ Broker 的控制台以这个名称列出连接，服务的各条链路也以它�
 
 ## 关闭 {/* #shutdown */}
 
-服务停止时，由内向外关闭连接：先是各订阅的会话，然后是发布者的链路及其会话，最后是连接本身。
-此后使用的发布者会返回 [`AmqpError::NotConnected`](api:ruststream_amqp::AmqpError::NotConnected) 错误，而不是在已关闭的连接上报告成功。
-服务的 AsyncAPI 文档写明 Broker 的主机和端口，从不包含凭据。
+服务停止时，由内向外[关闭连接](../components/broker/shutdown.md)：先是各订阅的会话，然后是发布者的链路及其会话，最后是连接本身。
+此后使用的发布者会返回 [`AmqpError::NotConnected`](../components/broker/errors.md) 错误，而不是在已关闭的连接上报告成功。
+服务的 [AsyncAPI 文档](../components/asyncapi/server.md)写明 Broker 的主机和端口，从不包含凭据。
 
 ## 测试配置 {/* #testing-the-configuration */}
 

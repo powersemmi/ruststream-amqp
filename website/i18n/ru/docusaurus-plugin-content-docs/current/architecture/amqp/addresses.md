@@ -37,9 +37,9 @@ export const words = {
 
 Получатель присоединяется с терминусом-источником: адресом узла и списком
 возможностей (capabilities), которые получатель ждёт от узла.
-[`AmqpAddress::queue`](api:ruststream_amqp::AmqpAddress::queue) запрашивает возможность
-`queue`, [`AmqpAddress::topic`](api:ruststream_amqp::AmqpAddress::topic) - возможность `topic`,
-а [`AmqpAddress::raw`](api:ruststream_amqp::AmqpAddress::raw) не запрашивает никакой.
+[`AmqpAddress::queue`](../../components/subscriptions/queue.md) запрашивает возможность
+`queue`, [`AmqpAddress::topic`](../../components/subscriptions/topic.md) - возможность `topic`,
+а [`AmqpAddress::raw`](../../components/subscriptions/raw.md) не запрашивает никакой.
 
 ActiveMQ Artemis читает запрошенную возможность. С `queue` получатели адреса присоединяются к одной очереди
 anycast и конкурируют: каждое сообщение достаётся одному из них. С `topic` адрес становится
@@ -60,7 +60,7 @@ multicast, и Artemis даёт каждому получателю собств�
 
 Вместо имени источника получатель может запросить динамический источник. Тогда брокер создаёт узел
 (Artemis - временную очередь) и возвращает его адрес в ответе на присоединение.
-[`request`](api:ruststream_amqp::AmqpPublisher) присоединяет такого получателя на каждый запрос,
+[`request`](../../components/request-reply/index.md) присоединяет такого получателя на каждый запрос,
 отправляет его адрес в `reply-to` и отсоединяет получателя, когда пришёл ответ или истёк тайм-аут.
 
 Поля терминуса взяты из спецификации

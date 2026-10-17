@@ -30,7 +30,7 @@ AMQP 1.0 事务在 Broker 的协调器上声明，在其下发布的 transfer �
 
 协调器是 Broker 的一个节点。控制器链路附加到它并发送 `declare`，协调器用一个事务 id 应答。此后，任何普通发送链路上的 transfer 都在其事务状态中带上这个 id。`discharge` 结束事务：`fail` 为 false 时提交，`fail` 为 true 时回滚。
 
-[`AmqpTxnPublisher`](api:ruststream_amqp::AmqpTxnPublisher) 在事务中发布消息。每次 `begin_transaction` 在连接的发布者会话上附加一条控制器链路并声明一个事务，`commit` 和 `abort` 对它执行 discharge。控制器请求 `mixed` 发送者结算模式，因为 Artemis 以这种模式应答，而客户端要求 Broker 原样回显它所请求的模式。
+[`AmqpTxnPublisher`](../../components/transactions/index.md) 在事务中发布消息。每次 `begin_transaction` 在连接的发布者会话上附加一条控制器链路并声明一个事务，`commit` 和 `abort` 对它执行 discharge。控制器请求 `mixed` 发送者结算模式，因为 Artemis 以这种模式应答，而客户端要求 Broker 原样回显它所请求的模式。
 
 各 Broker 在这里有所不同。Artemis 每个会话只服务一个事务，而一个连接的发布者共用一个会话。RabbitMQ 4 不支持 AMQP 1.0 事务。Azure Service Bus 支持它们，并通过 send-via 实体在一个事务中向多个实体发布消息。
 

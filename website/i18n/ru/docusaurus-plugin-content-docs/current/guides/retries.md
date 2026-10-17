@@ -19,7 +19,7 @@ import TabItem from '@theme/TabItem';
 ## Подписчик {/* #the-subscriber */}
 
 Процессинг отказывает в возврате тремя способами, и каждому нужен свой исход.
-`Busy` значит, что крупные возвраты он пока не принимает. Повтор прямо сейчас снова получит отказ, поэтому [`retry_after`](api:ruststream::runtime::HandlerOutcome::retry_after) ждёт 30 секунд.
+`Busy` значит, что крупные возвраты он пока не принимает. Повтор прямо сейчас снова получит отказ, поэтому [`retry_after`](../components/settlement/retry-after.md) ждёт 30 секунд.
 `Unavailable` значит, что банк карты не ответил: [`retry`](api:ruststream::runtime::HandlerOutcome::retry) пробует снова сразу.
 `Declined` значит, что карточный счёт закрыт. Новая попытка получит тот же ответ, поэтому возврат отбрасывается.
 
@@ -60,8 +60,8 @@ import TabItem from '@theme/TabItem';
 </TabItem>
 </Tabs>
 
-[`max_attempts`](api:ruststream::runtime::RouterWith::max_attempts) считает все доставки одного возврата, включая первую.
-Пятая доставка не повторяется: [`dead_letter`](api:ruststream::runtime::RouterWith::dead_letter) публикует её в `refunds.dead` с полезной нагрузкой и заголовками в том виде, в каком они пришли.
+[`max_attempts`](../components/settlement/retries.md) считает все доставки одного возврата, включая первую.
+Пятая доставка не повторяется: [`dead_letter`](../components/settlement/dead-letters.md) публикует её в `refunds.dead` с полезной нагрузкой и заголовками в том виде, в каком они пришли.
 Отброшенный возврат отклоняется и попадает под собственную политику недоставленных сообщений брокера, а не в `refunds.dead`.
 
 При объявленном пределе фреймворк читает число попыток из доставки.
@@ -112,7 +112,7 @@ import TabItem from '@theme/TabItem';
 
 Копию в обработчике не публикует ни один вызов, поэтому добраться до неё может только [преобразование публикации](api:ruststream::runtime::PublishTransform).
 Приложение монтирует `process_refund` через `.out_retry(Publish).transform(Retried)`.
-`.out_retry(Publish)` называет издателя копий, и шаги после него применяются к ним.
+[`.out_retry(Publish)`](../components/settlement/out-retry.md) называет издателя копий, и шаги после него применяются к ним.
 `Retried` записывает в `x-retried-from` адрес, из которого пришла доставка.
 Каждая копия возвращается в адрес своей подписки, поэтому преобразование в этой позиции не может менять адрес назначения.
 

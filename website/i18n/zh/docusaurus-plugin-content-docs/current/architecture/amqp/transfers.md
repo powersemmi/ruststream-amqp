@@ -44,7 +44,7 @@ export const outcomes = {
 
 <Diagram name="transfers" words={credit} />
 
-信用是接收者的流控。接收者发送一个带信用的 `flow` 帧，发送者可以进行这么多次 transfer，然后等待下一个 `flow`。订阅默认授予 256，[`credit`](api:ruststream_amqp::AmqpAddress::credit) 可以设置别的数量。
+信用是接收者的流控。接收者发送一个带信用的 `flow` 帧，发送者可以进行这么多次 transfer，然后等待下一个 `flow`。订阅默认授予 256，[`credit`](../../components/subscriptions/credit.md) 可以设置别的数量。
 
 `fe2o3-amqp` 客户端自己管理信用。每当一半信用已经结算，它就按目前已收到的 transfer 重新授予完整的信用。因此服务工作期间发送者不会断供，也绝不会比上一次授予超前一个以上的窗口。
 
