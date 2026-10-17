@@ -26,7 +26,7 @@ async fn fulfil(order: &Order) -> HandlerOutcome {
 #[ruststream::app]
 fn app() -> impl App {
     let broker = AmqpBroker::new("amqp://artemis:artemis@localhost:5672");
-    RustStream::new(AppInfo::new("fulfilment", "0.1.0")).with_broker(broker, |b| {
+    RustStream::new(AppInfo::new("fulfillment", "0.1.0")).with_broker(broker, |b| {
         b.include(fulfil);
     })
 }
@@ -62,7 +62,7 @@ mod tests {
     /// orders are shared out, none is handled twice and none is lost.
     #[tokio::test]
     async fn two_replicas_share_the_orders() -> Result<(), Box<dyn Error>> {
-        let replicas = RustStream::new(AppInfo::new("fulfilment", "0.1.0")).with_broker(
+        let replicas = RustStream::new(AppInfo::new("fulfillment", "0.1.0")).with_broker(
             AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
             |b| {
                 b.include(fulfil);
