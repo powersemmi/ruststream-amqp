@@ -1,5 +1,5 @@
 //! The service of `examples/amqp_broker_prelude.rs` without the macros: the handler is a named
-//! type, the address descriptor is mounted with `map_source`, and `main` is written by hand.
+//! type, `subscriber` takes the address descriptor, and `main` is written by hand.
 //!
 //! ```text
 //! cargo test --example manual_amqp_broker_prelude --features testing,asyncapi
@@ -32,11 +32,12 @@ fn app() -> impl App {
     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
         AmqpBroker::new("amqp://broker.internal:5672").sasl(Sasl::anonymous()),
         |b| {
-            let confirm = subscriber("orders", Confirm).map_source(|_| {
+            let confirm = subscriber(
                 AmqpAddress::queue("orders")
                     .credit(nonzero!(64))
-                    .settle(Settle::AtLeastOnce)
-            });
+                    .settle(Settle::AtLeastOnce),
+                Confirm,
+            );
             b.include(confirm.reply().build()).out_reply(Publish);
         },
     )
