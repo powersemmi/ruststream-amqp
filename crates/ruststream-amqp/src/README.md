@@ -541,7 +541,8 @@ and a publish or subscription the server refuses answer alike on both.
 Authentication is [`Sasl`]: `Sasl::anonymous()`, `Sasl::plain(user, password)`, or
 `Sasl::external()` for a credential established outside SASL, typically a TLS client certificate.
 A URL with userinfo (`amqp://user:pass@host`) selects PLAIN on its own, and an explicit profile
-passed to [`AmqpBroker::sasl`] wins over it.
+passed to [`AmqpBroker::sasl`] wins over it. The userinfo is percent-decoded, so a password with a
+reserved character is written encoded: `p%40ss` in the URL is the password `p@ss`.
 
 An `amqps://` endpoint needs the `rustls` or the `native-tls` feature, which is forwarded to the
 client; the crate adds no TLS configuration of its own.
