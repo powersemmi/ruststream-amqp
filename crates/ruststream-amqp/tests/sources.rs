@@ -10,6 +10,7 @@
 
 #![cfg(feature = "testing")]
 
+use std::future::{Future, ready};
 use std::pin::pin;
 use std::time::Duration;
 
@@ -463,4 +464,51 @@ async fn a_delivery_dropped_unsettled_waits_for_the_next_queue_subscription() {
         back.ack().await.expect("ack succeeds");
     }
     assert!(stream.next().now_or_never().is_none());
+}
+
+/// A handler written without the macros, as a type with an `impl Handle`.
+#[cfg_attr(feature = "asyncapi", derive(ruststream::schemars::JsonSchema))]
+#[cfg_attr(feature = "asyncapi", schemars(crate = "ruststream::schemars"))]
+#[derive(Debug, Deserialize)]
+struct Notice {
+    id: u64,
+}
+
+struct Audit;
+
+impl Handle<Notice> for Audit {
+    fn handle(
+        &self,
+        notice: &Notice,
+        _outs: &(),
+        _ctx: &mut Context<'_>,
+    ) -> impl Future<Output = Result<(), HandlerOutcome>> {
+        let _ = notice.id;
+        ready(Ok(()))
+    }
+}
+
+// The manual path mounts the same descriptor the attribute takes: the terminus it declares has to
+// survive the `subscriber(..)` constructor, so two topic subscriptions each get a copy where a
+// bare name would have delivered once.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_handler_written_without_the_macros_mounts_on_a_descriptor() {
+    let app =
+        RustStream::new(AppInfo::new("audit", "0.1.0")).with_broker(AmqpBroker::new(URL), |b| {
+            b.include(subscriber(AmqpAddress::topic("notices"), Audit).build());
+            b.include(subscriber(AmqpAddress::topic("notices"), Audit).build());
+        });
+    let tb = TestApp::start(app).await.expect("startup failed");
+
+    tb.broker::<AmqpBroker>()
+        .message(&Order { id: 4 })
+        .to("notices")
+        .publish()
+        .await
+        .expect("publish failed");
+
+    tb.broker::<AmqpBroker>()
+        .subscriber("notices")
+        .assert_called(2);
+    tb.shutdown().await.expect("shutdown failed");
 }
