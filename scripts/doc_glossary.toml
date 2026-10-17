@@ -63,11 +63,13 @@ ru = "издатель"
 ru_match = "издател"
 zh = "发布者"
 
+# A capability trait is «совместимость»; a capability a receiver asks of an AMQP node reads as
+# «возможность», so both are accepted.
 [[term]]
 en = "capability"
 en_match = "capabilit(y|ies)"
 ru = "совместимость"
-ru_match = "совместимост"
+ru_match = "совместимост|возможност"
 zh = "能力"
 
 [[term]]
