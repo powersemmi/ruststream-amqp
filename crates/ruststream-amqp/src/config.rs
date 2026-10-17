@@ -28,7 +28,7 @@ use crate::error::AmqpError;
 /// #
 /// # #[subscriber(AmqpAddress::queue("orders"))]
 /// # async fn handle(order: &Order) -> HandlerOutcome {
-/// #     println!("got order {}", order.id);
+/// #     tracing::info!(order.id, "accepted");
 /// #     HandlerOutcome::ack()
 /// # }
 ///
@@ -67,7 +67,7 @@ impl Sasl {
     /// #
     /// # #[subscriber(AmqpAddress::queue("orders"))]
     /// # async fn handle(order: &Order) -> HandlerOutcome {
-    /// #     println!("got order {}", order.id);
+    /// #     tracing::info!(order.id, "accepted");
     /// #     HandlerOutcome::ack()
     /// # }
     ///
@@ -106,7 +106,7 @@ impl Sasl {
     /// #
     /// # #[subscriber(AmqpAddress::queue("orders"))]
     /// # async fn handle(order: &Order) -> HandlerOutcome {
-    /// #     println!("got order {}", order.id);
+    /// #     tracing::info!(order.id, "accepted");
     /// #     HandlerOutcome::ack()
     /// # }
     ///
@@ -150,7 +150,7 @@ impl Sasl {
     /// #
     /// # #[subscriber(AmqpAddress::queue("orders"))]
     /// # async fn handle(order: &Order) -> HandlerOutcome {
-    /// #     println!("got order {}", order.id);
+    /// #     tracing::info!(order.id, "accepted");
     /// #     HandlerOutcome::ack()
     /// # }
     ///

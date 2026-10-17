@@ -361,7 +361,7 @@ const DEFAULT_CONTAINER_ID: &str = "ruststream";
 ///
 /// #[subscriber(AmqpAddress::queue("orders"))]
 /// async fn fulfil(order: &Order) -> HandlerOutcome {
-///     println!("fulfilling order {}", order.id);
+///     tracing::info!(order.id, "fulfilling");
 ///     HandlerOutcome::ack()
 /// }
 ///
@@ -377,6 +377,69 @@ const DEFAULT_CONTAINER_ID: &str = "ruststream";
 ///     )
 /// }
 /// # }
+/// # fn main() {}
+/// ```
+///
+/// A test runs the app `main` runs. With the `testing` feature, `TestApp::start` connects this
+/// broker in process instead of dialling the server, and the test addresses it by its production
+/// type:
+///
+/// ```
+/// # #[cfg(feature = "testing")]
+/// # mod demo {
+/// use std::error::Error;
+///
+/// use ruststream::testing::TestApp;
+/// use ruststream_amqp::prelude::*;
+/// use serde::{Deserialize, Serialize};
+///
+/// #[derive(Debug, Deserialize, Serialize, PartialEq, Outgoing)]
+/// #[outgoing(name = "orders")]
+/// pub struct Order {
+///     pub id: u64,
+/// }
+///
+/// #[subscriber(AmqpAddress::queue("orders"))]
+/// async fn accept(order: &Order) -> HandlerOutcome {
+///     if order.id == 0 {
+///         return HandlerOutcome::drop();
+///     }
+///     HandlerOutcome::ack()
+/// }
+///
+/// /// The app `main` runs.
+/// pub fn app() -> RustStream {
+///     RustStream::new(AppInfo::new("orders", "0.1.0"))
+///         .with_broker(AmqpBroker::new("amqp://broker:5672"), |b| {
+///             b.include(accept);
+///         })
+/// }
+///
+/// pub async fn accepts_an_order() -> Result<(), Box<dyn Error>> {
+///     let tb = TestApp::start(app()).await?;
+///
+///     // The publish returns once the handler it woke has settled.
+///     tb.broker::<AmqpBroker>()
+///         .message(&Order { id: 7 })
+///         .publish()
+///         .await?;
+///
+///     tb.broker::<AmqpBroker>()
+///         .subscriber("orders")
+///         .assert_called_once()
+///         .with(&Order { id: 7 })
+///         .settled(HandlerOutcome::ack());
+///
+///     tb.shutdown().await?;
+///     Ok(())
+/// }
+/// # }
+/// # #[cfg(feature = "testing")]
+/// # #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// #     demo::accepts_an_order().await
+/// # }
+/// # #[cfg(not(feature = "testing"))]
 /// # fn main() {}
 /// ```
 #[derive(Debug, Clone)]

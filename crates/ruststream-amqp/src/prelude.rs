@@ -6,7 +6,9 @@
 //! [`Partitioned`](ruststream::Partitioned) stays out, though [`AmqpMessage`](crate::AmqpMessage)
 //! implements it: in scope it makes `msg.partition_key()` ambiguous with the method of the same
 //! name on `IncomingMessage`, so a service that reads partition keys imports it itself. Two broker
-//! preludes may be globbed into one file; items they share unify.
+//! preludes may be globbed into one file; items they share unify. The
+//! [Prelude](https://powersemmi.github.io/ruststream-amqp/latest/components/broker/prelude/) page
+//! shows it in a service.
 //!
 //! # Two vocabularies
 //!
@@ -59,7 +61,7 @@
 //!
 //! #[subscriber(AmqpAddress::topic("events").settle(Settle::AtMostOnce))]
 //! async fn audit(event: &Event, ctx: &mut Context<'_>) -> HandlerOutcome {
-//!     println!("{}: {}", ctx.name(), event.kind);
+//!     tracing::info!(address = ctx.name(), kind = %event.kind, "audited");
 //!     HandlerOutcome::ack()
 //! }
 //!
