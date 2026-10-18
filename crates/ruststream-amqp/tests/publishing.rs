@@ -355,6 +355,31 @@ async fn a_live_connect_after_an_in_process_one_is_refused() {
     );
 }
 
+// The client takes the TLS server name from the URL's domain. For an `amqps://` URL the parser
+// keeps a host name or an IPv4 address there, but a bracketed IPv6 address gives it none, and the
+// live open fails on it. So that app does not start under the harness either, while the same app
+// on a host name or an IPv4 address does.
+#[cfg(any(feature = "rustls", feature = "native-tls"))]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_amqps_url_on_an_ipv6_address_does_not_start() {
+    let url = "amqps://[2001:db8::10]:5671";
+    let refused = TestApp::start(app_on(AmqpBroker::new(url)))
+        .await
+        .err()
+        .unwrap_or_else(|| panic!("{url} must not start: the client finds no TLS server name"));
+    assert!(
+        refused.to_string().contains("IPv6 address"),
+        "{url}: got {refused}"
+    );
+
+    for url in ["amqps://broker.example.com:5671", "amqps://192.0.2.10:5671"] {
+        let tb = TestApp::start(app_on(AmqpBroker::new(url)))
+            .await
+            .unwrap_or_else(|e| panic!("{url} must start: {e}"));
+        tb.shutdown().await.expect("shutdown failed");
+    }
+}
+
 // The ladder makes the owner's misuse a compile error; what stays checkable at runtime is a handle
 // that aliases the transport. Both ends of its life must refuse, because a live publisher does: it
 // has no connection to send on before `connect`, and none after `shutdown`.
