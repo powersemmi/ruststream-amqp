@@ -25,6 +25,74 @@ use crate::message::{AmqpMessage, headers_from_amqp, payload_from_body, to_amqp_
 /// Buildable before `connect` (it resolves the connection through the broker's shared cell) and
 /// usable until `shutdown`; afterwards every publish reports
 /// [`AmqpError::NotConnected`] instead of silently succeeding against a dead connection.
+///
+/// A publish waits for the peer's disposition, and anything but `accepted` returns
+/// [`AmqpError::PublishNotAccepted`], so a refusal never passes as sent.
+///
+/// # Examples
+///
+/// A handler body reaches this publisher through a slot the mount site pairs with
+/// [`Publish`](crate::AmqpPublish). Here it answers each request on the private reply address
+/// the requester named, which is new for every request, so the call site names it:
+///
+/// ```
+/// # mod demo {
+/// use ruststream_amqp::prelude::*;
+/// use serde::{Deserialize, Serialize};
+///
+/// #[derive(Deserialize)]
+/// struct Order {
+///     id: u64,
+/// }
+///
+/// /// Names no destination, so the call site says where it goes.
+/// #[derive(Serialize, Outgoing)]
+/// struct Greeting {
+///     text: String,
+/// }
+///
+/// #[subscriber(AmqpAddress::queue("greeter"))]
+/// async fn greet(
+///     order: &Order,
+///     ctx: &mut Context<'_>,
+///     Out(out): Out<impl Publisher>,
+/// ) -> HandlerOutcome {
+///     // The requester named a private reply address; the answer echoes the correlation id back.
+///     let Some(reply_to) = ctx.headers().reply_to().map(str::to_owned) else {
+///         return HandlerOutcome::drop();
+///     };
+///     let mut headers = HeaderMap::new();
+///     if let Some(correlation_id) = ctx.headers().correlation_id() {
+///         headers.insert("correlation-id", correlation_id.to_owned());
+///     }
+///     let greeting = Greeting {
+///         text: format!("hello, order {}", order.id),
+///     };
+///     if out
+///         .message(&greeting)
+///         .to(reply_to)
+///         .with_headers(headers)
+///         .publish()
+///         .await
+///         .is_err()
+///     {
+///         return HandlerOutcome::retry();
+///     }
+///     HandlerOutcome::ack()
+/// }
+///
+/// #[ruststream::app]
+/// fn app() -> impl App {
+///     RustStream::new(AppInfo::new("greeter", "0.1.0")).with_broker(
+///         AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
+///         |b| {
+///             b.include(greet).out(DefaultSlot, Publish).build();
+///         },
+///     )
+/// }
+/// # }
+/// # fn main() {}
+/// ```
 #[derive(Clone)]
 pub struct AmqpPublisher {
     cell: CoreCell,

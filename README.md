@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <b><a href="https://powersemmi.github.io/ruststream-amqp/">Documentation</a></b>
+  <b><a href="https://powersemmi.github.io/ruststream-amqp/latest/">Documentation</a></b>
 </p>
 
 ---
@@ -124,8 +124,17 @@ tb.broker::<AmqpBroker>()
 
 ## Documentation
 
-- This crate: <https://docs.rs/ruststream-amqp>
-- The framework: <https://powersemmi.github.io/ruststream/latest>
+- [Getting started](https://powersemmi.github.io/ruststream-amqp/latest/guides/getting-started/) - installation and a first service against a
+  local ActiveMQ Artemis.
+- [Guides](https://powersemmi.github.io/ruststream-amqp/latest/) - queues and topics, acknowledgement, retries and dead letters,
+  request-reply, transactions, testing and a production broker.
+- [Components](https://powersemmi.github.io/ruststream-amqp/latest/components/) - one page per part of the crate: the broker, subscriptions,
+  dispositions, publishing, request-reply, transactions, the AsyncAPI bindings and testing.
+- [Architecture](https://powersemmi.github.io/ruststream-amqp/latest/architecture/) - how AMQP 1.0 works and how the crate sits between
+  `fe2o3-amqp` and the runtime.
+- [Benchmarks](https://powersemmi.github.io/ruststream-amqp/latest/architecture/benchmarks/) - what the crate costs over the raw client.
+- [API reference](https://docs.rs/ruststream-amqp) - every item on docs.rs.
+- The framework: <https://powersemmi.github.io/ruststream/latest/>
 
 ## Minimum supported Rust version
 

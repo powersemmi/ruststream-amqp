@@ -1028,6 +1028,7 @@ dependencies = [
  "fe2o3-amqp",
  "fe2o3-amqp-types",
  "futures",
+ "percent-encoding",
  "ruststream",
  "serde",
  "serde_json",

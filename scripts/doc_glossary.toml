@@ -63,11 +63,13 @@ ru = "издатель"
 ru_match = "издател"
 zh = "发布者"
 
+# A capability trait is «совместимость»; a capability a receiver asks of an AMQP node reads as
+# «возможность», so both are accepted.
 [[term]]
 en = "capability"
 en_match = "capabilit(y|ies)"
 ru = "совместимость"
-ru_match = "совместимост"
+ru_match = "совместимост|возможност"
 zh = "能力"
 
 [[term]]
@@ -119,9 +121,9 @@ zh = "编解码器"
 
 [[term]]
 en = "back-pressure"
-en_match = "back[- ]?pressure"
+en_match = "back[-\\s]?pressure"
 ru = "обратное давление"
-ru_match = "обратн\\w* давлени"
+ru_match = "обратн\\w*\\s+давлени"
 zh = "背压"
 
 [[term]]
@@ -136,14 +138,14 @@ zh = "至多一次"
 
 [[term]]
 en = "cancel safety"
-en_match = "cancel[- ]safe(ty)?"
+en_match = "cancel[-\\s]safe(ty)?"
 ru = "безопасность при отмене"
-ru_match = "безопасн\\w* при отмене"
+ru_match = "безопасн\\w*\\s+при\\s+отмене"
 zh = "取消安全"
 
 [[term]]
 en = "compile time"
-en_match = "compile[- ]time"
+en_match = "compile[-\\s]time"
 ru = "время компиляции"
 ru_match = "компиляци"
 zh = "编译期"

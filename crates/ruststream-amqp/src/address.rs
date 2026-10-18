@@ -12,6 +12,7 @@ use std::time::Duration;
 
 #[cfg(feature = "asyncapi")]
 use ruststream::asyncapi::Bindings;
+use ruststream::runtime::IntoSource;
 use ruststream::{
     AddressedCopies, RedeliveryAddress, RedeliveryAddressed, SubscriptionSource, nonzero,
 };
@@ -23,20 +24,91 @@ use crate::broker::ConnectedAmqpBroker;
 use crate::error::AmqpError;
 use crate::subscriber::AmqpSubscriber;
 
-/// Default protocol-level credit (prefetch) granted to a subscription.
+/// Default link credit granted to a subscription: the window of deliveries the broker may send
+/// ahead of the handler's settlements.
 pub const DEFAULT_CREDIT: NonZeroU32 = nonzero!(256);
 
 /// Default deadline closing a partial batch on a batch subscription.
 pub const DEFAULT_BATCH_WAIT: Duration = Duration::from_millis(10);
 
-/// Delivery guarantee of a subscription.
+/// Delivery guarantee of a subscription, set with [`AmqpAddress::settle`].
+///
+/// Under [`AtLeastOnce`](Self::AtLeastOnce) the handler's outcome is the delivery's disposition,
+/// and the runtime caps the attempts: `AMQP` 1.0 declares no node with a delivery limit and a
+/// dead-letter address, so `max_attempts` and `dead_letter` read the same here as on every broker.
+///
+/// # Examples
+///
+/// Five deliveries per order, then the `orders.dead` address. An order that is not ready yet
+/// comes back in half a minute, through a retry publisher that stamps each copy:
+///
+/// ```
+/// # mod demo {
+/// use std::time::Duration;
+///
+/// use ruststream::runtime::{Outgoing, PublishContext};
+/// use ruststream_amqp::prelude::*;
+/// use serde::Deserialize;
+///
+/// #[derive(Deserialize)]
+/// struct Order {
+///     id: u64,
+/// }
+///
+/// #[subscriber(AmqpAddress::queue("orders").settle(Settle::AtLeastOnce))]
+/// async fn fulfil(order: &Order) -> HandlerOutcome {
+///     if order.id == 0 {
+///         // Not ready yet: ask for the delivery again in half a minute.
+///         return HandlerOutcome::retry_after(Duration::from_secs(30));
+///     }
+///     tracing::info!(order.id, "fulfilled");
+///     HandlerOutcome::ack()
+/// }
+///
+/// /// Stamps a deferred copy with the address it came from, so a redelivery is recognisable.
+/// struct Retried;
+///
+/// impl<C, Options> PublishTransform<ForReply<C>, Options> for Retried {
+///     type Destination = Reads;
+///
+///     fn apply(
+///         &self,
+///         out: &mut Outgoing<'_>,
+///         _options: &mut Option<Options>,
+///         cx: &PublishContext<'_, C>,
+///     ) {
+///         out.headers_mut()
+///             .insert("x-retried-from", cx.name().to_owned());
+///     }
+/// }
+///
+/// #[ruststream::app]
+/// fn app() -> impl App {
+///     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
+///         AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
+///         |b| {
+///             b.include(fulfil)
+///                 .max_attempts(nonzero!(5u32))
+///                 .dead_letter("orders.dead")
+///                 .out_retry(Publish)
+///                 .transform(Retried);
+///         },
+///     )
+/// }
+/// # }
+/// # fn main() {}
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Settle {
-    /// Deliveries are settled by the handler: `ack` accepts, `nack` releases or rejects. The
-    /// default.
+    /// Deliveries are settled by the handler. The default.
+    ///
+    /// `ack` sends `accepted`. A retry, `nack(true)`, sends `modified` with `delivery-failed`,
+    /// never `released`, so the broker counts the attempt in `delivery-count`. A drop,
+    /// `nack(false)`, sends `rejected`, and the broker's dead-letter policy decides what follows.
     #[default]
     AtLeastOnce,
-    /// Deliveries are settled on receipt; `ack`/`nack` report
+    /// Deliveries are settled on receipt, so a message is gone whether the handler finished or
+    /// not; `ack` and `nack` report
     /// [`AckError::Unsupported`](ruststream::AckError::Unsupported).
     AtMostOnce,
 }
@@ -78,7 +150,7 @@ pub(crate) enum Routing {
 ///
 /// #[subscriber(AmqpAddress::queue("orders").credit(nonzero!(64)))]
 /// async fn fulfil(order: &Order) -> HandlerOutcome {
-///     println!("fulfilling order {}", order.id);
+///     tracing::info!(order.id, "fulfilling");
 ///     HandlerOutcome::ack()
 /// }
 /// #
@@ -130,7 +202,7 @@ impl AmqpAddress {
     /// // Every replica of the service competes for "orders": each order is handled once.
     /// #[subscriber(AmqpAddress::queue("orders"))]
     /// async fn fulfil(order: &Order) -> HandlerOutcome {
-    ///     println!("fulfilling order {}", order.id);
+    ///     tracing::info!(order.id, "fulfilling");
     ///     HandlerOutcome::ack()
     /// }
     /// #
@@ -165,7 +237,7 @@ impl AmqpAddress {
     /// // Every service subscribed to "events" gets its own copy of each event.
     /// #[subscriber(AmqpAddress::topic("events"))]
     /// async fn audit(event: &Event) -> HandlerOutcome {
-    ///     println!("audit: {}", event.kind);
+    ///     tracing::info!(kind = %event.kind, "audited");
     ///     HandlerOutcome::ack()
     /// }
     /// #
@@ -201,7 +273,7 @@ impl AmqpAddress {
     /// // RabbitMQ 4.x addresses a queue by its v2 path; the string reaches the broker as written.
     /// #[subscriber(AmqpAddress::raw("/queues/orders"))]
     /// async fn fulfil(order: &Order) -> HandlerOutcome {
-    ///     println!("fulfilling order {}", order.id);
+    ///     tracing::info!(order.id, "fulfilling");
     ///     HandlerOutcome::ack()
     /// }
     /// #
@@ -219,8 +291,13 @@ impl AmqpAddress {
         Self::of(address.into(), Kind::Raw)
     }
 
-    /// Sets the protocol-level credit (prefetch): how many unsettled deliveries the broker may
-    /// have in flight to this subscription. Defaults to [`DEFAULT_CREDIT`].
+    /// Sets the link credit: the window of deliveries the broker may send ahead of the handler's
+    /// settlements. Defaults to [`DEFAULT_CREDIT`].
+    ///
+    /// The subscription grants the full credit when it attaches, and grants it again each time
+    /// half of it has been settled. The broker then never runs more than `credit` deliveries
+    /// ahead of the last grant, but the deliveries held unsettled can outnumber the credit: with a
+    /// credit of 4, the second settlement brings four more while two are still open.
     ///
     /// The count is a [`NonZeroU32`] because a subscription granted no credit receives nothing:
     /// zero is not a quieter setting but a stalled subscription, so it is unrepresentable here.
@@ -237,10 +314,10 @@ impl AmqpAddress {
     ///     id: u64,
     /// }
     ///
-    /// // At most 64 unsettled orders in flight to this service at once.
+    /// // The broker sends up to 64 orders ahead of the handler's settlements.
     /// #[subscriber(AmqpAddress::queue("orders").credit(nonzero!(64)))]
     /// async fn fulfil(order: &Order) -> HandlerOutcome {
-    ///     println!("fulfilling order {}", order.id);
+    ///     tracing::info!(order.id, "fulfilling");
     ///     HandlerOutcome::ack()
     /// }
     /// #
@@ -270,6 +347,39 @@ impl AmqpAddress {
     }
 
     /// Sets the delivery guarantee. Defaults to [`Settle::AtLeastOnce`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # mod demo {
+    /// use ruststream_amqp::prelude::*;
+    /// use serde::Deserialize;
+    ///
+    /// #[derive(Deserialize)]
+    /// struct Event {
+    ///     kind: String,
+    /// }
+    ///
+    /// // Settled on receipt: the audit may miss an event when the process stops, and the broker
+    /// // never waits for it.
+    /// #[subscriber(AmqpAddress::topic("events").settle(Settle::AtMostOnce))]
+    /// async fn audit(events: &[Event]) -> HandlerOutcome {
+    ///     for event in events {
+    ///         tracing::info!(kind = %event.kind, "audited");
+    ///     }
+    ///     HandlerOutcome::ack()
+    /// }
+    ///
+    /// #[ruststream::app]
+    /// fn app() -> impl App {
+    ///     RustStream::new(AppInfo::new("audit", "0.1.0"))
+    ///         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| {
+    ///             b.include(audit.batch(nonzero!(32)));
+    ///         })
+    /// }
+    /// # }
+    /// # fn main() {}
+    /// ```
     pub fn settle(mut self, settle: Settle) -> Self {
         self.settle = settle;
         self
@@ -299,8 +409,7 @@ impl AmqpAddress {
     /// // Up to 32 orders per call, or whatever arrived within 50 ms of the first one.
     /// #[subscriber(AmqpAddress::queue("orders").batch_wait(Duration::from_millis(50)))]
     /// async fn fulfil(orders: &[Order]) -> HandlerOutcome {
-    ///     let ids: Vec<u64> = orders.iter().map(|order| order.id).collect();
-    ///     println!("fulfilling orders {ids:?}");
+    ///     tracing::info!(count = orders.len(), "fulfilling");
     ///     HandlerOutcome::ack()
     /// }
     ///
@@ -399,6 +508,61 @@ impl AmqpAddress {
             ));
         }
         Ok(())
+    }
+}
+
+/// The descriptor mounts on the manual path the way it does on the attribute: the
+/// `subscriber(..)` constructor takes it as its source, unchanged.
+///
+/// # Examples
+///
+/// ```
+/// # mod demo {
+/// use std::future::{Future, ready};
+///
+/// use ruststream_amqp::prelude::*;
+/// # use ruststream::schemars::JsonSchema;
+/// use serde::Deserialize;
+///
+/// # // The doctest links the framework with its `asyncapi` feature on, where a manual
+/// # // registration owes the generated document the message's schema.
+/// # #[derive(JsonSchema)]
+/// # #[schemars(crate = "ruststream::schemars")]
+/// #[derive(Deserialize)]
+/// struct Order {
+///     id: u64,
+/// }
+///
+/// struct TakeOrder;
+///
+/// impl Handle<Order> for TakeOrder {
+///     fn handle(
+///         &self,
+///         order: &Order,
+///         _outs: &(),
+///         _ctx: &mut Context<'_>,
+///     ) -> impl Future<Output = Result<(), HandlerOutcome>> {
+///         tracing::info!(order.id, "order taken");
+///         ready(Ok(()))
+///     }
+/// }
+///
+/// fn app() -> RustStream {
+///     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
+///         AmqpBroker::new("amqp://localhost:5672"),
+///         |b| {
+///             b.include(subscriber(AmqpAddress::queue("orders"), TakeOrder).build());
+///         },
+///     )
+/// }
+/// # }
+/// # fn main() {}
+/// ```
+impl IntoSource for AmqpAddress {
+    type Source = Self;
+
+    fn into_source(self) -> Self {
+        self
     }
 }
 

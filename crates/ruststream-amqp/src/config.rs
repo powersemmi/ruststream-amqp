@@ -1,6 +1,12 @@
 //! Connection configuration: SASL profiles.
 
+use std::borrow::Cow;
+
 use fe2o3_amqp::sasl_profile::SaslProfile;
+use percent_encoding::percent_decode_str;
+use url::Url;
+
+use crate::error::AmqpError;
 
 /// How the broker authenticates the connection, mapped onto the client's SASL profiles.
 ///
@@ -22,7 +28,7 @@ use fe2o3_amqp::sasl_profile::SaslProfile;
 /// #
 /// # #[subscriber(AmqpAddress::queue("orders"))]
 /// # async fn handle(order: &Order) -> HandlerOutcome {
-/// #     println!("got order {}", order.id);
+/// #     tracing::info!(order.id, "accepted");
 /// #     HandlerOutcome::ack()
 /// # }
 ///
@@ -61,7 +67,7 @@ impl Sasl {
     /// #
     /// # #[subscriber(AmqpAddress::queue("orders"))]
     /// # async fn handle(order: &Order) -> HandlerOutcome {
-    /// #     println!("got order {}", order.id);
+    /// #     tracing::info!(order.id, "accepted");
     /// #     HandlerOutcome::ack()
     /// # }
     ///
@@ -100,7 +106,7 @@ impl Sasl {
     /// #
     /// # #[subscriber(AmqpAddress::queue("orders"))]
     /// # async fn handle(order: &Order) -> HandlerOutcome {
-    /// #     println!("got order {}", order.id);
+    /// #     tracing::info!(order.id, "accepted");
     /// #     HandlerOutcome::ack()
     /// # }
     ///
@@ -125,8 +131,10 @@ impl Sasl {
         }
     }
 
-    /// SASL EXTERNAL: authentication established outside SASL, typically a TLS client
-    /// certificate.
+    /// SASL EXTERNAL: the broker takes an identity established outside SASL.
+    ///
+    /// The connection presents no client certificate: the crate exposes no TLS configuration,
+    /// and the client opens TLS without client authentication.
     ///
     /// # Examples
     ///
@@ -142,14 +150,14 @@ impl Sasl {
     /// #
     /// # #[subscriber(AmqpAddress::queue("orders"))]
     /// # async fn handle(order: &Order) -> HandlerOutcome {
-    /// #     println!("got order {}", order.id);
+    /// #     tracing::info!(order.id, "accepted");
     /// #     HandlerOutcome::ack()
     /// # }
     ///
     /// #[ruststream::app]
     /// fn app() -> impl App {
     ///     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
-    ///         // Authenticated by the TLS client certificate; no SASL credentials.
+    ///         // The broker identifies the service outside SASL; no credentials travel here.
     ///         AmqpBroker::new("amqps://broker.internal:5671").sasl(Sasl::external()),
     ///         |b| {
     ///             b.include(handle);
@@ -162,6 +170,117 @@ impl Sasl {
     pub fn external() -> Self {
         Self {
             profile: SaslProfile::External,
+        }
+    }
+}
+
+/// The SASL profile a connection opens with: the one set with
+/// [`AmqpBroker::sasl`](crate::AmqpBroker::sasl), or else PLAIN from the URL's userinfo, or else
+/// none, which leaves the choice to the client.
+///
+/// A URL carries its userinfo percent-encoded, so a password with a reserved character
+/// (`p%40ss`) is decoded before it becomes a credential.
+///
+/// # Errors
+///
+/// Returns [`AmqpError::Connect`] when the decoded userinfo is not UTF-8, which a PLAIN credential
+/// has to be.
+pub(crate) fn sasl_profile(
+    explicit: Option<&Sasl>,
+    url: &Url,
+) -> Result<Option<SaslProfile>, AmqpError> {
+    if let Some(sasl) = explicit {
+        return Ok(Some(sasl.profile.clone()));
+    }
+    // The client's own reading of a URL: a user and a password select PLAIN, anything less selects
+    // nothing.
+    let (username, Some(password)) = (url.username(), url.password()) else {
+        return Ok(None);
+    };
+    if username.is_empty() {
+        return Ok(None);
+    }
+    let decode = |part: &str| {
+        percent_decode_str(part)
+            .decode_utf8()
+            .map(Cow::into_owned)
+            .map_err(|_| {
+                AmqpError::Connect(Box::from(
+                    "the URL's userinfo is not UTF-8 once percent-decoded",
+                ))
+            })
+    };
+    Ok(Some(SaslProfile::Plain {
+        username: decode(username)?,
+        password: decode(password)?,
+    }))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::hash::{BuildHasher, RandomState};
+
+    use super::*;
+
+    fn profile(explicit: Option<&Sasl>, url: &str) -> Result<Option<SaslProfile>, AmqpError> {
+        sasl_profile(explicit, &Url::parse(url).expect("the URL parses"))
+    }
+
+    fn plain(profile: Option<SaslProfile>) -> Option<(String, String)> {
+        match profile {
+            Some(SaslProfile::Plain { username, password }) => Some((username, password)),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn an_explicit_profile_wins_over_the_userinfo() {
+        // Drawn afresh for every run, so no credential lives in the source.
+        let password = format!("{:016x}", RandomState::new().hash_one("password"));
+        let explicit = Sasl::plain("svc", password.as_str());
+        let chosen = profile(Some(&explicit), "amqp://other:wrong@broker:5672").expect("valid");
+        assert_eq!(plain(chosen), Some(("svc".to_owned(), password)));
+
+        let chosen =
+            profile(Some(&Sasl::anonymous()), "amqp://other:wrong@broker:5672").expect("valid");
+        assert!(
+            matches!(chosen, Some(SaslProfile::Anonymous)),
+            "got {chosen:?}"
+        );
+    }
+
+    #[test]
+    fn the_userinfo_selects_plain_percent_decoded() {
+        let chosen = profile(None, "amqp://svc%2Ba:p%40ss%3Aw@broker:5672").expect("valid");
+        assert_eq!(
+            plain(chosen),
+            Some(("svc+a".to_owned(), "p@ss:w".to_owned()))
+        );
+    }
+
+    #[test]
+    fn a_url_without_a_user_and_a_password_selects_nothing() {
+        for url in [
+            "amqp://broker:5672",
+            "amqp://svc@broker:5672",
+            "amqp://:secret@broker:5672",
+        ] {
+            let chosen = profile(None, url).expect("valid");
+            assert!(chosen.is_none(), "{url}: got {chosen:?}");
+        }
+    }
+
+    #[test]
+    fn userinfo_that_is_not_utf8_once_decoded_is_refused() {
+        for url in [
+            "amqp://%FF:secret@broker:5672",
+            "amqp://svc:%C3@broker:5672",
+        ] {
+            let refused = profile(None, url).expect_err("no PLAIN credential is not UTF-8");
+            assert!(
+                matches!(refused, AmqpError::Connect(_)),
+                "{url}: got {refused}"
+            );
         }
     }
 }
