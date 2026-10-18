@@ -544,7 +544,9 @@ A URL with userinfo (`amqp://user:pass@host`) selects PLAIN on its own, and an e
 passed to [`AmqpBroker::sasl`] wins over it.
 
 An `amqps://` endpoint needs the `rustls` or the `native-tls` feature, which is forwarded to the
-client; the crate adds no TLS configuration of its own.
+client; the crate adds no TLS configuration of its own. The client takes the TLS server name from
+the URL's host, so an `amqps://` URL names a host name or an IPv4 address; one on an IPv6 address
+does not connect.
 
 [`AmqpBroker::container_id`] names the service to the broker, `"ruststream"` by default, which is
 how an operator finds its links in the broker's own console.
