@@ -1,0 +1,97 @@
+{
+  "schema": 3,
+  "crate": "ruststream-amqp",
+  "crate_version": "0.7.0",
+  "core_version": "0.7.0",
+  "measured_at": "2026-10-18",
+  "environment": {
+    "cpu": "AMD Ryzen 9 7900X 12-Core Processor",
+    "architecture": "x86_64",
+    "cpu_frequency": "427-5912 MHz",
+    "cores": "12 physical, 24 logical",
+    "memory": "62.4 GiB",
+    "memory_speed": "unknown",
+    "os": "Linux 7.2.10-x64v3-xanmod1-1",
+    "broker": "apache/activemq-artemis:latest-alpine in Docker on localhost",
+    "rustc": "1.99.0",
+    "profile": "bench, inheriting release (opt-level = 3, lto = fat, codegen-units = 16, debug = line-tables-only)",
+    "features": "ruststream-amqp default (none), ruststream macros,json",
+    "rustflags": "none (the recipe clears RUSTFLAGS, so the numbers are not tied to this CPU)",
+    "round_trip": "52 us (median of 20000 sends waiting for their disposition)",
+    "valgrind": "3.25.1"
+  },
+  "scenarios": [
+    {
+      "name": "queue, 512 B JSON, accept each",
+      "unit": "msg/s",
+      "messages": 881442,
+      "pairs": 3,
+      "raw": {
+        "best": 182362,
+        "median": 182123,
+        "worst": 177889
+      },
+      "adapter": {
+        "best": 177811,
+        "median": 175870,
+        "worst": 174583
+      },
+      "framework": {
+        "best": 178312,
+        "median": 176666,
+        "worst": 174707
+      },
+      "overhead_percent": 2.2,
+      "adapter_overhead_percent": 2.5,
+      "adapter_verdict": "measured",
+      "verdict": "indistinguishable",
+      "broker_bound": false
+    }
+  ],
+  "code": [
+    {
+      "name": "queue, JSON decode into a small struct, accept each",
+      "messages": 1000,
+      "framework": {
+        "instructions": 28063.9,
+        "allocations": 17.1
+      },
+      "cold": {
+        "instructions": 222777,
+        "allocations": 228
+      },
+      "gated": true
+    },
+    {
+      "name": "reply through this crate's publisher, accepted by the broker",
+      "messages": 1000,
+      "framework": {
+        "instructions": 60353.8,
+        "allocations": 46.1
+      },
+      "cold": {
+        "instructions": 238499,
+        "allocations": 260
+      },
+      "gated": true
+    },
+    {
+      "name": "queue in batches of 64, assembled on the client",
+      "messages": 1000,
+      "framework": {
+        "instructions": 28743.1,
+        "allocations": 17.4
+      },
+      "cold": {
+        "instructions": 230614,
+        "allocations": 232
+      },
+      "gated": true
+    }
+  ],
+  "code_measured": {
+    "crate_version": "0.7.0",
+    "core_version": "0.7.0",
+    "measured_at": "2026-10-18"
+  }
+}
