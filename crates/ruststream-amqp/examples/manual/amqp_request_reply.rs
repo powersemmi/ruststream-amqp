@@ -151,6 +151,9 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn the_startup_request_is_answered() -> Result<(), Box<dyn Error>> {
         let tb = TestApp::start(app()).await?;
+        // The startup hook's request is a reaction the harness did not start: the greeter's
+        // settlement is recorded after its reply reaches the hook, so the test waits for it.
+        tb.settle().await?;
 
         tb.broker::<AmqpBroker>()
             .subscriber("greeter")
