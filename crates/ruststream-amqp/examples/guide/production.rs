@@ -71,17 +71,23 @@ fn app() -> impl App {
 #[cfg(test)]
 mod tests {
     use std::error::Error;
+    use std::hash::{BuildHasher, RandomState};
 
     use ruststream::testing::TestApp;
     use ruststream_amqp::prelude::*;
 
     use super::{Confirmation, Endpoint, Order, broker, service};
 
+    /// A password drawn afresh for every run, so no credential lives in the source.
+    fn password() -> String {
+        format!("{:016x}", RandomState::new().hash_one("password"))
+    }
+
     fn endpoint(url: &str) -> Endpoint {
         Endpoint {
             url: url.to_owned(),
             username: "orders-svc".to_owned(),
-            password: "s3cret/pa55?".to_owned(),
+            password: password(),
         }
     }
 

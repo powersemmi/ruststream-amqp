@@ -5,6 +5,8 @@
 //! resolving to the policy through the glob even while the framework ships a same-named item of
 //! its own - which is exactly what a silent glob shadow would hide.
 
+use std::hash::{BuildHasher, RandomState};
+
 use ruststream_amqp::prelude::*;
 
 /// The handler vocabulary: a slot bound names the capability, never a publisher type. The leading
@@ -30,7 +32,8 @@ fn the_mount_vocabulary_names_the_policies_without_the_broker_prefix() {
 /// guarantee, and the error startup and publishing report.
 #[test]
 fn the_glob_carries_the_surface_a_declaration_names() {
-    let broker = AmqpBroker::new("amqp://localhost:5672").sasl(Sasl::plain("svc", "secret"));
+    let password = format!("{:016x}", RandomState::new().hash_one("password"));
+    let broker = AmqpBroker::new("amqp://localhost:5672").sasl(Sasl::plain("svc", password));
     let source = AmqpAddress::topic("events").settle(Settle::AtMostOnce);
     let reported: Result<(), AmqpError> = Ok(());
 

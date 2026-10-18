@@ -141,18 +141,26 @@ fn app() -> impl App<State = ()> {
 #[cfg(test)]
 mod tests {
     use std::error::Error;
+    use std::hash::{BuildHasher, RandomState};
 
     use ruststream::asyncapi::build_spec;
     use serde_json::{Value, json};
 
     use super::{broker, service};
 
-    const PASSWORD: &str = "hunter2";
+    /// A password no document could hold by coincidence, drawn afresh for every run.
+    fn password() -> String {
+        format!("{:016x}", RandomState::new().hash_one("password"))
+    }
+
+    fn document_with(password: &str) -> Result<Value, Box<dyn Error>> {
+        Ok(serde_json::from_str(
+            &build_spec(&service(broker(password))).to_json()?,
+        )?)
+    }
 
     fn document() -> Result<Value, Box<dyn Error>> {
-        Ok(serde_json::from_str(
-            &build_spec(&service(broker(PASSWORD))).to_json()?,
-        )?)
+        document_with(&password())
     }
 
     /// The excerpt the AMQP bindings page shows is this service's own document.
@@ -173,7 +181,8 @@ mod tests {
 
     #[test]
     fn the_server_speaks_amqp_1_0_without_the_password() -> Result<(), Box<dyn Error>> {
-        let spec = document()?;
+        let password = password();
+        let spec = document_with(&password)?;
 
         assert_eq!(
             spec["servers"]["amqp"],
@@ -185,7 +194,7 @@ mod tests {
             })
         );
         let text = spec.to_string();
-        assert!(!text.contains(PASSWORD), "{text}");
+        assert!(!text.contains(&password), "{text}");
         Ok(())
     }
 

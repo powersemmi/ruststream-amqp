@@ -218,6 +218,8 @@ pub(crate) fn sasl_profile(
 
 #[cfg(test)]
 mod tests {
+    use std::hash::{BuildHasher, RandomState};
+
     use super::*;
 
     fn profile(explicit: Option<&Sasl>, url: &str) -> Result<Option<SaslProfile>, AmqpError> {
@@ -233,9 +235,11 @@ mod tests {
 
     #[test]
     fn an_explicit_profile_wins_over_the_userinfo() {
-        let explicit = Sasl::plain("svc", "secret");
+        // Drawn afresh for every run, so no credential lives in the source.
+        let password = format!("{:016x}", RandomState::new().hash_one("password"));
+        let explicit = Sasl::plain("svc", password.as_str());
         let chosen = profile(Some(&explicit), "amqp://other:wrong@broker:5672").expect("valid");
-        assert_eq!(plain(chosen), Some(("svc".to_owned(), "secret".to_owned())));
+        assert_eq!(plain(chosen), Some(("svc".to_owned(), password)));
 
         let chosen =
             profile(Some(&Sasl::anonymous()), "amqp://other:wrong@broker:5672").expect("valid");

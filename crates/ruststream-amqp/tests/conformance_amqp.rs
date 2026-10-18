@@ -15,6 +15,7 @@
 #![cfg(feature = "testing")]
 #![allow(clippy::redundant_closure, clippy::redundant_closure_for_method_calls)]
 
+use std::hash::{BuildHasher, RandomState};
 use std::time::Duration;
 
 use ruststream::conformance::harness::InProcessBroker;
@@ -131,11 +132,13 @@ async fn in_process_keeps_keyed_order() {
 #[cfg(feature = "asyncapi")]
 #[test]
 fn amqp_broker_describes_itself_without_credentials() {
+    // Drawn afresh for every run, so no credential lives in the source.
+    let password = format!("{:016x}", RandomState::new().hash_one("password"));
     harness::describes_without_credentials(
-        &AmqpBroker::new("amqp://svc:hunter2@broker.example.com:5672")
-            .sasl(Sasl::plain("svc", "hunter2")),
+        &AmqpBroker::new(format!("amqp://svc:{password}@broker.example.com:5672"))
+            .sasl(Sasl::plain("svc", password.as_str())),
         &AmqpAddress::queue("orders"),
-        "hunter2",
+        &password,
     );
     // The broker connects to one address: it takes the first of the list.
     message_shape::describes_addresses_without_credentials(

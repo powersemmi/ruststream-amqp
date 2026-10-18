@@ -90,12 +90,18 @@ impl MessageHeaders for Order {
 #[cfg(test)]
 mod tests {
     use std::error::Error;
+    use std::hash::{BuildHasher, RandomState};
 
     use ruststream::testing::TestApp;
     use ruststream_amqp::prelude::*;
     use url::Url;
 
     use super::{Order, broker, live, orders, service};
+
+    /// A password drawn afresh for every run, so no credential lives in the source.
+    fn password() -> String {
+        format!("{:016x}", RandomState::new().hash_one("password"))
+    }
 
     /// The body both modes run: an order reaches the handler on an authenticated connection.
     async fn places_an_order(tb: TestApp<()>) -> Result<(), Box<dyn Error>> {
@@ -115,7 +121,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_secured_service_handles_an_order() -> Result<(), Box<dyn Error>> {
-        let broker = broker("amqps://broker.internal:5671", "orders-svc", "secret");
+        let broker = broker("amqps://broker.internal:5671", "orders-svc", &password());
         places_an_order(TestApp::start(service(broker)).await?).await
     }
 
