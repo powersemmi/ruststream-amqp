@@ -162,8 +162,6 @@ jobs:
       # `serde_repr` 0.1.0 (via fe2o3-amqp-types) declares `quote = "0.6"` but calls a macro that
       # release does not export. `slab` 0.4.2 and `url` 2.0 are what fe2o3-amqp's bounds admit,
       # below the `try_remove` and `TryFrom<&str> for Url` this crate's transport path reaches for.
-      # `tracing-attributes` declares `syn = "1.0"` but calls `base10_parse`, added in 1.0.5; the
-      # selector is version-qualified because several major lines of syn are in the graph.
       #
       # ruststream declares its own floors, so nothing here pins on its account.
       - name: Pin dependencies whose declared bounds are too loose
@@ -173,7 +171,6 @@ jobs:
           cargo update -p serde_repr --precise 0.1.12
           cargo update -p slab --precise 0.4.4
           cargo update -p url --precise 2.2.0
-          cargo update -p syn@1.0.0 --precise 1.0.5
 
       # Minimum dependencies on the minimum compiler: the worst case a user can assemble.
       # Resolution above needs nightly, so only this step drops to the floor.
