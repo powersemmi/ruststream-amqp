@@ -24,7 +24,7 @@ use ruststream::{Broker, ConnectedBroker};
 use ruststream_amqp::prelude::*;
 use serde::{Deserialize, Serialize};
 
-mod live;
+use crate::live;
 
 /// The broker's address in process; the in-process mode dials nothing.
 const URL: &str = "amqp://broker.example.com:5672";
@@ -38,18 +38,19 @@ struct Order {
 }
 
 // The addresses of the cases that also run live are per process, so a stand a developer keeps
-// running does not hand one run the leftovers of another. A `#[subscriber(..)]` argument is
+// running does not hand one run the leftovers of another, and they name this suite, so the live
+// retry suite in the same test binary never meets them. A `#[subscriber(..)]` argument is
 // evaluated where the subscription opens, which is why these are functions.
 fn deferred_orders() -> String {
-    format!("retry.deferred.{}", std::process::id())
+    format!("retry.redelivery.deferred.{}", std::process::id())
 }
 
 fn capped_orders() -> String {
-    format!("retry.capped.{}", std::process::id())
+    format!("retry.redelivery.capped.{}", std::process::id())
 }
 
 fn capped_dead() -> String {
-    format!("retry.capped.dead.{}", std::process::id())
+    format!("retry.redelivery.capped.dead.{}", std::process::id())
 }
 
 /// Defers the first delivery and acks the copy that comes back, so the outcomes say whether the

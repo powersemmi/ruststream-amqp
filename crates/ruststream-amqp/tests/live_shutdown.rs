@@ -20,7 +20,7 @@ use ruststream::{
 };
 use ruststream_amqp::{AmqpAddress, AmqpBroker, AmqpSubscriber, ConnectedAmqpBroker};
 
-mod live;
+use crate::live;
 
 /// Start-and-stop cycles per test: enough that a race lost one stop in four cannot pass by luck.
 const CYCLES: usize = 16;

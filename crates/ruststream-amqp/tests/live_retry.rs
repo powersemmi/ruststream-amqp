@@ -20,7 +20,7 @@ use ruststream_amqp::prelude::*;
 use ruststream_amqp::{AmqpMessage, ConnectedAmqpBroker};
 use serde::{Deserialize, Serialize};
 
-mod live;
+use crate::live;
 
 const RECV_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -46,7 +46,7 @@ async fn connect(url: &str) -> ConnectedAmqpBroker {
 }
 
 // The addresses are per process, so a stand a developer keeps running does not hand one run the
-// leftovers of another. A `#[subscriber(..)]` argument is evaluated where the subscription opens,
+// leftovers of another; the redelivery suite in the same test binary names its own. A `#[subscriber(..)]` argument is evaluated where the subscription opens,
 // which is why these are functions rather than constants.
 fn deferred_orders() -> String {
     format!("retry.deferred.orders.{}", std::process::id())

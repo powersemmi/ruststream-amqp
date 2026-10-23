@@ -15,6 +15,9 @@ categories = ["asynchronous", "network-programming"]
 # `default` is empty and every module beyond the plain broker is behind a feature, so a default
 # build on docs.rs publishes a reference with the transactional publisher, the in-process mode
 # and the AsyncAPI bindings missing - the ones the crate overview sends readers to.
+# Every file under `tests/` is a module of one test binary: one link instead of one per file.
+autotests = false
+
 [package.metadata.docs.rs]
 all-features = true
 
@@ -68,6 +71,10 @@ serde = { version = "1", features = ["derive"] }
 # Reads back the generated AsyncAPI document the binding cases assert on.
 serde_json = "1"
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
+
+[[test]]
+name = "suite"
+path = "tests/main.rs"
 
 # The transactional publisher only exists under the `transaction` feature.
 [[example]]

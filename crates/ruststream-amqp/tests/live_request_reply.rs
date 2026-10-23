@@ -20,7 +20,7 @@ use ruststream::{
 };
 use ruststream_amqp::{AmqpAddress, AmqpBroker, ConnectedAmqpBroker};
 
-mod live;
+use crate::live;
 
 /// Round trips the run makes. Enough that one outlier cannot carry the average, few enough that
 /// the run stays under a second either way and a failure is read from the report rather than
