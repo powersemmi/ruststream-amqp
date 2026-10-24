@@ -22,7 +22,7 @@ use ruststream_amqp::{
     AmqpAddress, AmqpBroker, AmqpError, AmqpMessage, ConnectedAmqpBroker, Settle,
 };
 
-mod live;
+use crate::live;
 
 const RECV_TIMEOUT: Duration = Duration::from_secs(10);
 
