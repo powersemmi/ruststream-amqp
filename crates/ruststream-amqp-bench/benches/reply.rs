@@ -42,8 +42,8 @@ fn app(messages: usize) -> Pending {
     })
 }
 
-// The longest run allocated 92,475 to 92,478 blocks over five runs of this tree.
-#[library_benchmark(config = common::config(common::floor(92_478)))]
+// The longest run allocated 90,480 to 90,481 blocks over five runs of this tree.
+#[library_benchmark(config = common::config(common::floor(90_481)))]
 #[bench::first(app(1))]
 #[bench::base(app(MESSAGES))]
 #[bench::twice(app(2 * MESSAGES))]
