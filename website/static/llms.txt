@@ -23,7 +23,7 @@ This site holds the guides, one page per component and the architecture of the c
 - [Components](https://powersemmi.github.io/ruststream-amqp/latest/components/): the parts of the crate an AMQP 1.0 service uses, one page each
 - [AMQP broker](https://powersemmi.github.io/ruststream-amqp/latest/components/broker/): `AmqpBroker`, its URL and its lazy connection
 - [container_id](https://powersemmi.github.io/ruststream-amqp/latest/components/broker/container-id/): the name the service presents, which an operator finds its links by
-- [Security](https://powersemmi.github.io/ruststream-amqp/latest/components/broker/security/): `Sasl` for the login, and TLS for `amqps://` with the `rustls` or `native-tls` feature
+- [Security](https://powersemmi.github.io/ruststream-amqp/latest/components/broker/security/): `Sasl` for the login, and TLS for `amqps://` with the `rustls` or `native-tls` feature: `Tls` for the trusted authorities and the client certificate SASL EXTERNAL logs in with
 - [Startup](https://powersemmi.github.io/ruststream-amqp/latest/components/broker/startup/): the socket, the login, the publishers' session and each subscription's attach
 - [Shutdown](https://powersemmi.github.io/ruststream-amqp/latest/components/broker/shutdown/): the teardown from the inside out, and `AmqpError::NotConnected` for a publisher used afterwards
 - [Prelude](https://powersemmi.github.io/ruststream-amqp/latest/components/broker/prelude/): `ruststream_amqp::prelude`, the one glob an AMQP service imports

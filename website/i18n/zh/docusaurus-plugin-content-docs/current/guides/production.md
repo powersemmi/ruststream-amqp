@@ -31,7 +31,8 @@ TLS 需要两个 feature 之一：`rustls` 使用 [rustls](https://docs.rs/rustl
 [`Sasl::plain`](../components/broker/security.md) 用用户名和密码让服务登录。
 这时 URL 中不带凭据。
 密码中含有在 URL 里有特殊含义的字符（例如 `/`、`?` 或 `@`）时，可以原样交给 `Sasl::plain`。
-[`Sasl::anonymous`](api:ruststream_amqp::Sasl::anonymous) 不带凭据连接，[`Sasl::external`](api:ruststream_amqp::Sasl::external) 使用连接在 SASL 之外已经建立的凭据。
+[`Sasl::anonymous`](api:ruststream_amqp::Sasl::anonymous) 不带凭据连接。
+[`Sasl::external`](api:ruststream_amqp::Sasl::external) 用 [`AmqpBroker::tls`](api:ruststream_amqp::AmqpBroker::tls) 设置的客户端证书登录，[安全页面](../components/broker/security.md#client-certificate)给出了示例。
 
 在 Azure Service Bus 上，用户名是共享访问策略的名称，密码是它的密钥，见其 [AMQP 指南](https://learn.microsoft.com/en-us/azure/service-bus-messaging/service-bus-amqp-protocol-guide)。
 

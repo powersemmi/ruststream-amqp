@@ -16,3 +16,4 @@ mod publishing;
 mod reply_destination;
 mod retry_redelivery;
 mod sources;
+mod tls;

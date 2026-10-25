@@ -26,9 +26,10 @@ workspace = true
 
 [features]
 default = []
-# TLS for amqps:// endpoints, forwarded to the client.
-rustls = ["fe2o3-amqp/rustls"]
-native-tls = ["fe2o3-amqp/native-tls"]
+# TLS for amqps:// endpoints, forwarded to the client, and the TLS settings a service sets on the
+# broker (`Tls`), built with the same backend the client opens the connection through.
+rustls = ["fe2o3-amqp/rustls", "dep:tokio-rustls", "dep:tokio-util", "dep:webpki-roots"]
+native-tls = ["fe2o3-amqp/native-tls", "dep:native-tls", "dep:tokio-native-tls", "dep:tokio-util"]
 # AMQP 1.0 transactions (transactional posting) behind the client's own gate.
 transaction = ["fe2o3-amqp/transaction"]
 # The broker's in-process mode: `TestApp::start` connects `AmqpBroker` without a server. A service
@@ -55,6 +56,13 @@ url.workspace = true
 # Decodes the URL's userinfo into the credentials it stands for; `url` already depends on it.
 percent-encoding.workspace = true
 tracing.workspace = true
+# The TLS settings build the connector the client opens `amqps://` through, so these are the
+# client's own TLS crates at the client's versions; the client already depends on each of them.
+native-tls = { version = "0.2.12", optional = true }
+tokio-native-tls = { version = "0.3", optional = true }
+tokio-rustls = { version = "0.26", default-features = false, optional = true }
+tokio-util = { version = "0.7", features = ["codec"], optional = true }
+webpki-roots = { version = "1", optional = true }
 
 [dev-dependencies]
 # The conformance harness drives the testing-feature broker; macros + json power the runnable

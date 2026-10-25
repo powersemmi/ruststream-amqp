@@ -31,7 +31,8 @@ TLS требует одной из двух фич: `rustls` используе�
 [`Sasl::plain`](../components/broker/security.md) выполняет вход сервиса с именем пользователя и паролем.
 Тогда в URL нет учётных данных.
 Пароль с символами, которые имеют особый смысл в URL, например `/`, `?` или `@`, передаётся в `Sasl::plain` как есть.
-[`Sasl::anonymous`](api:ruststream_amqp::Sasl::anonymous) подключается без учётных данных, а [`Sasl::external`](api:ruststream_amqp::Sasl::external) использует учётные данные, которые соединение уже установило вне SASL.
+[`Sasl::anonymous`](api:ruststream_amqp::Sasl::anonymous) подключается без учётных данных.
+[`Sasl::external`](api:ruststream_amqp::Sasl::external) входит по клиентскому сертификату, который задаёт [`AmqpBroker::tls`](api:ruststream_amqp::AmqpBroker::tls); пример есть на [странице о безопасности](../components/broker/security.md#client-certificate).
 
 В Azure Service Bus имя пользователя - это имя политики общего доступа, а пароль - её ключ, как описывает [руководство по AMQP](https://learn.microsoft.com/en-us/azure/service-bus-messaging/service-bus-amqp-protocol-guide).
 

@@ -27,6 +27,7 @@
     "Ask with `request(msg, timeout)` on a slot bound `Out<impl RequestReply>`, and answer from a responder through an `Out<impl Publisher>` slot with `.to(reply_to)`, echoing `correlation-id` (Components > Request-reply).",
     "Publish several messages together or not at all through `TransactionalPublish` (feature `transaction`) and a slot bound `Out<impl TransactionalPublisher>`, with `begin_transaction`, `commit` and `abort` (Guides > Transactions).",
     "Test the production app: hand the app `main` runs to `TestApp::start` with the `testing` feature, address the broker as `tb.broker::<AmqpBroker>()`, and run the same body on `TestApp::start_live` for credit and dead-letter policy (Components > Testing).",
-    "Configure the login with `AmqpBroker::sasl(Sasl::plain(user, password))` for credentials from the environment, and enable `rustls` or `native-tls` for an `amqps://` URL on a host name or an IPv4 address (Guides > Connecting to production)."
+    "Configure the login with `AmqpBroker::sasl(Sasl::plain(user, password))` for credentials from the environment, and enable `rustls` or `native-tls` for an `amqps://` URL on a host name or an IPv4 address (Guides > Connecting to production).",
+    "Log in with a client certificate through `AmqpBroker::tls(Tls::new().root_certificates(ca).client_identity(cert, key))` plus `.sasl(Sasl::external())` on an `amqps://` URL; every setting is PEM text (Components > Broker > Security)."
   ]
 }

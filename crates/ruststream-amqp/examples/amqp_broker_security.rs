@@ -1,10 +1,12 @@
 //! A service on a broker that authenticates its clients: SASL PLAIN with the service's own
-//! credentials over TLS. An `amqps://` URL needs the `rustls` or the `native-tls` feature.
+//! credentials over TLS, or SASL EXTERNAL with a client certificate. An `amqps://` URL needs the
+//! `rustls` or the `native-tls` feature.
 //!
 //! ```text
 //! cargo test --example amqp_broker_security --features testing,rustls
 //! just brokers-up
-//! AMQP_TEST_URL=amqp://artemis:artemis@127.0.0.1:5672 RUSTSTREAM_REQUIRE_LIVE=1 \
+//! AMQP_TEST_URL=amqp://artemis:artemis@127.0.0.1:5672 \
+//! AMQP_TEST_TLS_URL=amqps://localhost:5671 AMQP_TEST_TLS_DIR=$PWD/.stand-tls RUSTSTREAM_REQUIRE_LIVE=1 \
 //!     cargo test --example amqp_broker_security --features testing,rustls
 //! ```
 
@@ -55,6 +57,17 @@ fn app() -> impl App<State = ()> {
 }
 // --8<-- [end:broker]
 
+// --8<-- [start:certificate]
+/// The broker at `url`, logging in with the client certificate: the broker's authority, and the
+/// service's certificate and key, all PEM.
+fn certificate_broker(url: &str, ca: &str, certificate: &str, key: &str) -> AmqpBroker {
+    let tls = Tls::new()
+        .root_certificates(ca)
+        .client_identity(certificate, key);
+    AmqpBroker::new(url).tls(tls).sasl(Sasl::external())
+}
+// --8<-- [end:certificate]
+
 #[derive(Debug, PartialEq, Deserialize, Serialize, Outgoing)]
 struct Order {
     id: u64,
@@ -63,13 +76,15 @@ struct Order {
 #[cfg(test)]
 mod tests {
     use std::error::Error;
+    use std::fs;
     use std::hash::{BuildHasher, RandomState};
+    use std::path::PathBuf;
 
     use ruststream::testing::TestApp;
     use ruststream_amqp::prelude::*;
     use url::Url;
 
-    use super::{Order, broker, live, orders, service};
+    use super::{Order, broker, certificate_broker, live, orders, service};
 
     /// A password drawn afresh for every run, so no credential lives in the source.
     fn password() -> String {
@@ -136,5 +151,32 @@ mod tests {
             cause = err.source();
         }
         panic!("startup did not fail with an AmqpError: {failed:?}");
+    }
+
+    #[tokio::test]
+    async fn the_certificate_service_handles_an_order() -> Result<(), Box<dyn Error>> {
+        // A test does not read the certificates, so the deployment's are not needed here.
+        let broker = certificate_broker("amqps://broker.internal:5671", "ca", "cert", "key");
+        places_an_order(TestApp::start(service(broker)).await?).await
+    }
+
+    /// The stand's mutual-TLS listener and the certificates it trusts, or `None` to skip.
+    fn certificate_stand() -> Option<(String, [String; 3])> {
+        let url = live::url("AMQP_TEST_TLS_URL")?;
+        let dir = PathBuf::from(live::url("AMQP_TEST_TLS_DIR")?);
+        let pem = |name: &str| {
+            let path = dir.join(name);
+            fs::read_to_string(&path).unwrap_or_else(|err| panic!("{}: {err}", path.display()))
+        };
+        Some((url, [pem("ca.crt"), pem("client.crt"), pem("client.key")]))
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn the_service_logs_in_with_its_certificate() -> Result<(), Box<dyn Error>> {
+        let Some((url, [ca, certificate, key])) = certificate_stand() else {
+            return Ok(());
+        };
+        let broker = certificate_broker(&url, &ca, &certificate, &key);
+        places_an_order(TestApp::start_live(service(broker)).await?).await
     }
 }

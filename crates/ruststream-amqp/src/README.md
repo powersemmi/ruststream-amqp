@@ -62,7 +62,8 @@ item's own documentation keeps the detail.
 - [`container_id`][c-container-id]: [`AmqpBroker::container_id`], the name an operator finds the
   service's links by.
 - [Security][c-security]: [`Sasl`] through [`AmqpBroker::sasl`], and TLS for `amqps://` with the
-  `rustls` or `native-tls` feature.
+  `rustls` or `native-tls` feature: `Tls` through `AmqpBroker::tls` names the trusted authorities
+  and the client certificate SASL EXTERNAL logs in with.
 - [Startup][c-startup]: the connect that opens the socket, authenticates and begins the
   publishers' session.
 - [Shutdown][c-shutdown]: the subscriptions, the publisher links and the connection closed in turn,
@@ -113,7 +114,8 @@ item's own documentation keeps the detail.
 
 # Cargo features
 
-`default` is empty. `rustls` and `native-tls` forward the client's TLS backends for `amqps://`.
+`default` is empty. `rustls` and `native-tls` select the TLS backend for `amqps://` and add `Tls`,
+the connection's TLS settings.
 `transaction` adds the transactional publisher. `asyncapi` contributes the `amqp1` server and the
 crate's extension to the generated document, and `testing` adds the in-process mode
 `TestApp::start` connects the broker through.

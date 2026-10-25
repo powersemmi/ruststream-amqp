@@ -1028,6 +1028,7 @@ dependencies = [
  "fe2o3-amqp",
  "fe2o3-amqp-types",
  "futures",
+ "native-tls",
  "percent-encoding",
  "ruststream",
  "ruststream-example-suite",
@@ -1035,8 +1036,12 @@ dependencies = [
  "serde_json",
  "thiserror",
  "tokio",
+ "tokio-native-tls",
+ "tokio-rustls",
+ "tokio-util",
  "tracing",
  "url",
+ "webpki-roots",
 ]
 
 [[package]]
