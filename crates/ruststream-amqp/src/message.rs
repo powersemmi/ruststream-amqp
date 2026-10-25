@@ -6,6 +6,7 @@
 //! peers see plain `AMQP` messages.
 
 use std::fmt;
+use std::sync::Arc;
 
 use bytes::Bytes;
 use fe2o3_amqp::link::delivery::DeliveryInfo;
@@ -14,45 +15,17 @@ use fe2o3_amqp_types::messaging::{
 };
 use fe2o3_amqp_types::primitives::{Binary, SimpleValue, Symbol, Value};
 use ruststream::{AckError, HeaderMap, IncomingMessage, OutgoingFor, Partitioned, Str, Take};
-use tokio::sync::{mpsc, oneshot};
 
 use crate::error::AmqpError;
 #[cfg(feature = "testing")]
 use crate::in_process::{Delivery, Settlement};
+use crate::settle::{SettleKind, SettleLine};
 
 /// Header carrying the partition key, mapped onto the `AMQP` `group-id` property.
 ///
 /// Mirrors the in-memory broker's convention, so services can switch brokers without changing
 /// their headers.
 pub const PARTITION_KEY_HEADER: &str = "partition-key";
-
-/// How a delivered message asks its pump task to settle it.
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum SettleKind {
-    /// Accept the delivery (ack).
-    Accept,
-    /// Hand the delivery back for redelivery and count the attempt as failed (nack with requeue).
-    ///
-    /// The disposition is `modified` with `delivery-failed`, not `released`. `released` is the
-    /// protocol's way of saying the delivery was not acted upon at all, and the peer leaves
-    /// `delivery-count` where it was; a handler that answered `retry()` did act on it and failed,
-    /// so the attempt has to be counted. Without that the registration's `max_attempts(..)` cap
-    /// reads the same count on every redelivery and a poison message circulates forever.
-    Modify,
-    /// Reject the delivery as undeliverable (nack without requeue); the broker's dead-letter
-    /// policy decides what happens next.
-    Reject,
-}
-
-/// A settlement request shipped from a message handle to the subscription's pump task.
-#[derive(Debug)]
-pub(crate) struct SettleCmd {
-    pub(crate) info: DeliveryInfo,
-    pub(crate) kind: SettleKind,
-    pub(crate) done: oneshot::Sender<Result<(), AckError>>,
-}
-
-pub(crate) type SettleSender = mpsc::UnboundedSender<SettleCmd>;
 
 /// A message delivered by an [`AmqpSubscriber`](crate::AmqpSubscriber).
 ///
@@ -76,7 +49,7 @@ pub struct AmqpMessage {
 }
 
 struct SettleHandle {
-    tx: SettleSender,
+    line: Arc<SettleLine>,
     info: DeliveryInfo,
 }
 
@@ -95,14 +68,14 @@ impl AmqpMessage {
         payload: Bytes,
         headers: HeaderMap,
         delivery_count: Option<u32>,
-        tx: SettleSender,
+        line: Arc<SettleLine>,
         info: DeliveryInfo,
     ) -> Self {
         Self {
             payload,
             headers,
             delivery_count,
-            settle: Some(SettleHandle { tx, info }),
+            settle: Some(SettleHandle { line, info }),
             #[cfg(feature = "testing")]
             in_process: None,
         }
@@ -139,16 +112,10 @@ impl AmqpMessage {
         if let Some(settlement) = self.in_process {
             return settlement.settle(kind, self.payload, self.headers, self.delivery_count);
         }
-        let Some(SettleHandle { tx, info }) = self.settle else {
+        let Some(SettleHandle { line, info }) = self.settle else {
             return Err(AckError::Unsupported);
         };
-        let (done, wait) = oneshot::channel();
-        tx.send(SettleCmd { info, kind, done }).map_err(|_| {
-            AckError::Broker(Box::from("the subscription's pump task has shut down"))
-        })?;
-        wait.await.map_err(|_| {
-            AckError::Broker(Box::from("the subscription's pump task has shut down"))
-        })?
+        line.settle(info, kind).await
     }
 }
 
