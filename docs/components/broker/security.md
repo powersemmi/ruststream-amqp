@@ -1,7 +1,7 @@
 ---
 sidebar_position: 2
 title: Security
-description: "Sasl picks the authentication (anonymous, plain, external); amqps:// needs the rustls or native-tls feature, and Tls sets the trusted roots and client certificate."
+description: "Sasl picks the authentication (anonymous, plain, external); amqps:// needs rustls or native-tls, and Tls sets the trusted roots and client certificate."
 ---
 
 import Tabs from '@theme/Tabs';
