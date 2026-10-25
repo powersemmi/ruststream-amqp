@@ -29,6 +29,8 @@ futures = "0.3"
 # A one-shot channel whose receiver recycles its sender without allocating: the answer slot a
 # subscription reuses for every settlement.
 multishot = "0.3.2"
+# A bounded lock-free queue: the answer slots a subscription keeps free between settlements.
+crossbeam-queue = "0.3"
 percent-encoding = "2"
 thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time"] }

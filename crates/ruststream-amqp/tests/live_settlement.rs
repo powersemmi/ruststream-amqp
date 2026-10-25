@@ -203,3 +203,63 @@ async fn concurrent_settlements_reach_their_own_deliveries() {
 
     connected.shutdown().await.expect("shutdown succeeds");
 }
+
+/// The deliveries held unsettled can outnumber the credit: settling half of the credit grants it
+/// again while the rest stay open. Settling all of them at once, more than the subscription has
+/// answer slots, still lands every disposition.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn more_settlements_at_once_than_the_credit_all_land() {
+    const CREDIT: u64 = 4;
+    let Some(url) = live::url("AMQP_TEST_URL") else {
+        return;
+    };
+    let connected = connect(&url, "beyond").await;
+    let address = address("beyond");
+    let mut subscriber = connected
+        .subscribe_address(AmqpAddress::queue(&address).credit(nonzero!(4)))
+        .await
+        .expect("the subscription opens");
+    let publisher = connected.publisher();
+    for n in 0..2 * CREDIT {
+        publisher
+            .publish(
+                OutgoingMessage::new(&address, n.to_string().as_bytes()),
+                None,
+            )
+            .await
+            .expect("publish succeeds");
+    }
+
+    {
+        let mut stream = pin!(subscriber.stream());
+        let mut held = Vec::new();
+        for _ in 0..CREDIT {
+            held.push(next(&mut stream).await);
+        }
+        for delivery in held.drain(..2) {
+            delivery.ack().await.expect("the first two are accepted");
+        }
+        for _ in 0..CREDIT {
+            held.push(next(&mut stream).await);
+        }
+        assert!(
+            held.len() > usize::try_from(CREDIT).expect("the credit fits"),
+            "more deliveries are held unsettled than the credit"
+        );
+
+        let settlements = held
+            .into_iter()
+            .map(|delivery| tokio::spawn(delivery.ack()));
+        for settled in join_all(settlements).await {
+            settled
+                .expect("the settling task ran")
+                .expect("the broker took the disposition");
+        }
+        assert!(
+            tokio::time::timeout(QUIET, stream.next()).await.is_err(),
+            "every delivery was accepted, so none comes back"
+        );
+    }
+    drop(subscriber);
+    connected.shutdown().await.expect("shutdown succeeds");
+}

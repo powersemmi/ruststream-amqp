@@ -81,7 +81,10 @@ impl AmqpSubscriber {
         // never buffers beyond what the broker was allowed to send. The credit is non-zero by
         // construction, so it is already a legal channel capacity.
         let (out_tx, out_rx) = mpsc::channel(credit as usize);
-        let (line, commands) = SettleLine::open();
+        // The credit sizes the subscription's answer slots: as many settlements at once as the
+        // broker may send deliveries ahead. A settlement beyond them waits for one to come free.
+        let slots = NonZeroUsize::new(credit as usize).unwrap_or(NonZeroUsize::MIN);
+        let (line, commands) = SettleLine::open(slots);
         let addr = address.address().to_owned();
         core.runtime.spawn(pump(Pump {
             session,
