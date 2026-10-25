@@ -53,11 +53,11 @@
       "name": "queue, JSON decode into a small struct, accept each",
       "messages": 1000,
       "framework": {
-        "instructions": 28121.5,
+        "instructions": 28426.1,
         "allocations": 16.1
       },
       "cold": {
-        "instructions": 226778,
+        "instructions": 226660,
         "allocations": 230
       },
       "gated": true
@@ -66,12 +66,12 @@
       "name": "reply through this crate's publisher, accepted by the broker",
       "messages": 1000,
       "framework": {
-        "instructions": 60289.1,
+        "instructions": 60647.5,
         "allocations": 45.1
       },
       "cold": {
-        "instructions": 238705,
-        "allocations": 261
+        "instructions": 239643,
+        "allocations": 262
       },
       "gated": true
     },
@@ -79,11 +79,11 @@
       "name": "queue in batches of 64, assembled on the client",
       "messages": 1000,
       "framework": {
-        "instructions": 28726.8,
+        "instructions": 28839.3,
         "allocations": 16.3
       },
       "cold": {
-        "instructions": 230902,
+        "instructions": 232013,
         "allocations": 234
       },
       "gated": true
