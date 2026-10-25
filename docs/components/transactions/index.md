@@ -1,6 +1,6 @@
 ---
 title: Transactions
-description: "TransactionalPublish posts under an AMQP transaction: what a publisher sends between begin and commit becomes visible together, or not at all, with a transaction per delivery under workers(n)."
+description: "TransactionalPublish posts under an AMQP transaction: what a publisher sends between begin and commit lands together or not at all, one per delivery."
 ---
 
 import Tabs from '@theme/Tabs';
