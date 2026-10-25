@@ -15,6 +15,9 @@ categories = ["asynchronous", "network-programming"]
 # `default` is empty and every module beyond the plain broker is behind a feature, so a default
 # build on docs.rs publishes a reference with the transactional publisher, the in-process mode
 # and the AsyncAPI bindings missing - the ones the crate overview sends readers to.
+# Every file under `tests/` is a module of one test binary: one link instead of one per file.
+autotests = false
+
 [package.metadata.docs.rs]
 all-features = true
 
@@ -65,280 +68,245 @@ ruststream = { workspace = true, features = [
     "json",
 ] }
 serde = { version = "1", features = ["derive"] }
+# Builds the examples' tests into one test binary (`tests/examples.rs`) instead of a test binary
+# per example. It lives in the core repository and is not published: a dev-dependency without a
+# version is dropped on publish.
+ruststream-example-suite = { git = "https://github.com/powersemmi/ruststream", branch = "main" }
 # Reads back the generated AsyncAPI document the binding cases assert on.
 serde_json = "1"
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
+
+[[test]]
+name = "suite"
+path = "tests/main.rs"
+
+# The tests of the examples, one module per example, in a binary of their own beside the suite.
+[[test]]
+name = "examples"
+path = "tests/examples.rs"
 
 # The transactional publisher only exists under the `transaction` feature.
 [[example]]
 name = "amqp_transaction"
 required-features = ["testing", "transaction"]
-test = true
 
 # The examples of the broker and testing pages, each beside its manual twin.
 
 [[example]]
 name = "amqp_service"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "manual_amqp_service"
 path = "examples/manual/amqp_service.rs"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "amqp_broker_container"
 required-features = ["testing", "asyncapi"]
-test = true
 
 [[example]]
 name = "manual_amqp_broker_container"
 path = "examples/manual/amqp_broker_container.rs"
 required-features = ["testing", "asyncapi"]
-test = true
 
 [[example]]
 name = "amqp_broker_security"
 required-features = ["testing", "rustls"]
-test = true
 
 [[example]]
 name = "manual_amqp_broker_security"
 path = "examples/manual/amqp_broker_security.rs"
 required-features = ["testing", "rustls"]
-test = true
 
 [[example]]
 name = "amqp_broker_startup"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "manual_amqp_broker_startup"
 path = "examples/manual/amqp_broker_startup.rs"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "amqp_broker_shutdown"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "manual_amqp_broker_shutdown"
 path = "examples/manual/amqp_broker_shutdown.rs"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "amqp_broker_prelude"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "manual_amqp_broker_prelude"
 path = "examples/manual/amqp_broker_prelude.rs"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "amqp_broker_errors"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "manual_amqp_broker_errors"
 path = "examples/manual/amqp_broker_errors.rs"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "amqp_testing"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "manual_amqp_testing"
 path = "examples/manual/amqp_testing.rs"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "amqp_testing_live"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "manual_amqp_testing_live"
 path = "examples/manual/amqp_testing_live.rs"
 required-features = ["testing"]
-test = true
 
 # The examples of the publishing, request-reply, transactions and AsyncAPI pages.
 
 [[example]]
 name = "amqp_publishing_publish"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "manual_amqp_publishing_publish"
 path = "examples/manual/amqp_publishing_publish.rs"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "amqp_publishing_headers"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "manual_amqp_publishing_headers"
 path = "examples/manual/amqp_publishing_headers.rs"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "amqp_publishing_keys"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "manual_amqp_publishing_keys"
 path = "examples/manual/amqp_publishing_keys.rs"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "amqp_request_reply"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "manual_amqp_request_reply"
 path = "examples/manual/amqp_request_reply.rs"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "manual_amqp_transaction"
 path = "examples/manual/amqp_transaction.rs"
 required-features = ["testing", "transaction"]
-test = true
 
 [[example]]
 name = "amqp_asyncapi"
 required-features = ["asyncapi", "transaction"]
-test = true
 
 [[example]]
 name = "manual_amqp_asyncapi"
 path = "examples/manual/amqp_asyncapi.rs"
 required-features = ["asyncapi", "transaction"]
-test = true
 
 # The examples of the subscriptions and dispositions pages.
 
 [[example]]
 name = "amqp_subscriptions_name"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "manual_amqp_subscriptions_name"
 path = "examples/manual/amqp_subscriptions_name.rs"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "amqp_subscriptions_queue"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "amqp_subscriptions_topic"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "amqp_subscriptions_raw"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "manual_amqp_subscriptions_queue"
 path = "examples/manual/amqp_subscriptions_queue.rs"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "manual_amqp_subscriptions_topic"
 path = "examples/manual/amqp_subscriptions_topic.rs"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "manual_amqp_subscriptions_raw"
 path = "examples/manual/amqp_subscriptions_raw.rs"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "amqp_subscriptions_credit"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "manual_amqp_subscriptions_credit"
 path = "examples/manual/amqp_subscriptions_credit.rs"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "amqp_batches"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "manual_amqp_batches"
 path = "examples/manual/amqp_batches.rs"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "amqp_settlement_dispositions"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "manual_amqp_settlement_dispositions"
 path = "examples/manual/amqp_settlement_dispositions.rs"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "amqp_settlement_settle"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "manual_amqp_settlement_settle"
 path = "examples/manual/amqp_settlement_settle.rs"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "amqp_retry"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "manual_amqp_retry"
 path = "examples/manual/amqp_retry.rs"
 required-features = ["testing"]
-test = true
 
 # Each guide is one service: `guide_<slug>` the form with the macros, `manual_guide_<slug>` the
 # same service written by hand. Each pair carries the tests that prove what its page says.
@@ -347,94 +315,78 @@ test = true
 name = "guide_getting_started"
 path = "examples/guide/getting_started.rs"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "manual_guide_getting_started"
 path = "examples/manual/guide/getting_started.rs"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "guide_queues_and_topics"
 path = "examples/guide/queues_and_topics.rs"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "manual_guide_queues_and_topics"
 path = "examples/manual/guide/queues_and_topics.rs"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "guide_acknowledgement"
 path = "examples/guide/acknowledgement.rs"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "manual_guide_acknowledgement"
 path = "examples/manual/guide/acknowledgement.rs"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "guide_retries"
 path = "examples/guide/retries.rs"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "manual_guide_retries"
 path = "examples/manual/guide/retries.rs"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "guide_request_reply"
 path = "examples/guide/request_reply.rs"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "manual_guide_request_reply"
 path = "examples/manual/guide/request_reply.rs"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "guide_transactions"
 path = "examples/guide/transactions.rs"
 required-features = ["testing", "transaction"]
-test = true
 
 [[example]]
 name = "manual_guide_transactions"
 path = "examples/manual/guide/transactions.rs"
 required-features = ["testing", "transaction"]
-test = true
 
 [[example]]
 name = "guide_testing"
 path = "examples/guide/testing.rs"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "manual_guide_testing"
 path = "examples/manual/guide/testing.rs"
 required-features = ["testing"]
-test = true
 
 [[example]]
 name = "guide_production"
 path = "examples/guide/production.rs"
 required-features = ["testing", "rustls"]
-test = true
 
 [[example]]
 name = "manual_guide_production"
 path = "examples/manual/guide/production.rs"
 required-features = ["testing", "rustls"]
-test = true

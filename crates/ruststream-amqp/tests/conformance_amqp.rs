@@ -26,7 +26,7 @@ use ruststream::testing::Backlog;
 use ruststream::{Bytes, HeaderMap, Name};
 use ruststream_amqp::{AmqpAddress, AmqpBroker, PARTITION_KEY_HEADER, Sasl};
 
-mod live;
+use crate::live;
 
 /// The broker's address in process; the in-process mode dials nothing.
 const URL: &str = "amqp://broker.example.com:5672";

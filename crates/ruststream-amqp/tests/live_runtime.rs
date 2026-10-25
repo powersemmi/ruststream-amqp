@@ -21,7 +21,7 @@ use ruststream_amqp::{AmqpAddress, AmqpBroker, AmqpSubscriber, ConnectedAmqpBrok
 use tokio::runtime::Builder;
 use tokio::sync::oneshot;
 
-mod live;
+use crate::live;
 
 const RECV_TIMEOUT: Duration = Duration::from_secs(10);
 
