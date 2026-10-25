@@ -23,8 +23,13 @@ test:
     cargo test --workspace --all-features --tests
     cargo test --workspace --all-features --doc
 
-brokers-up:
+brokers-up: tls-certs
     docker compose -f docker-compose.test.yml up -d --wait
+
+# The certificate chain the stand's TLS listeners use, generated next to the stand rather than
+# committed.
+tls-certs:
+    scripts/stand_tls_certs.sh "{{justfile_directory()}}/.stand-tls"
 
 brokers-down:
     docker compose -f docker-compose.test.yml down -v
@@ -36,6 +41,9 @@ test-brokers: brokers-up
     # This recipe starts the stand, so a gated test that skips itself here is a fault, not a
     # developer without a broker.
     AMQP_TEST_URL=amqp://artemis:artemis@127.0.0.1:5672 \
+    AMQP_TEST_TLS_URL=amqps://localhost:5671 \
+    AMQP_TEST_TLS_PLAIN_URL=amqps://artemis:artemis@localhost:5673 \
+    AMQP_TEST_TLS_DIR={{justfile_directory()}}/.stand-tls \
     RUSTSTREAM_REQUIRE_LIVE=1 \
         cargo test --workspace --all-features --tests -- --test-threads=1
 

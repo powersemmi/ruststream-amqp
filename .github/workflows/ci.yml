@@ -51,6 +51,9 @@ jobs:
               - 'rust-toolchain.toml'
               - 'rustfmt.toml'
               - '.github/workflows/ci.yml'
+              # The live job's stand: the TLS listeners and the certificates they use.
+              - 'stand/**'
+              - 'scripts/stand_tls_certs.sh'
             docs:
               - 'docs/**'
               - 'website/**'
@@ -356,12 +359,19 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Generate the stand's TLS certificates
+        run: scripts/stand_tls_certs.sh "$GITHUB_WORKSPACE/.stand-tls"
+
       - name: Start ActiveMQ Artemis
         run: |
           docker run -d --name artemis \
             -p 127.0.0.1:5672:5672 \
+            -p 127.0.0.1:5671:5671 \
+            -p 127.0.0.1:5673:5673 \
             -e ARTEMIS_USER=artemis \
             -e ARTEMIS_PASSWORD=artemis \
+            -v "$GITHUB_WORKSPACE/stand/artemis:/var/lib/artemis-instance/etc-override:ro" \
+            -v "$GITHUB_WORKSPACE/.stand-tls:/tls:ro" \
             apache/activemq-artemis:latest-alpine
 
       - name: Wait for Artemis
@@ -385,11 +395,14 @@ jobs:
       - name: Run integration + conformance against Artemis
         env:
           AMQP_TEST_URL: amqp://artemis:artemis@127.0.0.1:5672
+          AMQP_TEST_TLS_URL: amqps://localhost:5671
+          AMQP_TEST_TLS_PLAIN_URL: amqps://artemis:artemis@localhost:5673
+          AMQP_TEST_TLS_DIR: ${{ github.workspace }}/.stand-tls
           RUSTSTREAM_REQUIRE_LIVE: "1"
         run: >-
           cargo test -p ruststream-amqp --all-features --test suite --
           integration_amqp:: conformance_amqp:: live_descriptor:: live_retry:: live_shutdown::
-          --test-threads=1
+          tls:: --test-threads=1
 
       - name: Cleanup
         if: always()
