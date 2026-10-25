@@ -358,7 +358,7 @@ mod tests {
 
     fn refusal(tls: &Tls) -> String {
         match tls.connector() {
-            Ok(_) => panic!("the settings {tls:?} built a connector"),
+            Ok(_) => panic!("the TLS settings unexpectedly built a connector"),
             Err(AmqpError::Connect(reason)) => reason.to_string(),
             Err(other) => panic!("expected a connect error, got {other}"),
         }
