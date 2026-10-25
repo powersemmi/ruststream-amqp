@@ -99,8 +99,8 @@ item's own documentation keeps the detail.
 - [Keys][c-keys]: [`PARTITION_KEY_HEADER`] rides the `group-id` property.
 - [Request-reply][c-request-reply]: `request` over a dynamic reply address, and
   [responders][c-responders] that answer on it.
-- [Transactions][c-transactions]: `AmqpTransactionalPublish` and its live `AmqpTxnPublisher`
-  (feature `transaction`).
+- [Transactions][c-transactions]: `AmqpTransactionalPublish` and its live `AmqpTxnPublisher`,
+  and an `AmqpTransaction` of its own per delivery under `workers(n)` (feature `transaction`).
 
 ## Tooling
 
