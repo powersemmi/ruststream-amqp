@@ -40,7 +40,7 @@ pub(crate) use bus::Bus;
 pub(crate) use deliveries::{BusDeliveries, Settlement};
 pub(crate) use request::request;
 #[cfg(feature = "transaction")]
-pub(crate) use txn::TxnBuffer;
+pub(crate) use txn::{OwnedBuffer, TxnBuffer};
 
 pub(crate) use self::router::Delivery;
 use crate::address::AmqpAddress;

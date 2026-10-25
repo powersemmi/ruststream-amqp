@@ -90,6 +90,10 @@ path = "tests/examples.rs"
 name = "amqp_transaction"
 required-features = ["testing", "transaction"]
 
+[[example]]
+name = "amqp_owned_transaction"
+required-features = ["testing", "transaction"]
+
 # The examples of the broker and testing pages, each beside its manual twin.
 
 [[example]]
@@ -214,6 +218,11 @@ required-features = ["testing"]
 [[example]]
 name = "manual_amqp_transaction"
 path = "examples/manual/amqp_transaction.rs"
+required-features = ["testing", "transaction"]
+
+[[example]]
+name = "manual_amqp_owned_transaction"
+path = "examples/manual/amqp_owned_transaction.rs"
 required-features = ["testing", "transaction"]
 
 [[example]]

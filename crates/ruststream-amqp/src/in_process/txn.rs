@@ -56,6 +56,16 @@ impl TxnBuffer {
         Ok(())
     }
 
+    /// Opens an owned transaction on the same connection: a buffer of its own, which nothing
+    /// shares with this handle or with another owned transaction.
+    pub(crate) fn open_owned(&self) -> Result<OwnedBuffer, AmqpError> {
+        self.bus.ensure_live()?;
+        Ok(OwnedBuffer {
+            bus: Arc::clone(&self.bus),
+            buffered: Vec::new(),
+        })
+    }
+
     pub(crate) fn begin(&self) -> Result<(), AmqpError> {
         self.bus.ensure_live()?;
         let mut open = self.open();
@@ -86,6 +96,43 @@ impl TxnBuffer {
 
     pub(crate) fn abort(&self) -> Result<(), AmqpError> {
         drop(self.take()?);
+        self.bus.ensure_live()
+    }
+}
+
+/// An owned transaction's state on the in-process transport: its publishes, held back until its
+/// commit.
+///
+/// Every owned transaction has a buffer of its own, so any number of them are open on one
+/// publisher at once and settling one leaves the others whole.
+#[derive(Debug)]
+pub(crate) struct OwnedBuffer {
+    bus: Arc<Bus>,
+    buffered: Vec<Buffered>,
+}
+
+impl OwnedBuffer {
+    /// How many publishes the transaction holds, for the warning a dropped one logs.
+    pub(crate) const fn len(&self) -> usize {
+        self.buffered.len()
+    }
+
+    pub(crate) fn publish(&mut self, msg: OutgoingFor<'_, Take>) -> Result<(), AmqpError> {
+        self.bus.ensure_live()?;
+        let address = msg.name();
+        ensure_node(address)?;
+        let delivery = frame(msg);
+        self.buffered.push((address.to_owned(), delivery));
+        Ok(())
+    }
+
+    pub(crate) fn commit(self) -> Result<(), AmqpError> {
+        // The discharge cannot reach a closed connection, as on the live transaction.
+        self.bus.ensure_live()?;
+        self.bus.route_all(&self.buffered)
+    }
+
+    pub(crate) fn abort(self) -> Result<(), AmqpError> {
         self.bus.ensure_live()
     }
 }
