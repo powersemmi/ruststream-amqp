@@ -30,7 +30,8 @@ the reply and the disposition.
 
 A subscription's pump task owns its receiver link. Receiving needs the link to itself, while a
 settlement only reads it, and the delivery a handler holds has to travel between tasks. So the pump
-receives, and every settlement comes back to it as a command.
+receives, and every settlement comes back to it as a command. The client's answer returns to the
+handler through a slot the subscription reuses, so a settlement allocates nothing.
 
 The pump turns a transfer into an [`AmqpMessage`](api:ruststream_amqp::AmqpMessage). The headers
 come from the `properties` and `application-properties` sections, the bytes from the `data` section,

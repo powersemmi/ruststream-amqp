@@ -12,6 +12,7 @@ mod in_process;
 mod message;
 pub mod prelude;
 mod publisher;
+mod settle;
 mod subscriber;
 #[cfg(feature = "transaction")]
 mod txn;
