@@ -91,7 +91,8 @@ pub use ruststream::RequestReply;
 // subscriptions. The publisher, the message and the header constant stay explicit imports: a
 // service that names them has left the broker-agnostic path.
 pub use crate::{
-    AmqpAddress, AmqpBroker, AmqpError, AmqpPublish, AmqpPublish as Publish, Sasl, Settle,
+    AmqpAddress, AmqpBroker, AmqpContext, AmqpError, AmqpId, AmqpPublish, AmqpPublish as Publish,
+    AmqpPublishOptions, AmqpPublishSteps, Correlate, ReplyCorrelation, Sasl, Settle,
 };
 
 #[cfg(feature = "transaction")]

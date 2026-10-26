@@ -29,17 +29,14 @@ struct Greeting(Vec<u8>);
 #[subscriber(AmqpAddress::queue("greeter"))]
 async fn greet(
     who: &Who<'_>,
-    ctx: &mut Context<'_>,
-    Out(out): Out<impl Publisher>,
+    ctx: &mut Context<'_, AmqpContext>,
+    Ctx(correlation): Ctx<ReplyCorrelation>,
+    Out(out): Out<impl Publisher<Options = AmqpPublishOptions>>,
 ) -> HandlerOutcome {
     // The requester's private reply address; a message without one is no request.
     let Some(reply_to) = ctx.headers().reply_to().map(str::to_owned) else {
         return HandlerOutcome::drop();
     };
-    let mut headers = HeaderMap::new();
-    if let Some(correlation_id) = ctx.headers().correlation_id() {
-        headers.insert("correlation-id", correlation_id.to_owned());
-    }
 
     let name = String::from_utf8_lossy(who.0);
     tracing::info!(%name, %reply_to, "greeting");
@@ -47,7 +44,8 @@ async fn greet(
     if out
         .message(&greeting)
         .to(reply_to)
-        .with_headers(headers)
+        // The request's correlation, in the type the requester wrote it.
+        .correlation_id(correlation)
         .publish()
         .await
         .is_err()

@@ -17,7 +17,8 @@ use crate::broker::{AmqpCore, ConnectedAmqpBroker, CoreCell, Link, SenderLink};
 use crate::error::{AmqpError, box_err};
 #[cfg(feature = "testing")]
 use crate::in_process;
-use crate::message::{AmqpMessage, headers_from_amqp, payload_from_body, to_amqp_message};
+use crate::message::{AmqpMessage, Read, payload_from_body, read_amqp, to_amqp_message};
+use crate::publish_step::AmqpPublishOptions;
 
 /// Publishes messages to `AMQP` addresses, one sender link per address, attached lazily on the
 /// shared publisher session.
@@ -54,24 +55,21 @@ use crate::message::{AmqpMessage, headers_from_amqp, payload_from_body, to_amqp_
 /// #[subscriber(AmqpAddress::queue("greeter"))]
 /// async fn greet(
 ///     order: &Order,
-///     ctx: &mut Context<'_>,
-///     Out(out): Out<impl Publisher>,
+///     ctx: &mut Context<'_, AmqpContext>,
+///     Ctx(correlation): Ctx<ReplyCorrelation>,
+///     Out(out): Out<impl Publisher<Options = AmqpPublishOptions>>,
 /// ) -> HandlerOutcome {
 ///     // The requester named a private reply address; the answer echoes the correlation id back.
 ///     let Some(reply_to) = ctx.headers().reply_to().map(str::to_owned) else {
 ///         return HandlerOutcome::drop();
 ///     };
-///     let mut headers = HeaderMap::new();
-///     if let Some(correlation_id) = ctx.headers().correlation_id() {
-///         headers.insert("correlation-id", correlation_id.to_owned());
-///     }
 ///     let greeting = Greeting {
 ///         text: format!("hello, order {}", order.id),
 ///     };
 ///     if out
 ///         .message(&greeting)
 ///         .to(reply_to)
-///         .with_headers(headers)
+///         .correlation_id(correlation)
 ///         .publish()
 ///         .await
 ///         .is_err()
@@ -157,21 +155,24 @@ impl Publisher for AmqpPublisher {
     /// No per-message settings. `AMQP` 1.0 does define fields that would qualify - `durable`,
     /// `priority` and `ttl` in the `header` section - but this crate publishes no `header` section
     /// at all, so there is nothing for a call site to adjust and nothing for a policy to default.
-    type Options = ();
+    type Options = AmqpPublishOptions;
 
+    /// `options` sets the `AMQP` properties that travel apart from the headers: the typed
+    /// `correlation-id` a reply carries back to its requester.
     async fn publish(
         &self,
         msg: OutgoingFor<'_, Take>,
-        _options: Option<&Self::Options>,
+        options: Option<&Self::Options>,
     ) -> Result<(), Self::Error> {
+        let correlation = options.and_then(|options| options.correlation_id.as_ref());
         let core = match self.link()? {
             Link::Amqp(core) => open(core)?,
             #[cfg(feature = "testing")]
-            Link::InProcess(bus) => return in_process::publish(bus, msg),
+            Link::InProcess(bus) => return in_process::publish(bus, msg, correlation),
         };
         // The destination is the caller's string and outlives the message the conversion takes.
         let address = msg.name();
-        let message = to_amqp_message(msg)?;
+        let message = to_amqp_message(msg, correlation)?;
         let sender = core.sender_for(address).await?;
         send_message(&sender, address, message).await
     }
@@ -207,7 +208,7 @@ impl RequestReply for AmqpPublisher {
         // The destination is the caller's string and outlives the message the conversion takes.
         let address = msg.name();
         let exchange = async {
-            let mut message = to_amqp_message(msg)?;
+            let mut message = to_amqp_message(msg, None)?;
             let properties = message.properties.get_or_insert_with(Properties::default);
             properties.reply_to = Some(reply_to);
             properties.correlation_id = Some(correlation_id.clone().into());
@@ -225,13 +226,17 @@ impl RequestReply for AmqpPublisher {
                         source: box_err(e),
                     })?;
                 let message = delivery.into_message();
-                let headers = headers_from_amqp(&message);
                 // The private reply address makes foreign traffic unlikely, but correlate
                 // anyway: a late reply to an earlier request must not resolve this one.
+                let (headers, reply_id) = read_amqp(&message);
                 if headers.correlation_id() == Some(correlation_id.as_str()) {
-                    let payload = payload_from_body(message.body, "(dynamic)")?;
+                    let read = Read {
+                        payload: payload_from_body(message.body, "(dynamic)")?,
+                        headers,
+                        reply_id,
+                    };
                     // A reply is a message of its own, with no prior attempt to count.
-                    return Ok(AmqpMessage::settled(payload, headers, None));
+                    return Ok(AmqpMessage::settled(read, None));
                 }
             }
         };

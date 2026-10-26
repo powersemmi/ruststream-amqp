@@ -463,6 +463,77 @@ async fn a_header_its_property_cannot_hold_fails_the_publish() {
     tb.shutdown().await.expect("shutdown failed");
 }
 
+/// What the last handler of the correlation chain saw as its delivery's reply correlation.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Outgoing)]
+#[outgoing(name = "typed.seen")]
+struct Seen {
+    correlation: String,
+}
+
+/// Asks with a numeric correlation id, the way a Java or .NET requester does.
+#[subscriber(AmqpAddress::queue("typed.start"))]
+async fn ask(
+    order: &Order,
+    Out(out): Out<impl Publisher<Options = AmqpPublishOptions>>,
+) -> HandlerOutcome {
+    let sent = out
+        .message(order)
+        .to("typed.orders")
+        .correlation_id(AmqpId::Ulong(7))
+        .publish()
+        .await;
+    if sent.is_err() {
+        return HandlerOutcome::retry();
+    }
+    HandlerOutcome::ack()
+}
+
+/// Answers through the reply position, which the `Correlate` transform correlates.
+#[subscriber(AmqpAddress::queue("typed.orders"), reply("typed.receipts"))]
+async fn answer(order: &Order, Ctx(_id): Ctx<ReplyCorrelation>) -> Order {
+    order.clone()
+}
+
+/// Reports the correlation the answer arrived with.
+#[subscriber(AmqpAddress::queue("typed.receipts"), reply)]
+async fn observe(_order: &Order, Ctx(correlation): Ctx<ReplyCorrelation>) -> Seen {
+    Seen {
+        correlation: format!("{correlation:?}"),
+    }
+}
+
+// The in-process transport frames a typed correlation the way a live one does, and the reply
+// position carries it back in its type.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_reply_through_the_reply_position_keeps_the_typed_correlation() {
+    let app = RustStream::new(AppInfo::new("correlation", "0.1.0")).with_broker(
+        AmqpBroker::new(URL),
+        |b| {
+            b.include(ask).out(DefaultSlot, Publish).build();
+            b.include(answer).out_reply(Publish).transform(Correlate);
+            b.include(observe).out_reply(Publish);
+        },
+    );
+    let tb = TestApp::start(app).await.expect("startup failed");
+
+    tb.broker::<AmqpBroker>()
+        .message(&Order { id: 1 })
+        .to("typed.start")
+        .publish()
+        .await
+        .expect("publish failed");
+    tb.settle().await.expect("the run settles");
+
+    tb.broker::<AmqpBroker>()
+        .published::<Seen>("typed.seen")
+        .assert_called_once()
+        .with(&Seen {
+            correlation: "Some(Ulong(7))".to_owned(),
+        });
+
+    tb.shutdown().await.expect("shutdown failed");
+}
+
 // A transaction is declared over the connection, so one begun after the shutdown fails, as on the
 // live publisher.
 #[cfg(feature = "transaction")]

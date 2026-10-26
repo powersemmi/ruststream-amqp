@@ -6,6 +6,7 @@ mod asyncapi;
 mod batches;
 mod conformance_amqp;
 mod integration_amqp;
+mod live_correlation;
 mod live_descriptor;
 mod live_headers;
 mod live_request_reply;

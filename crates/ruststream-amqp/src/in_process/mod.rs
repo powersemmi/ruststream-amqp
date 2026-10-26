@@ -46,7 +46,8 @@ pub(crate) use self::router::Delivery;
 use crate::address::AmqpAddress;
 use crate::broker::is_at_most_once;
 use crate::error::{AmqpError, box_err};
-use crate::message::{build_message, headers_from_amqp, to_amqp_message};
+use crate::message::{build_message, read_amqp, to_amqp_message};
+use crate::publish_step::AmqpId;
 
 /// Checks the broker URL the way `connect` reads it, so a broker a service could not connect is
 /// not one a test can connect either: it has to parse, name a host, and use a scheme the client
@@ -110,11 +111,15 @@ pub(crate) fn subscribe(bus: &Arc<Bus>, address: &AmqpAddress) -> Result<BusDeli
 /// Returns [`AmqpError::NotConnected`] once the connection has shut down,
 /// [`AmqpError::PublishNotAccepted`] for a message to the empty address, and
 /// [`AmqpError::UnsupportedHeader`] for a header the live message could not carry.
-pub(crate) fn publish(bus: &Bus, msg: OutgoingFor<'_, Take>) -> Result<(), AmqpError> {
+pub(crate) fn publish(
+    bus: &Bus,
+    msg: OutgoingFor<'_, Take>,
+    correlation: Option<&AmqpId>,
+) -> Result<(), AmqpError> {
     bus.ensure_live()?;
     let address = msg.name();
     ensure_node(address)?;
-    bus.route(address, &frame(msg)?)
+    bus.route(address, &frame(msg, correlation)?)
 }
 
 /// Refuses a message to the empty address, as the peer does: a sender with no target address is
@@ -134,20 +139,22 @@ pub(crate) fn ensure_node(address: &str) -> Result<(), AmqpError> {
 pub(crate) fn inject(bus: &Bus, msg: &OutgoingMessage<'_>) -> Result<(), AmqpError> {
     bus.ensure_live()?;
     ensure_node(msg.name())?;
-    let message = build_message(msg.name(), msg.headers(), msg.payload().to_vec())?;
+    let message = build_message(msg.name(), msg.headers(), msg.payload().to_vec(), None)?;
     bus.route(msg.name(), &delivered(message))
 }
 
 /// The delivery a live subscription would read for `msg`: the message this crate sends for it,
 /// read back the way a delivery is read. The headers a live delivery carries are the ones the
 /// `AMQP` sections hold, not the map the publish was handed.
-fn frame(msg: OutgoingFor<'_, Take>) -> Result<Delivery, AmqpError> {
-    to_amqp_message(msg).map(delivered)
+fn frame(msg: OutgoingFor<'_, Take>, correlation: Option<&AmqpId>) -> Result<Delivery, AmqpError> {
+    to_amqp_message(msg, correlation).map(delivered)
 }
 
 fn delivered(message: Message<Data>) -> Delivery {
+    let (headers, reply_id) = read_amqp(&message);
     Delivery {
-        headers: headers_from_amqp(&message),
+        headers,
+        reply_id,
         payload: Bytes::from(message.body.0.into_vec()),
         // A message this crate publishes carries no `header` section.
         count: None,

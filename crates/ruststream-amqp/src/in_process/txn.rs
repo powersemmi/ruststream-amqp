@@ -45,7 +45,7 @@ impl TxnBuffer {
         self.bus.ensure_live()?;
         let address = msg.name();
         ensure_node(address)?;
-        let delivery = frame(msg)?;
+        let delivery = frame(msg, None)?;
         let mut open = self.open();
         if let Some(buffer) = open.as_mut() {
             buffer.push((address.to_owned(), delivery));
@@ -121,7 +121,7 @@ impl OwnedBuffer {
         self.bus.ensure_live()?;
         let address = msg.name();
         ensure_node(address)?;
-        let delivery = frame(msg)?;
+        let delivery = frame(msg, None)?;
         self.buffered.push((address.to_owned(), delivery));
         Ok(())
     }

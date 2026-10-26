@@ -7,11 +7,11 @@ use ruststream::{IncomingMessage, OutgoingFor, Take};
 
 use super::bus::Bus;
 use super::deliveries::Settlement;
-use super::router::Delivery;
 use super::{ensure_node, frame};
 use crate::address::Routing;
 use crate::error::AmqpError;
 use crate::message::AmqpMessage;
+use crate::message::ReplyId;
 
 /// One request and its correlated reply, the way the live publisher performs it.
 ///
@@ -35,11 +35,13 @@ pub(crate) async fn request(
     ensure_node(address)?;
     let reply_to = bus.next_reply_address();
     let correlation_id = format!("{reply_to}-corr");
-    let mut delivery = frame(msg)?;
+    let mut delivery = frame(msg, None)?;
     delivery.headers.insert("reply-to", reply_to.clone());
     delivery
         .headers
         .insert("correlation-id", correlation_id.clone());
+    // The live request sets the property as a string, which is what a responder reads.
+    delivery.reply_id = ReplyId::String("correlation-id");
 
     // The private reply address carries one consumer, this request.
     let (id, mut replies) = bus.subscribe(reply_to, Routing::Anycast)?;
@@ -50,12 +52,10 @@ pub(crate) async fn request(
 
     let reply = tokio::time::timeout(timeout, async {
         loop {
-            let Delivery {
-                payload, headers, ..
-            } = replies.recv().await?;
+            let delivery = replies.recv().await?;
             // Every delivery becomes a message before it is judged, so a discarded one still
             // releases its place in the harness's in-flight count when it drops.
-            let reply = AmqpMessage::settled(payload, headers, None)
+            let reply = AmqpMessage::settled(delivery.into_read(), None)
                 .settling(Settlement::settled(Arc::clone(bus)));
             if reply.headers().correlation_id() == Some(correlation_id.as_str()) {
                 return Some(reply);
@@ -69,12 +69,9 @@ pub(crate) async fn request(
     // Detaching the reply link: the address stops taking anything once the exchange is over, and
     // whatever raced the deadline into the channel is released through the same kind of message.
     bus.unsubscribe(id, Vec::new());
-    while let Ok(Delivery {
-        payload, headers, ..
-    }) = replies.try_recv()
-    {
+    while let Ok(delivery) = replies.try_recv() {
         drop(
-            AmqpMessage::settled(payload, headers, None)
+            AmqpMessage::settled(delivery.into_read(), None)
                 .settling(Settlement::settled(Arc::clone(bus))),
         );
     }

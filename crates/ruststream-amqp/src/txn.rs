@@ -211,7 +211,7 @@ impl Publisher for AmqpTxnPublisher {
         live.core.ensure_open()?;
         // The destination is the caller's string and outlives the message the conversion takes.
         let address = msg.name();
-        let message = to_amqp_message(msg)?;
+        let message = to_amqp_message(msg, None)?;
         let sender = live.core.sender_for(address).await?;
 
         let txn = live.txn.lock().await;

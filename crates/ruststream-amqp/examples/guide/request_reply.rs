@@ -43,8 +43,9 @@ struct Answers;
 #[subscriber(AmqpAddress::queue("prices.quote"))]
 async fn quote(
     ask: &Ask,
-    ctx: &mut Context<'_>,
-    Out(answers): Out<impl Publisher, Answers>,
+    ctx: &mut Context<'_, AmqpContext>,
+    Ctx(correlation): Ctx<ReplyCorrelation>,
+    Out(answers): Out<impl Publisher<Options = AmqpPublishOptions>, Answers>,
 ) -> HandlerOutcome {
     let Some(reply_to) = ctx.headers().reply_to().map(str::to_owned) else {
         tracing::warn!(ask.sku, "a question without a reply address dropped");
@@ -54,11 +55,6 @@ async fn quote(
         tracing::info!(ask.sku, "no price for the item, no answer");
         return HandlerOutcome::drop();
     };
-    // The requester matches the answer to its question by the correlation id.
-    let mut headers = HeaderMap::new();
-    if let Some(correlation_id) = ctx.headers().correlation_id() {
-        headers.insert("correlation-id", correlation_id.to_owned());
-    }
     let price = Price {
         sku: ask.sku.clone(),
         cents,
@@ -66,7 +62,9 @@ async fn quote(
     if answers
         .message(&price)
         .to(reply_to)
-        .with_headers(headers)
+        // The requester matches the answer to its question by the correlation id, in the type
+        // it wrote the id in.
+        .correlation_id(correlation)
         .publish()
         .await
         .is_err()

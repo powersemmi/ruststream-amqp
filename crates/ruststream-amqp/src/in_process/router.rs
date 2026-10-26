@@ -28,6 +28,7 @@ use ruststream::{HeaderMap, RawMessage};
 use tokio::sync::mpsc;
 
 use crate::address::Routing;
+use crate::message::{Read, ReplyId};
 
 /// Opaque handle identifying one subscription inside an [`AddressRouter`].
 ///
@@ -44,6 +45,19 @@ pub(crate) struct Delivery {
     /// far. A message this crate published carries no header section, so a fresh one has none,
     /// and a delivery settled with `modified` and `delivery-failed` comes back with one more.
     pub(crate) count: Option<u32>,
+    /// The form of the id a reply to the message correlates to, as a live delivery reads it.
+    pub(crate) reply_id: ReplyId,
+}
+
+impl Delivery {
+    /// The delivery as a message reads it.
+    pub(crate) fn into_read(self) -> Read {
+        Read {
+            payload: self.payload,
+            headers: self.headers,
+            reply_id: self.reply_id,
+        }
+    }
 }
 
 type DeliverySender = mpsc::UnboundedSender<Delivery>;

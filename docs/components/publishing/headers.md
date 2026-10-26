@@ -22,7 +22,7 @@ A property takes a value only in a form it holds, so a header that rides one tra
 A value outside its property's form fails the publish with `AmqpError::UnsupportedHeader`, which names the header and the address.
 
 On delivery a handler reads both sections as one header map, through `ctx.headers()`.
-`correlation_id()` and `reply_to()` read the two properties [request-reply](../request-reply/index.md) uses.
+`correlation_id()` and `reply_to()` read the two properties [request-reply](../request-reply/index.md) uses; a [responder](../request-reply/responders.md) reads the correlation in its own type with `Ctx<ReplyCorrelation>`.
 A message id or a correlation id the sender wrote as a string or binary reads as its bytes; one written as a UUID reads as its hyphenated hex, and a number as its decimal digits.
 An application property reads in a form that keeps its value, though not its AMQP type:
 

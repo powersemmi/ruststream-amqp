@@ -4,14 +4,14 @@
 use std::fmt;
 use std::sync::Arc;
 
-use bytes::Bytes;
 use futures::Stream;
-use ruststream::{AckError, HeaderMap, Subscriber};
+use ruststream::{AckError, Subscriber};
 
 use super::bus::Bus;
 use super::router::{Delivery, DeliveryReceiver, SubscriptionId};
 use crate::error::AmqpError;
 use crate::message::AmqpMessage;
+use crate::message::Read;
 use crate::settle::SettleKind;
 
 /// One subscription on the in-process transport, one delivery at a time: what the subscriber
@@ -137,8 +137,7 @@ impl Settlement {
     pub(crate) fn settle(
         mut self,
         kind: SettleKind,
-        payload: Bytes,
-        headers: HeaderMap,
+        read: Read,
         delivery_count: Option<u32>,
     ) -> Result<(), AckError> {
         // Taken, so the drop that follows the settlement does not hand the delivery back.
@@ -158,9 +157,10 @@ impl Settlement {
                     origin.id,
                     &origin.address,
                     Delivery {
-                        payload,
-                        headers,
+                        payload: read.payload,
+                        headers: read.headers,
                         count: Some(delivery_count.unwrap_or(0) + 1),
+                        reply_id: read.reply_id,
                     },
                 )
                 .map_err(|_| {

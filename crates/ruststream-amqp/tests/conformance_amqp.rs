@@ -24,7 +24,7 @@ use ruststream::conformance::in_process::{self as in_process_checks, Refusal};
 use ruststream::conformance::{capabilities, harness, lifecycle, message_shape, retry, settlement};
 use ruststream::testing::Backlog;
 use ruststream::{Bytes, HeaderMap, Name};
-use ruststream_amqp::{AmqpAddress, AmqpBroker, PARTITION_KEY_HEADER, Sasl};
+use ruststream_amqp::{AmqpAddress, AmqpBroker, AmqpPublishOptions, PARTITION_KEY_HEADER, Sasl};
 
 use crate::live;
 
@@ -46,7 +46,7 @@ fn test_url() -> Option<String> {
 }
 
 /// A key carried the way this broker carries one: the header its publish maps onto `group-id`.
-fn key_header(key: &[u8], headers: &mut HeaderMap) -> Option<()> {
+fn key_header(key: &[u8], headers: &mut HeaderMap) -> Option<AmqpPublishOptions> {
     headers.insert(PARTITION_KEY_HEADER, Bytes::copy_from_slice(key));
     None
 }

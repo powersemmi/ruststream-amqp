@@ -28,7 +28,7 @@ use crate::broker::{AmqpCore, PumpGuard, is_at_most_once, source_for};
 use crate::error::{AmqpError, box_err};
 #[cfg(feature = "testing")]
 use crate::in_process::BusDeliveries;
-use crate::message::{AmqpMessage, headers_from_amqp, payload_from_body};
+use crate::message::{AmqpMessage, read_delivery};
 use crate::settle::{SettleCmd, SettleCommands, SettleKind, SettleLine};
 
 /// A subscription to one `AMQP` address; yields [`AmqpMessage`]s one at a time, or in batches.
@@ -249,18 +249,16 @@ async fn pump(mut p: Pump) {
                 delivery = p.receiver.recv::<Body<Value>>() => match delivery {
                     Ok(delivery) => {
                         let (info, message) = delivery.into_parts();
-                        let headers = headers_from_amqp(&message);
                         // Absent where the peer sent no header section, which is what a message
                         // this crate published looks like; see `AmqpMessage::redelivery_count`.
                         let delivery_count = message.header.as_ref().map(|h| h.delivery_count);
-                        match payload_from_body(message.body, &p.address) {
-                            Ok(payload) => {
+                        match read_delivery(message, &p.address) {
+                            Ok(read) => {
                                 pending = Some(if p.at_most_once {
-                                    AmqpMessage::settled(payload, headers, delivery_count)
+                                    AmqpMessage::settled(read, delivery_count)
                                 } else {
                                     AmqpMessage::unsettled(
-                                        payload,
-                                        headers,
+                                        read,
                                         delivery_count,
                                         Arc::clone(&p.line),
                                         info,

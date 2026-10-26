@@ -19,6 +19,7 @@ use ruststream::{AckError, HeaderMap, IncomingMessage, OutgoingFor, Partitioned,
 use crate::error::AmqpError;
 #[cfg(feature = "testing")]
 use crate::in_process::{Delivery, Settlement};
+use crate::publish_step::AmqpId;
 use crate::settle::{SettleKind, SettleLine};
 
 /// Header carrying the partition key, mapped onto the `AMQP` `group-id` property.
@@ -40,6 +41,8 @@ pub struct AmqpMessage {
     /// The `delivery-count` of the delivery's `header` section, or `None` where it carries no
     /// header section at all. See [`AmqpMessage::redelivery_count`](IncomingMessage::redelivery_count).
     delivery_count: Option<u32>,
+    /// The form of the id a reply to this delivery correlates to, read off its `properties`.
+    reply_id: ReplyId,
     /// `None` when the delivery is already settled (at-most-once, request/reply replies).
     settle: Option<SettleHandle>,
     /// How a delivery of the in-process transport settles, in place of the settle handle a live
@@ -65,16 +68,16 @@ impl fmt::Debug for AmqpMessage {
 
 impl AmqpMessage {
     pub(crate) fn unsettled(
-        payload: Bytes,
-        headers: HeaderMap,
+        read: Read,
         delivery_count: Option<u32>,
         line: Arc<SettleLine>,
         info: DeliveryInfo,
     ) -> Self {
         Self {
-            payload,
-            headers,
+            payload: read.payload,
+            headers: read.headers,
             delivery_count,
+            reply_id: read.reply_id,
             settle: Some(SettleHandle { line, info }),
             #[cfg(feature = "testing")]
             in_process: None,
@@ -83,11 +86,12 @@ impl AmqpMessage {
 
     /// A delivery that arrived already settled: an at-most-once subscription, which still carries
     /// whatever the broker counted, and a request/reply answer, which counts nothing.
-    pub(crate) fn settled(payload: Bytes, headers: HeaderMap, delivery_count: Option<u32>) -> Self {
+    pub(crate) fn settled(read: Read, delivery_count: Option<u32>) -> Self {
         Self {
-            payload,
-            headers,
+            payload: read.payload,
+            headers: read.headers,
             delivery_count,
+            reply_id: read.reply_id,
             settle: None,
             #[cfg(feature = "testing")]
             in_process: None,
@@ -97,7 +101,8 @@ impl AmqpMessage {
     /// A delivery of the in-process transport, reporting what a live one reports.
     #[cfg(feature = "testing")]
     pub(crate) fn in_process(delivery: Delivery, settlement: Settlement) -> Self {
-        Self::settled(delivery.payload, delivery.headers, delivery.count).settling(settlement)
+        let count = delivery.count;
+        Self::settled(delivery.into_read(), count).settling(settlement)
     }
 
     /// Hands the settlement of this delivery to the in-process transport.
@@ -110,13 +115,90 @@ impl AmqpMessage {
     async fn settle(self, kind: SettleKind) -> Result<(), AckError> {
         #[cfg(feature = "testing")]
         if let Some(settlement) = self.in_process {
-            return settlement.settle(kind, self.payload, self.headers, self.delivery_count);
+            let read = Read {
+                payload: self.payload,
+                headers: self.headers,
+                reply_id: self.reply_id,
+            };
+            return settlement.settle(kind, read, self.delivery_count);
         }
         let Some(SettleHandle { line, info }) = self.settle else {
             return Err(AckError::Unsupported);
         };
         line.settle(info, kind).await
     }
+}
+
+impl AmqpMessage {
+    pub(crate) const fn reply_id(&self) -> ReplyId {
+        self.reply_id
+    }
+}
+
+/// What a delivery reads as: its payload, its headers, and the form of the id a reply to it
+/// correlates to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Read {
+    pub(crate) payload: Bytes,
+    pub(crate) headers: HeaderMap,
+    pub(crate) reply_id: ReplyId,
+}
+
+/// The `AMQP` form of the id a reply to a delivery correlates to: its `correlation-id`, or its
+/// `message-id` where it carries none. A string or binary id names the header that holds its
+/// bytes, so recording it costs nothing per delivery; a number or a UUID is kept as the value.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum ReplyId {
+    #[default]
+    None,
+    String(&'static str),
+    Binary(&'static str),
+    Uuid([u8; 16]),
+    Ulong(u64),
+}
+
+impl ReplyId {
+    fn of(properties: Option<&Properties>) -> Self {
+        let Some(properties) = properties else {
+            return Self::None;
+        };
+        let (header, id) = match (&properties.correlation_id, &properties.message_id) {
+            (Some(id), _) => ("correlation-id", id),
+            (None, Some(id)) => ("message-id", id),
+            (None, None) => return Self::None,
+        };
+        match id {
+            MessageId::String(_) => Self::String(header),
+            MessageId::Binary(_) => Self::Binary(header),
+            MessageId::Uuid(uuid) => Self::Uuid(*uuid.as_inner()),
+            MessageId::Ulong(n) => Self::Ulong(*n),
+        }
+    }
+}
+
+/// Reads a delivered `AMQP` message: its headers, its reply id and its payload.
+///
+/// # Errors
+///
+/// [`AmqpError::UnsupportedBody`] for a body with no byte form, naming `address`.
+pub(crate) fn read_delivery(
+    message: Message<Body<Value>>,
+    address: &str,
+) -> Result<Read, AmqpError> {
+    let (headers, reply_id) = read_amqp(&message);
+    Ok(Read {
+        payload: payload_from_body(message.body, address)?,
+        headers,
+        reply_id,
+    })
+}
+
+/// Reads the headers and the reply id of a delivered `AMQP` message; the body is read apart.
+pub(crate) fn read_amqp<B>(message: &Message<B>) -> (HeaderMap, ReplyId) {
+    (
+        headers_from_amqp(message),
+        ReplyId::of(message.properties.as_ref()),
+    )
 }
 
 impl Partitioned for AmqpMessage {
@@ -170,9 +252,12 @@ impl IncomingMessage for AmqpMessage {
 ///
 /// [`AmqpError::UnsupportedHeader`] when a header the `properties` section carries has a value
 /// its property cannot hold.
-pub(crate) fn to_amqp_message(msg: OutgoingFor<'_, Take>) -> Result<Message<Data>, AmqpError> {
+pub(crate) fn to_amqp_message(
+    msg: OutgoingFor<'_, Take>,
+    correlation: Option<&AmqpId>,
+) -> Result<Message<Data>, AmqpError> {
     let (address, payload, headers) = msg.into_parts();
-    build_message(address, &headers, Vec::from(payload))
+    build_message(address, &headers, Vec::from(payload), correlation)
 }
 
 /// Builds the `AMQP` message carrying `body` with `headers` spread over its sections: the
@@ -184,11 +269,17 @@ pub(crate) fn to_amqp_message(msg: OutgoingFor<'_, Take>) -> Result<Message<Data
 ///
 /// # Errors
 ///
+/// `correlation`, where a publish set one, is the `correlation-id` property in its own type and
+/// wins over a `correlation-id` header.
+///
+/// # Errors
+///
 /// [`AmqpError::UnsupportedHeader`] naming the header and `address`.
 pub(crate) fn build_message(
     address: &str,
     headers: &HeaderMap,
     body: Vec<u8>,
+    correlation: Option<&AmqpId>,
 ) -> Result<Message<Data>, AmqpError> {
     let mut properties = Properties::default();
     let mut has_properties = false;
@@ -239,6 +330,11 @@ pub(crate) fn build_message(
                     .insert(other.to_owned(), simple);
             }
         }
+    }
+
+    if let Some(id) = correlation {
+        properties.correlation_id = Some(id.to_message_id());
+        has_properties = true;
     }
 
     let mut builder = Message::builder();
@@ -407,7 +503,7 @@ mod tests {
         let written = payload.as_ptr();
         let outgoing: OutgoingFor<'_, Take> = OutgoingMessage::produced("orders", payload);
 
-        let message = to_amqp_message(outgoing).expect("the headers fit their properties");
+        let message = to_amqp_message(outgoing, None).expect("the headers fit their properties");
 
         assert_eq!(
             message.body.0.as_ptr(),
@@ -428,7 +524,7 @@ mod tests {
         headers.insert("x-custom", "value");
         let outgoing = OutgoingMessage::new("orders", b"{}".as_slice()).with_headers(headers);
 
-        let message = to_amqp_message(outgoing).expect("the headers fit their properties");
+        let message = to_amqp_message(outgoing, None).expect("the headers fit their properties");
         let properties = message.properties.as_ref().expect("properties set");
         assert_eq!(
             properties.content_type.as_ref().map(Symbol::as_str),
@@ -462,7 +558,7 @@ mod tests {
             OutgoingMessage::new("orders", b"{}".as_slice()).with_headers(headers.clone());
 
         let restored = headers_from_amqp(
-            &to_amqp_message(outgoing).expect("the headers fit their properties"),
+            &to_amqp_message(outgoing, None).expect("the headers fit their properties"),
         );
         assert_eq!(restored.get_str("content-type"), Some("application/json"));
         assert_eq!(restored.get_str("correlation-id"), Some("corr-1"));
@@ -476,7 +572,10 @@ mod tests {
     fn publish_with(name: &str, value: &'static [u8]) -> Result<Message<Data>, AmqpError> {
         let mut headers = HeaderMap::new();
         headers.insert(name.to_owned(), Bytes::from_static(value));
-        to_amqp_message(OutgoingMessage::new("orders", b"{}".as_slice()).with_headers(headers))
+        to_amqp_message(
+            OutgoingMessage::new("orders", b"{}".as_slice()).with_headers(headers),
+            None,
+        )
     }
 
     #[test]
@@ -596,9 +695,25 @@ mod tests {
     }
 
     #[test]
+    fn a_typed_correlation_wins_over_the_correlation_header() {
+        let mut headers = HeaderMap::new();
+        headers.insert("correlation-id", "as-text");
+        let message = to_amqp_message(
+            OutgoingMessage::new("replies", b"{}".as_slice()).with_headers(headers),
+            Some(&AmqpId::Uuid([5; 16])),
+        )
+        .expect("the headers fit their properties");
+        let properties = message.properties.as_ref().expect("properties set");
+        assert_eq!(
+            properties.correlation_id,
+            Some(MessageId::Uuid(Uuid::from([5; 16])))
+        );
+    }
+
+    #[test]
     fn data_body_yields_payload_bytes() {
         let outgoing = OutgoingMessage::new("orders", b"payload".as_slice());
-        let message = to_amqp_message(outgoing).expect("the headers fit their properties");
+        let message = to_amqp_message(outgoing, None).expect("the headers fit their properties");
         let body = Body::<Value>::Data(vec![message.body].into());
         let payload = payload_from_body(body, "orders").expect("data body decodes");
         assert_eq!(payload.as_ref(), b"payload");
