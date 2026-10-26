@@ -1,7 +1,7 @@
 ---
 sidebar_position: 6
 title: Errors
-description: "AmqpError is the one error type of the crate: connect, session, attach, publish, a header with no property form, receive, request, transaction and a body with no bytes."
+description: "AmqpError is the one error type of the crate: connect, session, attach, publish, an unmappable header, receive, request, transaction and an empty body."
 ---
 
 import Tabs from '@theme/Tabs';
