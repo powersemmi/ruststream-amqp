@@ -54,7 +54,8 @@ serde = { version = "1", features = ["derive"] }
 ruststream-amqp = { version = "0.7", features = ["testing"] }
 ```
 
-Optional features: TLS for `amqps://` (`rustls` or `native-tls`), `transaction` and `asyncapi`.
+Optional features: TLS for `amqps://` (`rustls` or `native-tls`, with the client certificate SASL
+EXTERNAL logs in with), `transaction` and `asyncapi`.
 
 ## Write a service
 

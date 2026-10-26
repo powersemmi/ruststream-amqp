@@ -21,6 +21,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, PoisonError};
 
 use fe2o3_amqp::connection::{Connection, ConnectionHandle, Error as ConnectionError};
+#[cfg(any(feature = "rustls", feature = "native-tls"))]
+use fe2o3_amqp::sasl_profile::SaslProfile;
 use fe2o3_amqp::session::{Session, SessionHandle};
 use fe2o3_amqp::{Receiver, Sender};
 use fe2o3_amqp_types::messaging::Source;
@@ -48,6 +50,8 @@ use crate::error::{AmqpError, box_err};
 use crate::in_process::{self, Bus};
 use crate::publisher::{AmqpPublish, AmqpPublisher};
 use crate::subscriber::AmqpSubscriber;
+#[cfg(any(feature = "rustls", feature = "native-tls"))]
+use crate::tls::{self, Tls};
 
 /// The AMQP ports a URL that names none falls back to, as the specification assigns them.
 const AMQP_PORT: u16 = 5672;
@@ -448,6 +452,8 @@ pub struct AmqpBroker {
     url: String,
     container_id: Option<String>,
     sasl: Option<Sasl>,
+    #[cfg(any(feature = "rustls", feature = "native-tls"))]
+    tls: Option<Tls>,
     // Shared with publishers handed out before connect; the consuming connect fills it.
     cell: CoreCell,
 }
@@ -460,6 +466,8 @@ impl AmqpBroker {
             url: url.into(),
             container_id: None,
             sasl: None,
+            #[cfg(any(feature = "rustls", feature = "native-tls"))]
+            tls: None,
             cell: Arc::new(OnceCell::new()),
         }
     }
@@ -468,6 +476,58 @@ impl AmqpBroker {
     /// selects PLAIN implicitly; an explicit profile set here wins.
     pub fn sasl(mut self, sasl: Sasl) -> Self {
         self.sasl = Some(sasl);
+        self
+    }
+
+    /// Sets the TLS settings of the connection: the certificate authorities that verify the
+    /// broker, and the client certificate the service presents, which is what
+    /// [`Sasl::external`] logs in with. They need an `amqps://` URL; on an `amqp://` URL the
+    /// broker refuses to start rather than connect in the clear.
+    ///
+    /// Available with the `rustls` or the `native-tls` feature; with both, `native-tls` builds the
+    /// connection.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # mod demo {
+    /// use std::env;
+    ///
+    /// use ruststream_amqp::prelude::*;
+    /// # use serde::Deserialize;
+    /// #
+    /// # #[derive(Deserialize)]
+    /// # struct Order {
+    /// #     id: u64,
+    /// # }
+    /// #
+    /// # #[subscriber(AmqpAddress::queue("orders"))]
+    /// # async fn handle(order: &Order) -> HandlerOutcome {
+    /// #     tracing::info!(order.id, "accepted");
+    /// #     HandlerOutcome::ack()
+    /// # }
+    ///
+    /// #[ruststream::app]
+    /// fn app() -> impl App {
+    ///     let pem = |name: &str| env::var(name).unwrap_or_default();
+    ///     let tls = Tls::new()
+    ///         .root_certificates(pem("AMQP_CA_PEM"))
+    ///         .client_identity(pem("AMQP_CERT_PEM"), pem("AMQP_KEY_PEM"));
+    ///     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
+    ///         AmqpBroker::new("amqps://broker.internal:5671")
+    ///             .tls(tls)
+    ///             .sasl(Sasl::external()),
+    ///         |b| {
+    ///             b.include(handle);
+    ///         },
+    ///     )
+    /// }
+    /// # }
+    /// # fn main() {}
+    /// ```
+    #[cfg(any(feature = "rustls", feature = "native-tls"))]
+    pub fn tls(mut self, tls: Tls) -> Self {
+        self.tls = Some(tls);
         self
     }
 
@@ -506,6 +566,18 @@ impl Broker for AmqpBroker {
             .get_or_try_init(async || {
                 let url =
                     Url::parse(self.url.as_str()).map_err(|e| AmqpError::Connect(box_err(e)))?;
+                // Read before the socket opens, so settings that cannot work cost no connection.
+                // An `amqps://` URL without settings opens TLS with the default ones.
+                #[cfg(any(feature = "rustls", feature = "native-tls"))]
+                let connector = match (&self.tls, url.scheme()) {
+                    (Some(settings), _) => {
+                        tls::check_scheme(&url)?;
+                        Some(settings.connector()?)
+                    }
+                    (None, "amqps") => Some(Tls::new().connector()?),
+                    (None, _) => None,
+                };
+                let profile = sasl_profile(self.sasl.as_ref(), &url)?;
                 let stream = open_socket(&url).await?;
 
                 // The client's own `open` reads these off the URL; opening the socket here means
@@ -520,13 +592,27 @@ impl Broker for AmqpBroker {
                 if let Some(domain) = url.domain() {
                     builder = builder.domain(domain);
                 }
-                if let Some(profile) = sasl_profile(self.sasl.as_ref(), &url)? {
+                // TLS, and with it EXTERNAL, is opened here; the client then runs the connection
+                // over the stream as it would over a plain socket. See `tls::establish` for why.
+                #[cfg(any(feature = "rustls", feature = "native-tls"))]
+                let external =
+                    connector.is_some() && matches!(profile, Some(SaslProfile::External));
+                #[cfg(not(any(feature = "rustls", feature = "native-tls")))]
+                let external = false;
+                if let Some(profile) = profile.filter(|_| !external) {
                     builder = builder.sasl_profile(profile);
                 }
-                let mut conn = builder
-                    .open_with_stream(stream)
-                    .await
-                    .map_err(|e| AmqpError::Connect(box_err(e)))?;
+                #[cfg(any(feature = "rustls", feature = "native-tls"))]
+                let opened = match connector {
+                    Some(connector) => {
+                        let stream = tls::establish(stream, &url, &connector, external).await?;
+                        builder.scheme("amqp").open_with_stream(stream).await
+                    }
+                    None => builder.open_with_stream(stream).await,
+                };
+                #[cfg(not(any(feature = "rustls", feature = "native-tls")))]
+                let opened = builder.open_with_stream(stream).await;
+                let mut conn = opened.map_err(|e| AmqpError::Connect(box_err(e)))?;
                 let session = Session::begin(&mut conn)
                     .await
                     .map_err(|e| AmqpError::Session(box_err(e)))?;
@@ -569,6 +655,15 @@ impl InProcess for AmqpBroker {
         self,
     ) -> impl Future<Output = Result<Self::Connected, Self::Error>> + Send {
         let connected = in_process::check_url(&self.url).and_then(|()| {
+            // The URL's half of the TLS settings is checked as `connect` checks it. The
+            // certificates are not read: a test runs the service's logic, and the deployment's
+            // certificates are not there.
+            #[cfg(any(feature = "rustls", feature = "native-tls"))]
+            if self.tls.is_some() {
+                tls::check_scheme(
+                    &Url::parse(&self.url).map_err(|e| AmqpError::Connect(box_err(e)))?,
+                )?;
+            }
             let fresh = Link::InProcess(Arc::new(Bus::default()));
             // A clone of this broker connected earlier filled the cell already; its handles and
             // this connected form then share that transport, as they share a connection. A clone
@@ -893,6 +988,8 @@ pub(crate) fn is_at_most_once(settle: Settle) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{AmqpBroker, DescribeServer};
+    #[cfg(any(feature = "rustls", feature = "native-tls"))]
+    use super::{Sasl, Tls};
 
     /// The URL carries the credentials the connection needs, and the description is published in
     /// the service's `AsyncAPI` document, so the two must not be the same string. The parsing is
@@ -909,5 +1006,29 @@ mod tests {
         let host = spec.host.expect("a networked broker describes a host");
         assert!(!host.contains("artemis"), "the description leaked {host:?}");
         assert!(!host.contains('@'), "the description leaked {host:?}");
+    }
+
+    /// The TLS settings carry the service's private key, and the description is published.
+    #[cfg(any(feature = "rustls", feature = "native-tls"))]
+    #[test]
+    fn tls_settings_stay_out_of_the_description() {
+        let secret = "the-private-key-of-the-service";
+        let spec = AmqpBroker::new("amqps://broker.example.com:5671")
+            .tls(
+                Tls::new()
+                    .root_certificates("the-authority")
+                    .client_identity("the-certificate", secret),
+            )
+            .sasl(Sasl::external())
+            .describe_server();
+
+        assert_eq!(spec.host.as_deref(), Some("broker.example.com:5671"));
+        let described = format!("{spec:?}");
+        for setting in [secret, "the-certificate", "the-authority"] {
+            assert!(
+                !described.contains(setting),
+                "the description leaked {described}"
+            );
+        }
     }
 }

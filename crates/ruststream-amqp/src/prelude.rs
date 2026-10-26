@@ -1,8 +1,9 @@
 //! The imports a service on `AMQP` 1.0 writes every time, in one glob.
 //!
-//! The broker and its authentication profile, the address descriptor and its delivery guarantee,
-//! the crate's error, the publish policies, the capability traits [`RequestReply`] and (with the
-//! `transaction` feature) `TransactionalPublisher`, and the framework's own prelude.
+//! The broker, its authentication profile and (with a TLS feature) its TLS settings, the address
+//! descriptor and its delivery guarantee, the crate's error, the publish policies, the capability
+//! traits [`RequestReply`] and (with the `transaction` feature) `TransactionalPublisher`, and the
+//! framework's own prelude.
 //! [`Partitioned`](ruststream::Partitioned) stays out, though [`AmqpMessage`](crate::AmqpMessage)
 //! implements it: in scope it makes `msg.partition_key()` ambiguous with the method of the same
 //! name on `IncomingMessage`, so a service that reads partition keys imports it itself. Two broker
@@ -97,3 +98,6 @@ pub use crate::{
 pub use crate::{AmqpTransactionalPublish, AmqpTransactionalPublish as TransactionalPublish};
 #[cfg(feature = "transaction")]
 pub use ruststream::TransactionalPublisher;
+
+#[cfg(any(feature = "rustls", feature = "native-tls"))]
+pub use crate::Tls;

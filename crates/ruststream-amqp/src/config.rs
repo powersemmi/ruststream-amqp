@@ -131,15 +131,20 @@ impl Sasl {
         }
     }
 
-    /// SASL EXTERNAL: the broker takes an identity established outside SASL.
+    /// SASL EXTERNAL: the broker takes an identity established outside SASL, the client
+    /// certificate the connection presents.
     ///
-    /// The connection presents no client certificate: the crate exposes no TLS configuration,
-    /// and the client opens TLS without client authentication.
+    /// It needs an `amqps://` URL and the certificate set with `AmqpBroker::tls` (the `rustls` or
+    /// the `native-tls` feature). Without that step the connection presents no certificate and
+    /// the broker refuses the login; on an `amqp://` URL the broker refuses to start.
     ///
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(any(feature = "rustls", feature = "native-tls"))]
     /// # mod demo {
+    /// use std::env;
+    ///
     /// use ruststream_amqp::prelude::*;
     /// # use serde::Deserialize;
     /// #
@@ -156,9 +161,13 @@ impl Sasl {
     ///
     /// #[ruststream::app]
     /// fn app() -> impl App {
+    ///     let pem = |name: &str| env::var(name).unwrap_or_default();
+    ///     let tls = Tls::new().client_identity(pem("AMQP_CERT_PEM"), pem("AMQP_KEY_PEM"));
     ///     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
-    ///         // The broker identifies the service outside SASL; no credentials travel here.
-    ///         AmqpBroker::new("amqps://broker.internal:5671").sasl(Sasl::external()),
+    ///         // The broker identifies the service by its certificate; no credentials travel here.
+    ///         AmqpBroker::new("amqps://broker.internal:5671")
+    ///             .tls(tls)
+    ///             .sasl(Sasl::external()),
     ///         |b| {
     ///             b.include(handle);
     ///         },

@@ -30,7 +30,8 @@ TLS needs one of two features: `rustls` uses [rustls](https://docs.rs/rustls), a
 [`Sasl::plain`](../components/broker/security.md) logs the service in with a user name and a password.
 The URL then carries no credentials.
 A password with characters that have a meaning in a URL, such as `/`, `?` or `@`, goes through `Sasl::plain` as it is.
-[`Sasl::anonymous`](api:ruststream_amqp::Sasl::anonymous) connects without credentials, and [`Sasl::external`](api:ruststream_amqp::Sasl::external) uses a credential the connection already established outside SASL.
+[`Sasl::anonymous`](api:ruststream_amqp::Sasl::anonymous) connects without credentials.
+[`Sasl::external`](api:ruststream_amqp::Sasl::external) logs in with the client certificate set by [`AmqpBroker::tls`](api:ruststream_amqp::AmqpBroker::tls), as the [security page](../components/broker/security.md#client-certificate) shows.
 
 On Azure Service Bus the user name is the name of a shared access policy and the password is its key, as its [AMQP guide](https://learn.microsoft.com/en-us/azure/service-bus-messaging/service-bus-amqp-protocol-guide) describes.
 
