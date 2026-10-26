@@ -19,6 +19,7 @@ use ruststream::{AckError, HeaderMap, IncomingMessage, OutgoingFor, Partitioned,
 use crate::error::AmqpError;
 #[cfg(feature = "testing")]
 use crate::in_process::{Delivery, Settlement};
+use crate::publish_step::AmqpId;
 use crate::settle::{SettleKind, SettleLine};
 
 /// Header carrying the partition key, mapped onto the `AMQP` `group-id` property.
@@ -40,6 +41,8 @@ pub struct AmqpMessage {
     /// The `delivery-count` of the delivery's `header` section, or `None` where it carries no
     /// header section at all. See [`AmqpMessage::redelivery_count`](IncomingMessage::redelivery_count).
     delivery_count: Option<u32>,
+    /// The form of the id a reply to this delivery correlates to, read off its `properties`.
+    reply_id: ReplyId,
     /// `None` when the delivery is already settled (at-most-once, request/reply replies).
     settle: Option<SettleHandle>,
     /// How a delivery of the in-process transport settles, in place of the settle handle a live
@@ -65,16 +68,16 @@ impl fmt::Debug for AmqpMessage {
 
 impl AmqpMessage {
     pub(crate) fn unsettled(
-        payload: Bytes,
-        headers: HeaderMap,
+        read: Read,
         delivery_count: Option<u32>,
         line: Arc<SettleLine>,
         info: DeliveryInfo,
     ) -> Self {
         Self {
-            payload,
-            headers,
+            payload: read.payload,
+            headers: read.headers,
             delivery_count,
+            reply_id: read.reply_id,
             settle: Some(SettleHandle { line, info }),
             #[cfg(feature = "testing")]
             in_process: None,
@@ -83,11 +86,12 @@ impl AmqpMessage {
 
     /// A delivery that arrived already settled: an at-most-once subscription, which still carries
     /// whatever the broker counted, and a request/reply answer, which counts nothing.
-    pub(crate) fn settled(payload: Bytes, headers: HeaderMap, delivery_count: Option<u32>) -> Self {
+    pub(crate) fn settled(read: Read, delivery_count: Option<u32>) -> Self {
         Self {
-            payload,
-            headers,
+            payload: read.payload,
+            headers: read.headers,
             delivery_count,
+            reply_id: read.reply_id,
             settle: None,
             #[cfg(feature = "testing")]
             in_process: None,
@@ -97,7 +101,8 @@ impl AmqpMessage {
     /// A delivery of the in-process transport, reporting what a live one reports.
     #[cfg(feature = "testing")]
     pub(crate) fn in_process(delivery: Delivery, settlement: Settlement) -> Self {
-        Self::settled(delivery.payload, delivery.headers, delivery.count).settling(settlement)
+        let count = delivery.count;
+        Self::settled(delivery.into_read(), count).settling(settlement)
     }
 
     /// Hands the settlement of this delivery to the in-process transport.
@@ -110,13 +115,90 @@ impl AmqpMessage {
     async fn settle(self, kind: SettleKind) -> Result<(), AckError> {
         #[cfg(feature = "testing")]
         if let Some(settlement) = self.in_process {
-            return settlement.settle(kind, self.payload, self.headers, self.delivery_count);
+            let read = Read {
+                payload: self.payload,
+                headers: self.headers,
+                reply_id: self.reply_id,
+            };
+            return settlement.settle(kind, read, self.delivery_count);
         }
         let Some(SettleHandle { line, info }) = self.settle else {
             return Err(AckError::Unsupported);
         };
         line.settle(info, kind).await
     }
+}
+
+impl AmqpMessage {
+    pub(crate) const fn reply_id(&self) -> ReplyId {
+        self.reply_id
+    }
+}
+
+/// What a delivery reads as: its payload, its headers, and the form of the id a reply to it
+/// correlates to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Read {
+    pub(crate) payload: Bytes,
+    pub(crate) headers: HeaderMap,
+    pub(crate) reply_id: ReplyId,
+}
+
+/// The `AMQP` form of the id a reply to a delivery correlates to: its `correlation-id`, or its
+/// `message-id` where it carries none. A string or binary id names the header that holds its
+/// bytes, so recording it costs nothing per delivery; a number or a UUID is kept as the value.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum ReplyId {
+    #[default]
+    None,
+    String(&'static str),
+    Binary(&'static str),
+    Uuid([u8; 16]),
+    Ulong(u64),
+}
+
+impl ReplyId {
+    fn of(properties: Option<&Properties>) -> Self {
+        let Some(properties) = properties else {
+            return Self::None;
+        };
+        let (header, id) = match (&properties.correlation_id, &properties.message_id) {
+            (Some(id), _) => ("correlation-id", id),
+            (None, Some(id)) => ("message-id", id),
+            (None, None) => return Self::None,
+        };
+        match id {
+            MessageId::String(_) => Self::String(header),
+            MessageId::Binary(_) => Self::Binary(header),
+            MessageId::Uuid(uuid) => Self::Uuid(*uuid.as_inner()),
+            MessageId::Ulong(n) => Self::Ulong(*n),
+        }
+    }
+}
+
+/// Reads a delivered `AMQP` message: its headers, its reply id and its payload.
+///
+/// # Errors
+///
+/// [`AmqpError::UnsupportedBody`] for a body with no byte form, naming `address`.
+pub(crate) fn read_delivery(
+    message: Message<Body<Value>>,
+    address: &str,
+) -> Result<Read, AmqpError> {
+    let (headers, reply_id) = read_amqp(&message);
+    Ok(Read {
+        payload: payload_from_body(message.body, address)?,
+        headers,
+        reply_id,
+    })
+}
+
+/// Reads the headers and the reply id of a delivered `AMQP` message; the body is read apart.
+pub(crate) fn read_amqp<B>(message: &Message<B>) -> (HeaderMap, ReplyId) {
+    (
+        headers_from_amqp(message),
+        ReplyId::of(message.properties.as_ref()),
+    )
 }
 
 impl Partitioned for AmqpMessage {
@@ -165,39 +247,77 @@ impl IncomingMessage for AmqpMessage {
 }
 
 /// Builds the `AMQP` message for an outgoing publish.
-pub(crate) fn to_amqp_message(msg: OutgoingFor<'_, Take>) -> Message<Data> {
-    let (_, payload, headers) = msg.into_parts();
-    build_message(&headers, Vec::from(payload))
+///
+/// # Errors
+///
+/// [`AmqpError::UnsupportedHeader`] when a header the `properties` section carries has a value
+/// its property cannot hold.
+pub(crate) fn to_amqp_message(
+    msg: OutgoingFor<'_, Take>,
+    correlation: Option<&AmqpId>,
+) -> Result<Message<Data>, AmqpError> {
+    let (address, payload, headers) = msg.into_parts();
+    build_message(address, &headers, Vec::from(payload), correlation)
 }
 
 /// Builds the `AMQP` message carrying `body` with `headers` spread over its sections: the
 /// well-known ones on `properties`, every other one on `application-properties`.
-pub(crate) fn build_message(headers: &HeaderMap, body: Vec<u8>) -> Message<Data> {
+///
+/// A property takes a header's bytes only in a form it holds: `reply-to` and `group-id` are
+/// strings, `content-type` is a symbol, and `message-id` and `correlation-id` take binary where
+/// the bytes are not UTF-8. A value no form holds fails the publish instead of being rewritten.
+///
+/// # Errors
+///
+/// `correlation`, where a publish set one, is the `correlation-id` property in its own type and
+/// wins over a `correlation-id` header.
+///
+/// # Errors
+///
+/// [`AmqpError::UnsupportedHeader`] naming the header and `address`.
+pub(crate) fn build_message(
+    address: &str,
+    headers: &HeaderMap,
+    body: Vec<u8>,
+    correlation: Option<&AmqpId>,
+) -> Result<Message<Data>, AmqpError> {
     let mut properties = Properties::default();
     let mut has_properties = false;
     let mut application: Option<ApplicationProperties> = None;
 
     for (name, value) in headers.iter() {
-        let text = || String::from_utf8_lossy(value).into_owned();
+        let refuse = |reason| AmqpError::UnsupportedHeader {
+            address: address.to_owned(),
+            header: name.to_owned(),
+            reason,
+        };
+        let text = || {
+            std::str::from_utf8(value)
+                .map(str::to_owned)
+                .map_err(|_| refuse("is a string property and takes UTF-8 only"))
+        };
         match name {
             "content-type" => {
-                properties.content_type = Some(Symbol::from(text()));
+                if !value.is_ascii() {
+                    return Err(refuse("is a symbol property and takes ASCII only"));
+                }
+                properties.content_type = Some(Symbol::from(text()?));
                 has_properties = true;
             }
             "correlation-id" => {
-                properties.correlation_id = Some(MessageId::String(text()));
+                properties.correlation_id = Some(message_id(value));
                 has_properties = true;
             }
             "reply-to" => {
-                properties.reply_to = Some(text());
+                properties.reply_to = Some(text()?);
                 has_properties = true;
             }
             "message-id" => {
-                properties.message_id = Some(MessageId::String(text()));
+                properties.message_id = Some(message_id(value));
                 has_properties = true;
             }
             PARTITION_KEY_HEADER => {
-                properties.group_id = Some(text());
+                properties.group_id = Some(text()?);
                 has_properties = true;
             }
             other => {
@@ -212,6 +332,11 @@ pub(crate) fn build_message(headers: &HeaderMap, body: Vec<u8>) -> Message<Data>
         }
     }
 
+    if let Some(id) = correlation {
+        properties.correlation_id = Some(id.to_message_id());
+        has_properties = true;
+    }
+
     let mut builder = Message::builder();
     if has_properties {
         builder = builder.properties(properties);
@@ -219,7 +344,16 @@ pub(crate) fn build_message(headers: &HeaderMap, body: Vec<u8>) -> Message<Data>
     if let Some(application) = application {
         builder = builder.application_properties(application);
     }
-    builder.data(Binary::from(body)).build()
+    Ok(builder.data(Binary::from(body)).build())
+}
+
+/// The `message-id` form for an identifier's bytes: a string where they are UTF-8, binary where
+/// they are not, so every value travels unchanged.
+fn message_id(value: &[u8]) -> MessageId {
+    std::str::from_utf8(value).map_or_else(
+        |_| MessageId::Binary(Binary::from(value.to_vec())),
+        |s| MessageId::String(s.to_owned()),
+    )
 }
 
 /// Extracts `RustStream` headers from a delivered `AMQP` message.
@@ -234,14 +368,14 @@ pub(crate) fn headers_from_amqp<B>(message: &Message<B>) -> HeaderMap {
         if let Some(correlation_id) = &properties.correlation_id {
             headers.insert(
                 Str::from_static("correlation-id"),
-                message_id_text(correlation_id),
+                message_id_bytes(correlation_id),
             );
         }
         if let Some(reply_to) = &properties.reply_to {
             headers.insert(Str::from_static("reply-to"), reply_to.clone());
         }
         if let Some(message_id) = &properties.message_id {
-            headers.insert(Str::from_static("message-id"), message_id_text(message_id));
+            headers.insert(Str::from_static("message-id"), message_id_bytes(message_id));
         }
         if let Some(group_id) = &properties.group_id {
             headers.insert(Str::from_static(PARTITION_KEY_HEADER), group_id.clone());
@@ -249,58 +383,77 @@ pub(crate) fn headers_from_amqp<B>(message: &Message<B>) -> HeaderMap {
     }
     if let Some(application) = &message.application_properties {
         for (name, value) in application.iter() {
-            headers.insert(name.clone(), simple_value_bytes(value));
+            if let Some(bytes) = simple_value_bytes(name, value) {
+                headers.insert(name.clone(), bytes);
+            }
         }
     }
     headers
 }
 
-/// Renders any `AMQP` message-id form as text, so it survives the byte-valued header map.
-fn message_id_text(id: &MessageId) -> String {
+/// The header value of any `AMQP` message-id form: a string or binary id as its bytes, a UUID as
+/// its hyphenated lowercase hex, a number as its decimal digits.
+fn message_id_bytes(id: &MessageId) -> Bytes {
     match id {
-        MessageId::String(s) => s.clone(),
-        MessageId::Uuid(u) => format!("{u:x}"),
-        MessageId::Ulong(n) => n.to_string(),
-        MessageId::Binary(b) => String::from_utf8_lossy(b).into_owned(),
+        MessageId::String(s) => Bytes::copy_from_slice(s.as_bytes()),
+        MessageId::Binary(b) => Bytes::copy_from_slice(b),
+        MessageId::Uuid(u) => Bytes::from(format!("{u:x}")),
+        MessageId::Ulong(n) => Bytes::from(n.to_string()),
     }
 }
 
-fn simple_value_bytes(value: &SimpleValue) -> Bytes {
-    match value {
+/// The header value of an application property, in a form that keeps the value: the bytes of a
+/// string, a symbol or binary; the text of a boolean, a number, a char, a timestamp (milliseconds
+/// since the epoch) or a UUID (hyphenated lowercase hex), which parses back to the same value;
+/// nothing for null; the IEEE 754 bytes of a decimal; the `AMQP` encoding of a described value.
+/// The header map holds bytes, so the `AMQP` type itself does not travel.
+fn simple_value_bytes(name: &str, value: &SimpleValue) -> Option<Bytes> {
+    let bytes = match value {
         SimpleValue::String(s) => Bytes::copy_from_slice(s.as_bytes()),
         SimpleValue::Binary(b) => Bytes::copy_from_slice(b),
         SimpleValue::Symbol(s) => Bytes::copy_from_slice(s.as_str().as_bytes()),
-        other => Bytes::from(format_simple_value(other)),
-    }
-}
-
-/// Scalar fallback: peers may put numbers or booleans into application-properties; text is the
-/// only lossless byte form the header map can carry for them.
-fn format_simple_value(value: &SimpleValue) -> String {
-    match value {
-        SimpleValue::Bool(v) => v.to_string(),
-        SimpleValue::Ubyte(v) => v.to_string(),
-        SimpleValue::Ushort(v) => v.to_string(),
-        SimpleValue::Uint(v) => v.to_string(),
-        SimpleValue::Ulong(v) => v.to_string(),
-        SimpleValue::Byte(v) => v.to_string(),
-        SimpleValue::Short(v) => v.to_string(),
-        SimpleValue::Int(v) => v.to_string(),
-        SimpleValue::Long(v) => v.to_string(),
-        SimpleValue::Float(v) => v.to_string(),
-        SimpleValue::Double(v) => v.to_string(),
-        SimpleValue::Char(v) => v.to_string(),
-        SimpleValue::Timestamp(v) => v.milliseconds().to_string(),
-        SimpleValue::Uuid(v) => format!("{v:x}"),
-        other => format!("{other:?}"),
-    }
+        SimpleValue::Null => Bytes::new(),
+        SimpleValue::Bool(v) => Bytes::from(v.to_string()),
+        SimpleValue::Ubyte(v) => Bytes::from(v.to_string()),
+        SimpleValue::Ushort(v) => Bytes::from(v.to_string()),
+        SimpleValue::Uint(v) => Bytes::from(v.to_string()),
+        SimpleValue::Ulong(v) => Bytes::from(v.to_string()),
+        SimpleValue::Byte(v) => Bytes::from(v.to_string()),
+        SimpleValue::Short(v) => Bytes::from(v.to_string()),
+        SimpleValue::Int(v) => Bytes::from(v.to_string()),
+        SimpleValue::Long(v) => Bytes::from(v.to_string()),
+        SimpleValue::Float(v) => Bytes::from(v.to_string()),
+        SimpleValue::Double(v) => Bytes::from(v.to_string()),
+        SimpleValue::Char(v) => Bytes::from(v.to_string()),
+        SimpleValue::Timestamp(v) => Bytes::from(v.milliseconds().to_string()),
+        SimpleValue::Uuid(v) => Bytes::from(format!("{v:x}")),
+        SimpleValue::Decimal32(v) => Bytes::copy_from_slice(v.as_inner()),
+        SimpleValue::Decimal64(v) => Bytes::copy_from_slice(v.as_inner()),
+        SimpleValue::Decimal128(v) => Bytes::copy_from_slice(v.as_inner()),
+        SimpleValue::Described(v) => match serde_amqp::to_vec(v.as_ref()) {
+            Ok(encoded) => Bytes::from(encoded),
+            Err(err) => {
+                // A value the client decoded encodes again; this is the client failing its own
+                // round trip, and the header is left out rather than carried in a form that lies.
+                tracing::warn!(
+                    header = name,
+                    error = %err,
+                    "amqp application property has a described value the client cannot encode; \
+                     the header is left out"
+                );
+                return None;
+            }
+        },
+    };
+    Some(bytes)
 }
 
 /// Extracts the payload bytes from a delivered body.
 ///
-/// `Data` sections are the native byte path (what this crate publishes); a string or binary
-/// `AmqpValue` from a foreign peer is accepted as bytes too. Anything else has no faithful byte
-/// form and is reported as [`AmqpError::UnsupportedBody`].
+/// `Data` sections are the native byte path (this crate publishes one); a body of several reads as
+/// their bytes joined in order. A string or binary `AmqpValue` from a foreign peer is accepted as
+/// its bytes too, and an empty body as no bytes. Any other value and an `AmqpSequence` body have no faithful byte form and are reported
+/// as [`AmqpError::UnsupportedBody`].
 pub(crate) fn payload_from_body(body: Body<Value>, address: &str) -> Result<Bytes, AmqpError> {
     match body {
         Body::Data(batch) => {
@@ -334,7 +487,11 @@ pub(crate) fn payload_from_body(body: Body<Value>, address: &str) -> Result<Byte
 
 #[cfg(test)]
 mod tests {
+    use fe2o3_amqp_types::messaging::AmqpSequence;
+    use fe2o3_amqp_types::primitives::{Dec32, Dec128, Timestamp, Uuid};
     use ruststream::{BytesMut, OutgoingMessage};
+    use serde_amqp::described::Described;
+    use serde_amqp::descriptor::Descriptor;
 
     use super::*;
 
@@ -346,7 +503,7 @@ mod tests {
         let written = payload.as_ptr();
         let outgoing: OutgoingFor<'_, Take> = OutgoingMessage::produced("orders", payload);
 
-        let message = to_amqp_message(outgoing);
+        let message = to_amqp_message(outgoing, None).expect("the headers fit their properties");
 
         assert_eq!(
             message.body.0.as_ptr(),
@@ -367,7 +524,7 @@ mod tests {
         headers.insert("x-custom", "value");
         let outgoing = OutgoingMessage::new("orders", b"{}".as_slice()).with_headers(headers);
 
-        let message = to_amqp_message(outgoing);
+        let message = to_amqp_message(outgoing, None).expect("the headers fit their properties");
         let properties = message.properties.as_ref().expect("properties set");
         assert_eq!(
             properties.content_type.as_ref().map(Symbol::as_str),
@@ -400,20 +557,187 @@ mod tests {
         let outgoing =
             OutgoingMessage::new("orders", b"{}".as_slice()).with_headers(headers.clone());
 
-        let restored = headers_from_amqp(&to_amqp_message(outgoing));
+        let restored = headers_from_amqp(
+            &to_amqp_message(outgoing, None).expect("the headers fit their properties"),
+        );
         assert_eq!(restored.get_str("content-type"), Some("application/json"));
         assert_eq!(restored.get_str("correlation-id"), Some("corr-1"));
         assert_eq!(restored.get_str(PARTITION_KEY_HEADER), Some("user-42"));
         assert_eq!(restored.get_str("x-custom"), Some("value"));
     }
 
+    /// Bytes that are not UTF-8: a lossy conversion would turn them into replacement characters.
+    const NOT_UTF8: &[u8] = &[b'i', b'd', 0xff, 0x00, 0xfe];
+
+    fn publish_with(name: &str, value: &'static [u8]) -> Result<Message<Data>, AmqpError> {
+        let mut headers = HeaderMap::new();
+        headers.insert(name.to_owned(), Bytes::from_static(value));
+        to_amqp_message(
+            OutgoingMessage::new("orders", b"{}".as_slice()).with_headers(headers),
+            None,
+        )
+    }
+
+    #[test]
+    fn a_string_property_refuses_bytes_that_are_not_utf8() {
+        for header in ["reply-to", PARTITION_KEY_HEADER, "content-type"] {
+            let err = publish_with(header, NOT_UTF8)
+                .expect_err("a value the property cannot hold must not be rewritten");
+            match err {
+                AmqpError::UnsupportedHeader {
+                    address,
+                    header: named,
+                    ..
+                } => {
+                    assert_eq!(address, "orders");
+                    assert_eq!(named, header);
+                }
+                other => panic!("{header}: got {other}"),
+            }
+        }
+    }
+
+    #[test]
+    fn the_content_type_symbol_refuses_text_outside_ascii() {
+        let err = publish_with("content-type", "text/pl\u{e4}in".as_bytes())
+            .expect_err("a symbol is ASCII");
+        assert!(
+            matches!(err, AmqpError::UnsupportedHeader { ref header, .. } if header == "content-type"),
+            "got {err}"
+        );
+    }
+
+    #[test]
+    fn identifiers_that_are_not_utf8_ride_their_binary_form() {
+        for header in ["message-id", "correlation-id"] {
+            let message = publish_with(header, NOT_UTF8).expect("an identifier may be binary");
+            let properties = message.properties.as_ref().expect("properties set");
+            let id = if header == "message-id" {
+                &properties.message_id
+            } else {
+                &properties.correlation_id
+            };
+            assert_eq!(
+                id,
+                &Some(MessageId::Binary(Binary::from(NOT_UTF8.to_vec()))),
+                "{header}"
+            );
+            assert_eq!(
+                headers_from_amqp(&message).get(header),
+                Some(NOT_UTF8),
+                "{header} reads back as the bytes it was published with"
+            );
+        }
+    }
+
+    fn read_property(value: SimpleValue) -> Option<Bytes> {
+        let mut application = ApplicationProperties::default();
+        application.insert("x-value".to_owned(), value);
+        let message = Message::builder()
+            .application_properties(application)
+            .data(Binary::from(Vec::new()))
+            .build();
+        headers_from_amqp(&message)
+            .get("x-value")
+            .map(Bytes::copy_from_slice)
+    }
+
+    #[test]
+    fn a_property_with_no_text_form_reads_as_bytes_that_keep_it() {
+        assert_eq!(
+            read_property(SimpleValue::Null).as_deref(),
+            Some(b"".as_slice()),
+            "null is present with no value"
+        );
+        assert_eq!(
+            read_property(SimpleValue::Decimal32(Dec32::from([1, 2, 3, 4]))).as_deref(),
+            Some([1, 2, 3, 4].as_slice()),
+            "a decimal reads as its IEEE 754 bytes"
+        );
+        assert_eq!(
+            read_property(SimpleValue::Decimal128(Dec128::from([7; 16]))).as_deref(),
+            Some([7; 16].as_slice())
+        );
+        let described = Described {
+            descriptor: Descriptor::Code(0x77),
+            value: Value::String("inner".into()),
+        };
+        let encoded = serde_amqp::to_vec(&described).expect("a described value encodes");
+        assert_eq!(
+            read_property(SimpleValue::Described(Box::new(described))).as_deref(),
+            Some(encoded.as_slice()),
+            "a described value reads as its AMQP encoding"
+        );
+    }
+
+    #[test]
+    fn a_scalar_property_reads_as_text_that_parses_back() {
+        let text = |value| {
+            String::from_utf8(read_property(value).expect("present").to_vec()).expect("text")
+        };
+        assert_eq!(text(SimpleValue::Bool(true)), "true");
+        assert_eq!(text(SimpleValue::Long(-42)), "-42");
+        assert_eq!(text(SimpleValue::Ulong(u64::MAX)), u64::MAX.to_string());
+        let double = 0.1_f64 + 0.2;
+        assert_eq!(
+            text(SimpleValue::Double(double.into())).parse::<f64>(),
+            Ok(double)
+        );
+        assert_eq!(text(SimpleValue::Char('\u{e4}')), "\u{e4}");
+        assert_eq!(
+            text(SimpleValue::Timestamp(Timestamp::from_milliseconds(-1))),
+            "-1"
+        );
+        assert_eq!(
+            text(SimpleValue::Uuid(Uuid::from([0xab; 16]))),
+            "abababab-abab-abab-abab-abababababab"
+        );
+    }
+
+    #[test]
+    fn a_typed_correlation_wins_over_the_correlation_header() {
+        let mut headers = HeaderMap::new();
+        headers.insert("correlation-id", "as-text");
+        let message = to_amqp_message(
+            OutgoingMessage::new("replies", b"{}".as_slice()).with_headers(headers),
+            Some(&AmqpId::Uuid([5; 16])),
+        )
+        .expect("the headers fit their properties");
+        let properties = message.properties.as_ref().expect("properties set");
+        assert_eq!(
+            properties.correlation_id,
+            Some(MessageId::Uuid(Uuid::from([5; 16])))
+        );
+    }
+
     #[test]
     fn data_body_yields_payload_bytes() {
         let outgoing = OutgoingMessage::new("orders", b"payload".as_slice());
-        let message = to_amqp_message(outgoing);
+        let message = to_amqp_message(outgoing, None).expect("the headers fit their properties");
         let body = Body::<Value>::Data(vec![message.body].into());
         let payload = payload_from_body(body, "orders").expect("data body decodes");
         assert_eq!(payload.as_ref(), b"payload");
+    }
+
+    #[test]
+    fn data_sections_read_as_one_payload_in_their_order() {
+        let sections = [b"ab".as_slice(), b"", b"cd", b"e"]
+            .map(|chunk| Data(Binary::from(chunk.to_vec())))
+            .to_vec();
+        let payload =
+            payload_from_body(Body::<Value>::Data(sections.into()), "orders").expect("decodes");
+        assert_eq!(payload.as_ref(), b"abcde");
+    }
+
+    #[test]
+    fn a_sequence_body_is_reported_unsupported() {
+        let sequence = AmqpSequence(vec![Value::String("a".into())]);
+        let err = payload_from_body(Body::<Value>::Sequence(vec![sequence].into()), "orders")
+            .expect_err("a list of values has no byte form");
+        assert!(
+            matches!(&err, AmqpError::UnsupportedBody { address } if address == "orders"),
+            "got {err}"
+        );
     }
 
     #[test]

@@ -37,7 +37,7 @@ The pricing service answers questions about prices, and the orders service asks 
 A request arrives at a [responder](../components/request-reply/responders.md) with its reply address in the `reply-to` header, and `ctx.headers().reply_to()` reads it.
 `quote` publishes the price through its `Answers` slot with `to(reply_to)`, because the address is new for every request.
 `Price` therefore declares no address of its own.
-The answer carries the request's `correlation-id`, and the requester takes only an answer whose id matches.
+The answer carries the request's `correlation-id` in the type the requester wrote it, read by `Ctx<ReplyCorrelation>` and set with `.correlation_id(..)`, and the requester takes only an answer whose id matches.
 An item without a price gets no answer, and the requester's timeout ends the wait.
 
 The responder reads the queue `prices.quote`.

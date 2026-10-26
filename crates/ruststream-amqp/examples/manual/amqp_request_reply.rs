@@ -30,24 +30,21 @@ struct Greeting(Vec<u8>);
 
 struct Greet;
 
-impl<'p, Entry> Handle<Who<'p>, (), Outs<(Entry,)>> for Greet
+impl<'p, Entry> Handle<Who<'p>, (), Outs<(Entry,)>, AmqpContext> for Greet
 where
-    Entry: OutEntry<DefaultSlot, Wire: Publisher>,
+    Entry: OutEntry<DefaultSlot, Wire: Publisher<Options = AmqpPublishOptions>>,
 {
     async fn handle(
         &self,
         who: &Who<'p>,
         outs: &Outs<(Entry,)>,
-        ctx: &mut Context<'_>,
+        ctx: &mut Context<'_, AmqpContext>,
     ) -> Result<(), HandlerOutcome> {
         // The requester's private reply address; a message without one is no request.
         let Some(reply_to) = ctx.headers().reply_to().map(str::to_owned) else {
             return Err(HandlerOutcome::drop());
         };
-        let mut headers = HeaderMap::new();
-        if let Some(correlation_id) = ctx.headers().correlation_id() {
-            headers.insert("correlation-id", correlation_id.to_owned());
-        }
+        let correlation = ctx.context(ReplyCorrelation).cloned();
 
         let name = String::from_utf8_lossy(who.0);
         tracing::info!(%name, %reply_to, "greeting");
@@ -55,7 +52,8 @@ where
         outs.get(DefaultSlot)
             .message(&greeting)
             .to(reply_to)
-            .with_headers(headers)
+            // The request's correlation, in the type the requester wrote it.
+            .correlation_id(correlation)
             .publish()
             .await
             .map_err(|_| HandlerOutcome::retry())

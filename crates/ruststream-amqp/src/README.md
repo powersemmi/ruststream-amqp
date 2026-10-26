@@ -99,7 +99,9 @@ item's own documentation keeps the detail.
   `application-properties`.
 - [Keys][c-keys]: [`PARTITION_KEY_HEADER`] rides the `group-id` property.
 - [Request-reply][c-request-reply]: `request` over a dynamic reply address, and
-  [responders][c-responders] that answer on it.
+  [responders][c-responders] that answer on it with the request's correlation in its own type:
+  [`ReplyCorrelation`] on [`AmqpContext`], the [`AmqpPublishSteps::correlation_id`] step over
+  [`AmqpPublishOptions`], and the [`Correlate`] transform for the reply position.
 - [Transactions][c-transactions]: `AmqpTransactionalPublish` and its live `AmqpTxnPublisher`,
   and an `AmqpTransaction` of its own per delivery under `workers(n)` (feature `transaction`).
 

@@ -170,9 +170,10 @@ impl Transaction for AmqpTransaction {
     ///
     /// # Errors
     ///
-    /// Returns [`AmqpError::NotConnected`] once the broker has shut down, and
-    /// [`AmqpError::Publish`] or [`AmqpError::PublishNotAccepted`] when the server refuses the
-    /// post. A failed post leaves the transaction open: the caller decides between another post
+    /// Returns [`AmqpError::NotConnected`] once the broker has shut down,
+    /// [`AmqpError::UnsupportedHeader`] when a header has a value its `AMQP` property cannot
+    /// hold, and [`AmqpError::Publish`] or [`AmqpError::PublishNotAccepted`] when the server
+    /// refuses the post. A failed post leaves the transaction open: the caller decides between another post
     /// and an abort.
     async fn publish(
         &mut self,
@@ -191,8 +192,8 @@ impl Transaction for AmqpTransaction {
         live.core.ensure_open()?;
         // The destination is the caller's string and outlives the message the conversion takes.
         let address = msg.name();
+        let message = to_amqp_message(msg, None)?;
         let sender = live.core.sender_for(address).await?;
-        let message = to_amqp_message(msg);
         let txn = &live.txn;
         let outcome = sender
             .with(async |sender| {

@@ -38,7 +38,7 @@ import TabItem from '@theme/TabItem';
 请求到达[应答方](../components/request-reply/responders.md)时，`reply-to` 消息头中带着它的回复地址，`ctx.headers().reply_to()` 读取这个地址。
 `quote` 通过它的 `Answers` 槽位用 `to(reply_to)` 发布价格，因为每个请求的地址都不同。
 因此 `Price` 不声明自己的地址。
-答复带着请求的 `correlation-id`，请求方只接收 id 相符的答复。
+答复带着请求的 `correlation-id`，并保持请求方写入时的类型：处理器通过 `Ctx<ReplyCorrelation>` 读取它，用 `.correlation_id(..)` 设置它。请求方只接收 id 相符的答复。
 没有价格的商品得不到答复，请求方的超时结束等待。
 
 应答方读取队列 `prices.quote`。

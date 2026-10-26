@@ -58,6 +58,19 @@ pub enum AmqpError {
         outcome: String,
     },
 
+    /// A header that rides the `AMQP` `properties` section has a value its property cannot hold,
+    /// so the message is not sent. `reply-to` and `partition-key` (as `group-id`) are strings and
+    /// take UTF-8 only; `content-type` is a symbol and takes ASCII only.
+    #[error("amqp publish to '{address}' refused: header '{header}' {reason}")]
+    UnsupportedHeader {
+        /// The address the message was published to.
+        address: String,
+        /// The name of the header.
+        header: String,
+        /// What the property takes that the value is not.
+        reason: &'static str,
+    },
+
     /// The transport failed while receiving a message.
     #[error("amqp receive error on '{address}': {source}")]
     Receive {
@@ -68,8 +81,9 @@ pub enum AmqpError {
         source: Box<dyn StdError + Send + Sync>,
     },
 
-    /// A delivery arrived whose body the crate cannot expose as bytes (an `AMQP` value section
-    /// that is neither binary nor a string).
+    /// A delivery arrived whose body the crate cannot expose as bytes: an `AMQP` value section
+    /// that is neither binary nor a string, or `amqp-sequence` sections. The subscription rejects
+    /// the delivery, so it is not redelivered.
     #[error("amqp delivery on '{address}' has an unsupported body section")]
     UnsupportedBody {
         /// The source address of the subscription.

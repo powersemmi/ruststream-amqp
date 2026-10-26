@@ -62,15 +62,15 @@ impl PublishedThrough<Answers> for Price {}
 
 struct Quote;
 
-impl<Sent> Handle<Ask, (), Outs<(Sent,)>> for Quote
+impl<Sent> Handle<Ask, (), Outs<(Sent,)>, AmqpContext> for Quote
 where
-    Sent: OutEntry<Answers, Wire: Publisher>,
+    Sent: OutEntry<Answers, Wire: Publisher<Options = AmqpPublishOptions>>,
 {
     async fn handle(
         &self,
         ask: &Ask,
         outs: &Outs<(Sent,)>,
-        ctx: &mut Context<'_>,
+        ctx: &mut Context<'_, AmqpContext>,
     ) -> Result<(), HandlerOutcome> {
         let Some(reply_to) = ctx.headers().reply_to().map(str::to_owned) else {
             tracing::warn!(ask.sku, "a question without a reply address dropped");
@@ -80,11 +80,9 @@ where
             tracing::info!(ask.sku, "no price for the item, no answer");
             return Err(HandlerOutcome::drop());
         };
-        // The requester matches the answer to its question by the correlation id.
-        let mut headers = HeaderMap::new();
-        if let Some(correlation_id) = ctx.headers().correlation_id() {
-            headers.insert("correlation-id", correlation_id.to_owned());
-        }
+        // The requester matches the answer to its question by the correlation id, in the type
+        // it wrote the id in.
+        let correlation = ctx.context(ReplyCorrelation).cloned();
         let price = Price {
             sku: ask.sku.clone(),
             cents,
@@ -93,7 +91,7 @@ where
             .get(Answers)
             .message(&price)
             .to(reply_to)
-            .with_headers(headers)
+            .correlation_id(correlation)
             .publish()
             .await
             .is_err()
