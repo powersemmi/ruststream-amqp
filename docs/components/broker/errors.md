@@ -1,7 +1,7 @@
 ---
 sidebar_position: 6
 title: Errors
-description: "AmqpError is the one error type of the crate: connect, session, attach, publish, receive, request, transaction and a body with no bytes."
+description: "AmqpError is the one error type of the crate: connect, session, attach, publish, a header with no property form, receive, request, transaction and a body with no bytes."
 ---
 
 import Tabs from '@theme/Tabs';
@@ -9,7 +9,7 @@ import TabItem from '@theme/TabItem';
 
 # Errors
 
-[`AmqpError`](api:ruststream_amqp::AmqpError) is the one error type of the crate: connect, session, attach, publish, receive, request, transaction and a body with no bytes.
+[`AmqpError`](api:ruststream_amqp::AmqpError) is the one error type of the crate: connect, session, attach, publish, a header with no property form, receive, request, transaction and a body with no bytes.
 
 Each variant names the step that failed.
 The client's error behind it is its `source`, so the `fe2o3-amqp` types stay out of the crate's API.
@@ -22,6 +22,7 @@ The client's error behind it is its `source`, so the `fe2o3-amqp` types stay out
 | `Detach` | a link failed to close at shutdown |
 | `Publish` | the connection failed while a message was sent |
 | `PublishNotAccepted` | the broker settled a published message as rejected, released or modified, so the message is not on the broker |
+| `UnsupportedHeader` | a [header](../publishing/headers.md) that rides the `properties` section has a value its property cannot hold: `reply-to` or the partition key that is not UTF-8, a `content-type` that is not ASCII; the message is not sent |
 | `Receive` | the connection failed while a subscription received |
 | `UnsupportedBody` | a delivery's body is an AMQP value that is neither binary nor a string; the delivery is rejected, and the runtime logs the error |
 | `RequestTimeout` | a [request](../request-reply/index.md) had no reply within its timeout |

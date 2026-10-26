@@ -13,7 +13,7 @@
 use std::time::Duration;
 
 use ruststream::testing::{InProcess, TestApp};
-use ruststream::{Broker, ConnectedBroker, OutgoingMessage};
+use ruststream::{Broker, Bytes, ConnectedBroker, OutgoingMessage};
 use ruststream_amqp::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -426,6 +426,41 @@ async fn a_publish_to_the_empty_address_is_refused() {
         matches!(err, AmqpError::PublishNotAccepted { .. }),
         "got {err}"
     );
+}
+
+// `reply-to` is a string property, so bytes that are not UTF-8 have no form there: the publish
+// fails naming the header, where a lossy conversion would send a reply address nobody listens on.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_header_its_property_cannot_hold_fails_the_publish() {
+    let broker = AmqpBroker::new(URL);
+    let publisher = broker.publisher();
+    let tb = TestApp::start(app_on(broker))
+        .await
+        .expect("startup failed");
+
+    let mut headers = HeaderMap::new();
+    headers.insert("reply-to", Bytes::from_static(&[b'r', 0xff]));
+    let err = publisher
+        .publish(
+            OutgoingMessage::new("orders", br#"{"id":1}"#.as_slice()).with_headers(headers),
+            None,
+        )
+        .await
+        .expect_err("a reply address that is not UTF-8 must not be rewritten");
+    assert!(
+        matches!(
+            &err,
+            AmqpError::UnsupportedHeader { address, header, .. }
+                if address == "orders" && header == "reply-to"
+        ),
+        "got {err}"
+    );
+    tb.settle().await.expect("the run settles");
+    tb.broker::<AmqpBroker>()
+        .published::<Order>("confirmations")
+        .assert_not_called();
+
+    tb.shutdown().await.expect("shutdown failed");
 }
 
 // A transaction is declared over the connection, so one begun after the shutdown fails, as on the

@@ -15,10 +15,15 @@ The crate adds no envelope of its own, so a peer that does not use RustStream re
 On publish each well-known header fills the property of the same name.
 The [partition key](./keys.md) fills `group-id`.
 Any other header becomes an application property: a UTF-8 value as a string, any other value as binary.
+A property takes a value only in a form it holds, so a header that rides one travels unchanged or fails the publish.
+`reply-to` and the partition key are strings and take UTF-8.
+`content-type` is a symbol and takes ASCII.
+`message-id` and `correlation-id` go as a string when the value is UTF-8 and as binary otherwise.
+A value outside its property's form fails the publish with `AmqpError::UnsupportedHeader`, which names the header and the address.
 
 On delivery a handler reads both sections as one header map, through `ctx.headers()`.
 `correlation_id()` and `reply_to()` read the two properties [request-reply](../request-reply/index.md) uses.
-A message id or a correlation id the sender wrote as a UUID, a number or binary reads as text.
+A message id or a correlation id the sender wrote as a string or binary reads as its bytes; one written as a UUID reads as its hyphenated hex, and a number as its decimal digits.
 An application property the sender wrote as a number, a boolean or a timestamp reads as text too; a timestamp reads as milliseconds.
 
 A message type declares its headers with `#[outgoing(headers = ..)]`, and a field renamed to `correlation-id` lands in the property.

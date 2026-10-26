@@ -35,7 +35,7 @@ pub(crate) async fn request(
     ensure_node(address)?;
     let reply_to = bus.next_reply_address();
     let correlation_id = format!("{reply_to}-corr");
-    let mut delivery = frame(msg);
+    let mut delivery = frame(msg)?;
     delivery.headers.insert("reply-to", reply_to.clone());
     delivery
         .headers

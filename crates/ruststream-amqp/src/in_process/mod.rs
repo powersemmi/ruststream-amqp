@@ -107,13 +107,14 @@ pub(crate) fn subscribe(bus: &Arc<Bus>, address: &AmqpAddress) -> Result<BusDeli
 ///
 /// # Errors
 ///
-/// Returns [`AmqpError::NotConnected`] once the connection has shut down, and
-/// [`AmqpError::PublishNotAccepted`] for a message to the empty address.
+/// Returns [`AmqpError::NotConnected`] once the connection has shut down,
+/// [`AmqpError::PublishNotAccepted`] for a message to the empty address, and
+/// [`AmqpError::UnsupportedHeader`] for a header the live message could not carry.
 pub(crate) fn publish(bus: &Bus, msg: OutgoingFor<'_, Take>) -> Result<(), AmqpError> {
     bus.ensure_live()?;
     let address = msg.name();
     ensure_node(address)?;
-    bus.route(address, &frame(msg))
+    bus.route(address, &frame(msg)?)
 }
 
 /// Refuses a message to the empty address, as the peer does: a sender with no target address is
@@ -133,15 +134,15 @@ pub(crate) fn ensure_node(address: &str) -> Result<(), AmqpError> {
 pub(crate) fn inject(bus: &Bus, msg: &OutgoingMessage<'_>) -> Result<(), AmqpError> {
     bus.ensure_live()?;
     ensure_node(msg.name())?;
-    let message = build_message(msg.headers(), msg.payload().to_vec());
+    let message = build_message(msg.name(), msg.headers(), msg.payload().to_vec())?;
     bus.route(msg.name(), &delivered(message))
 }
 
 /// The delivery a live subscription would read for `msg`: the message this crate sends for it,
 /// read back the way a delivery is read. The headers a live delivery carries are the ones the
 /// `AMQP` sections hold, not the map the publish was handed.
-fn frame(msg: OutgoingFor<'_, Take>) -> Delivery {
-    delivered(to_amqp_message(msg))
+fn frame(msg: OutgoingFor<'_, Take>) -> Result<Delivery, AmqpError> {
+    to_amqp_message(msg).map(delivered)
 }
 
 fn delivered(message: Message<Data>) -> Delivery {

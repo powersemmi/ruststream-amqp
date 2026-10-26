@@ -171,8 +171,9 @@ impl Publisher for AmqpPublisher {
         };
         // The destination is the caller's string and outlives the message the conversion takes.
         let address = msg.name();
+        let message = to_amqp_message(msg)?;
         let sender = core.sender_for(address).await?;
-        send_message(&sender, address, to_amqp_message(msg)).await
+        send_message(&sender, address, message).await
     }
 }
 
@@ -206,7 +207,7 @@ impl RequestReply for AmqpPublisher {
         // The destination is the caller's string and outlives the message the conversion takes.
         let address = msg.name();
         let exchange = async {
-            let mut message = to_amqp_message(msg);
+            let mut message = to_amqp_message(msg)?;
             let properties = message.properties.get_or_insert_with(Properties::default);
             properties.reply_to = Some(reply_to);
             properties.correlation_id = Some(correlation_id.clone().into());

@@ -7,6 +7,7 @@ mod batches;
 mod conformance_amqp;
 mod integration_amqp;
 mod live_descriptor;
+mod live_headers;
 mod live_request_reply;
 mod live_retry;
 mod live_runtime;
