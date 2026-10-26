@@ -189,6 +189,19 @@ async fn in_process_passes_transactions_suite() {
     .await;
 }
 
+/// The in-process owned transactions: each one a buffer of its own, any number open at once on
+/// one publisher, settled independently, and failing after the shutdown.
+#[cfg(feature = "transaction")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn in_process_passes_owned_transactions_suite() {
+    Box::pin(capabilities::owned_transactions(
+        in_process,
+        |name| AmqpAddress::queue(name),
+        |connected| connected.transactional_publisher(),
+    ))
+    .await;
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn amqp_broker_passes_lifecycle() {
     let Some(url) = test_url() else { return };
@@ -320,6 +333,18 @@ async fn amqp_broker_passes_request_reply_suite() {
 async fn amqp_broker_passes_transactions_suite() {
     let Some(url) = test_url() else { return };
     Box::pin(capabilities::transactions(
+        || AmqpBroker::new(url.clone()),
+        |name| AmqpAddress::queue(name),
+        |connected| connected.transactional_publisher(),
+    ))
+    .await;
+}
+
+#[cfg(feature = "transaction")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn amqp_broker_passes_owned_transactions_suite() {
+    let Some(url) = test_url() else { return };
+    Box::pin(capabilities::owned_transactions(
         || AmqpBroker::new(url.clone()),
         |name| AmqpAddress::queue(name),
         |connected| connected.transactional_publisher(),

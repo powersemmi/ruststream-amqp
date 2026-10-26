@@ -25,4 +25,6 @@ pub use message::{AmqpMessage, PARTITION_KEY_HEADER};
 pub use publisher::{AmqpPublish, AmqpPublisher};
 pub use subscriber::AmqpSubscriber;
 #[cfg(feature = "transaction")]
+pub use txn::AmqpTransaction;
+#[cfg(feature = "transaction")]
 pub use txn::{AmqpTransactionalPublish, AmqpTxnPublisher};

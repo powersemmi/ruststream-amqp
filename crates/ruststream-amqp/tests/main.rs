@@ -12,6 +12,7 @@ mod live_retry;
 mod live_runtime;
 mod live_settlement;
 mod live_shutdown;
+mod owned_transactions;
 mod prelude_vocabularies;
 mod publishing;
 mod reply_destination;
