@@ -1,0 +1,78 @@
+# ruststream-amqp
+
+> `ruststream-amqp` is the AMQP 1.0 broker crate for RustStream, a Rust framework for services that subscribe to message brokers and publish to them. AMQP 1.0 is an ISO standard, so one crate over the `fe2o3-amqp` client serves ActiveMQ Artemis and Classic, RabbitMQ 4.x, Azure Service Bus and Event Hubs, Amazon MQ, Solace, Apache Qpid and IBM MQ.
+
+A subscription is the descriptor `AmqpAddress`: `AmqpAddress::queue` (competing consumers), `AmqpAddress::topic` (a copy each) or `AmqpAddress::raw` (an address sent as written), with the settings of its link; a bare `#[subscriber("orders")]` is a raw address. A handler's outcome is the delivery's disposition. A service imports `ruststream_amqp::prelude::*`, which offers the policies as `Publish` and, with the `transaction` feature, `TransactionalPublish`, along with the broker, its SASL profile and the capability trait `RequestReply`.
+
+This site holds the guides, one page per component and the architecture of the crate; the API reference is on docs.rs, and the framework itself is documented on the RustStream site.
+
+## Guides
+
+- [Guides](https://powersemmi.github.io/ruststream-amqp/latest/): building an AMQP 1.0 service with the crate, from a first subscriber to a production broker
+- [Getting started](https://powersemmi.github.io/ruststream-amqp/latest/guides/getting-started/): installation, a local ActiveMQ Artemis, a first subscriber against it and its test without a broker
+- [Queues and topics](https://powersemmi.github.io/ruststream-amqp/latest/guides/queues-and-topics/): a work queue, a broadcast, a broadcast that waits for its reader, headers and other clients
+- [Acknowledgement and delivery guarantees](https://powersemmi.github.io/ruststream-amqp/latest/guides/acknowledgement/): the three dispositions, the attempt cap, at most once, link credit and batches
+- [Retries and dead letters](https://powersemmi.github.io/ruststream-amqp/latest/guides/retries/): a retry now or later, the cap, the dead-letter address and copies marked by a transform
+- [Requests and replies](https://powersemmi.github.io/ruststream-amqp/latest/guides/request-reply/): a request over a dynamic reply address, a responder, and a request nobody answers
+- [Publishing all or nothing](https://powersemmi.github.io/ruststream-amqp/latest/guides/transactions/): messages published from one handler together or not at all
+- [Testing an AMQP service](https://powersemmi.github.io/ruststream-amqp/latest/guides/testing/): `TestApp` on the production app with replies, delays and dead letters, and the same test against a broker
+- [Connecting to production](https://powersemmi.github.io/ruststream-amqp/latest/guides/production/): TLS, SASL credentials from the environment, the container id, shutdown and a test of the configuration
+
+## Components
+
+- [Components](https://powersemmi.github.io/ruststream-amqp/latest/components/): the parts of the crate an AMQP 1.0 service uses, one page each
+- [AMQP broker](https://powersemmi.github.io/ruststream-amqp/latest/components/broker/): `AmqpBroker`, its URL and its lazy connection
+- [container_id](https://powersemmi.github.io/ruststream-amqp/latest/components/broker/container-id/): the name the service presents, which an operator finds its links by
+- [Security](https://powersemmi.github.io/ruststream-amqp/latest/components/broker/security/): `Sasl` for the login, and TLS for `amqps://` with the `rustls` or `native-tls` feature: `Tls` for the trusted authorities and the client certificate SASL EXTERNAL logs in with
+- [Startup](https://powersemmi.github.io/ruststream-amqp/latest/components/broker/startup/): the socket, the login, the publishers' session and each subscription's attach
+- [Shutdown](https://powersemmi.github.io/ruststream-amqp/latest/components/broker/shutdown/): the teardown from the inside out, and `AmqpError::NotConnected` for a publisher used afterwards
+- [Prelude](https://powersemmi.github.io/ruststream-amqp/latest/components/broker/prelude/): `ruststream_amqp::prelude`, the one glob an AMQP service imports
+- [Errors](https://powersemmi.github.io/ruststream-amqp/latest/components/broker/errors/): `AmqpError`, the one error type of the crate
+- [Subscriptions](https://powersemmi.github.io/ruststream-amqp/latest/components/subscriptions/): `AmqpAddress`, the address descriptor, and a bare name in `#[subscriber]`
+- [queue](https://powersemmi.github.io/ruststream-amqp/latest/components/subscriptions/queue/): `AmqpAddress::queue`, competing consumers, one delivery each
+- [topic](https://powersemmi.github.io/ruststream-amqp/latest/components/subscriptions/topic/): `AmqpAddress::topic`, a copy of each message for every subscription
+- [raw](https://powersemmi.github.io/ruststream-amqp/latest/components/subscriptions/raw/): `AmqpAddress::raw`, an address sent as written for a deployment's own convention
+- [credit](https://powersemmi.github.io/ruststream-amqp/latest/components/subscriptions/credit/): the link credit, the window of deliveries the broker may send ahead of the settlements
+- [Batches](https://powersemmi.github.io/ruststream-amqp/latest/components/subscriptions/batches/): slice handlers over batches assembled on the client, closed by `batch_wait`
+- [Dispositions](https://powersemmi.github.io/ruststream-amqp/latest/components/settlement/): what `ack`, `retry` and `drop` send: `accepted`, `modified` with `delivery-failed`, `rejected`
+- [Settle](https://powersemmi.github.io/ruststream-amqp/latest/components/settlement/settle/): `Settle::AtMostOnce`, each delivery settled on receipt
+- [Retries](https://powersemmi.github.io/ruststream-amqp/latest/components/settlement/retries/): `max_attempts`, counted by `delivery-count` or the framework's header on a copy
+- [Dead letters](https://powersemmi.github.io/ruststream-amqp/latest/components/settlement/dead-letters/): `dead_letter`, the address a spent delivery is published to
+- [retry_after](https://powersemmi.github.io/ruststream-amqp/latest/components/settlement/retry-after/): a copy published to the subscription's own address after the delay
+- [out_retry](https://powersemmi.github.io/ruststream-amqp/latest/components/settlement/out-retry/): the publisher of the retry copies, and a transform that marks them
+- [Publish](https://powersemmi.github.io/ruststream-amqp/latest/components/publishing/): `AmqpPublish`, `Publish` in the prelude, which fails a publish the broker does not accept
+- [Headers](https://powersemmi.github.io/ruststream-amqp/latest/components/publishing/headers/): the well-known headers in the `properties` section, the rest in `application-properties`
+- [Keys](https://powersemmi.github.io/ruststream-amqp/latest/components/publishing/keys/): the partition-key header as the AMQP `group-id`, for message groups
+- [Request-reply](https://powersemmi.github.io/ruststream-amqp/latest/components/request-reply/): `request` over a dynamic reply link, and `RequestTimeout`
+- [Responders](https://powersemmi.github.io/ruststream-amqp/latest/components/request-reply/responders/): a handler that answers on the `reply-to` address with the request's correlation in its own AMQP type
+- [Transactions](https://powersemmi.github.io/ruststream-amqp/latest/components/transactions/): `TransactionalPublish`, messages visible together on the commit, and a transaction per delivery under `workers(n)` (feature `transaction`)
+- [AMQP bindings](https://powersemmi.github.io/ruststream-amqp/latest/components/asyncapi/): the `amqp1` protocol and the `x-ruststream-amqp1` extension of the AsyncAPI document
+- [Server](https://powersemmi.github.io/ruststream-amqp/latest/components/asyncapi/server/): the host and port, the protocol version and the container id, never the credentials
+- [Channels](https://powersemmi.github.io/ruststream-amqp/latest/components/asyncapi/channels/): the address, terminus, credit and settle mode of each channel
+- [Operations](https://powersemmi.github.io/ruststream-amqp/latest/components/asyncapi/operations/): how a send posts: `confirmed` or `transactional`
+- [Replies](https://powersemmi.github.io/ruststream-amqp/latest/components/asyncapi/replies/): `$message.header#/reply-to`, where a reply's address is read
+- [Testing](https://powersemmi.github.io/ruststream-amqp/latest/components/testing/): `TestApp::start` with `AmqpBroker` on an in-process transport behind the `testing` feature
+- [Live](https://powersemmi.github.io/ruststream-amqp/latest/components/testing/live/): `TestApp::start_live`, the same test body against a running broker
+
+## Architecture
+
+- [Architecture](https://powersemmi.github.io/ruststream-amqp/latest/architecture/): how AMQP 1.0 works, where the crate sits between the broker and the RustStream runtime, and what that costs
+- [Connection](https://powersemmi.github.io/ruststream-amqp/latest/architecture/amqp/): containers, the connection, sessions and links
+- [Addresses](https://powersemmi.github.io/ruststream-amqp/latest/architecture/amqp/addresses/): nodes, terminus capabilities, and the dynamic source behind a request
+- [Transfers](https://powersemmi.github.io/ruststream-amqp/latest/architecture/amqp/transfers/): link credit, transfers and the dispositions that settle them
+- [AMQP transactions](https://powersemmi.github.io/ruststream-amqp/latest/architecture/amqp/transactions/): the coordinator, and transfers posted under a transaction
+- [Design](https://powersemmi.github.io/ruststream-amqp/latest/architecture/design/): a session per subscription and a shared session for publishers, between the runtime and the client
+- [Lifecycle](https://powersemmi.github.io/ruststream-amqp/latest/architecture/lifecycle/): `new`, `connect`, the attach of each subscription at startup, and the teardown at shutdown
+- [Path](https://powersemmi.github.io/ruststream-amqp/latest/architecture/path/): one delivery from the transfer through the handler and the reply to its disposition
+- [Lanes](https://powersemmi.github.io/ruststream-amqp/latest/architecture/lanes/): one receiver link and pump task per subscription, and `workers(n, by_key)` lanes keyed by `group-id`
+- [Settlement](https://powersemmi.github.io/ruststream-amqp/latest/architecture/settlement/): what `ack`, drop, retry and `retry_after` become on AMQP 1.0
+- [Benchmarks](https://powersemmi.github.io/ruststream-amqp/latest/architecture/benchmarks/): what the crate and the framework's runtime cost over the raw `fe2o3-amqp` client, and the cost of the crate's own code
+- [Benchmarks: Numbers](https://powersemmi.github.io/ruststream-amqp/latest/architecture/benchmarks/numbers/): what each published number measures, and what it does not allow you to conclude
+- [Benchmarks: Methodology](https://powersemmi.github.io/ruststream-amqp/latest/architecture/benchmarks/methodology/): the three loops, the run on a real broker and the code count with `just bench` and `just bench-code`
+
+## Optional
+
+- [API reference](https://docs.rs/ruststream-amqp): the full rustdoc of the crate, whose overview maps each topic to its pages here
+- [Prelude module](https://docs.rs/ruststream-amqp/latest/ruststream_amqp/prelude/index.html): the glob a routes file imports, and the two vocabularies of a service
+- [RustStream llms.txt](https://powersemmi.github.io/ruststream/llms.txt): the index of the framework's own documentation
+- [Source](https://github.com/powersemmi/ruststream-amqp): the crate's repository
