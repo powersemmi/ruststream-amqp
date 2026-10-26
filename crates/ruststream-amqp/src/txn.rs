@@ -1,10 +1,12 @@
 //! Transactional publishing over `AMQP` 1.0 transactional posting, behind the `transaction`
 //! feature.
 //!
-//! The scope is deliberate: the client's transactional *posting* path is the one its author
-//! documents as tested, so this module implements the borrowed
-//! [`TransactionalPublisher`] kind (one broker-side transaction per handle) and leaves
-//! transactional retirement (acks) and acquisition out.
+//! The publisher implements both transaction kinds: the borrowed [`TransactionalPublisher`] (one
+//! broker-side transaction per handle) and the owned
+//! [`OwnedTransactions`](ruststream::OwnedTransactions) (a transaction of its own per call, any
+//! number open at once). The scope is deliberate: the client's transactional *posting* path is
+//! the one its author documents as tested, so transactional retirement (acks) and acquisition
+//! stay out.
 
 // Without the `testing` feature a connection link has one variant, so a `match` on it has a
 // single arm; the matches stay so that the in-process arm has its place when the feature is on.
@@ -36,6 +38,10 @@ use crate::error::{AmqpError, box_err};
 use crate::in_process::TxnBuffer;
 use crate::message::to_amqp_message;
 use crate::publisher::accepted;
+
+mod owned;
+
+pub use owned::AmqpTransaction;
 
 /// The publish policy for [`AmqpTxnPublisher`]: names the transactional publishing mode as a
 /// distinct policy type, so the plain publisher carries no transactional surface at all.
@@ -144,9 +150,12 @@ impl ConnectedAmqpBroker {
 /// A publisher whose messages between `begin_transaction` and `commit` become visible
 /// atomically, over the protocol's transactional state.
 ///
-/// This is the borrowed transaction kind: the handle carries at most one broker-side
-/// transaction, a second `begin_transaction` while one is open errors, and `commit`/`abort`
-/// with no open transaction error - never a silent no-op.
+/// `begin_transaction`, `commit` and `abort` are the borrowed transaction kind: the handle carries
+/// at most one broker-side transaction, a second `begin_transaction` while one is open errors,
+/// and `commit`/`abort` with no open transaction error - never a silent no-op. Workers that share
+/// the handle open owned transactions instead: each
+/// [`transaction`](ruststream::OwnedTransactions::transaction) call returns an
+/// [`AmqpTransaction`] of its own.
 pub struct AmqpTxnPublisher {
     transport: Transport,
 }
@@ -225,6 +234,36 @@ impl Publisher for AmqpTxnPublisher {
     }
 }
 
+/// Declares a broker-side transaction on a control link of its own, which the transaction owns
+/// and closes when it is discharged.
+async fn declare(core: &AmqpCore) -> Result<OwnedTransaction, AmqpError> {
+    // The session lock covers the attach alone: the declare runs on the control link, so the
+    // round trip does not hold up the publishers and the other transactions on this session.
+    let controller = {
+        let mut session = core.session.lock().await;
+        // The control link is attached with snd-settle-mode Mixed rather than through
+        // `OwnedTransaction::declare`, which hardcodes Unsettled: the client requires the broker
+        // to echo the mode verbatim, and ActiveMQ Artemis answers Mixed. Declare and discharge
+        // transfers are still sent unsettled per transfer, as the spec requires.
+        Controller::builder()
+            .name(core.link_name("txn"))
+            .coordinator(Coordinator::default())
+            .sender_settle_mode(SenderSettleMode::Mixed)
+            .attach(&mut session)
+            .await
+            .map_err(|e| AmqpError::Transaction(e.to_string()))?
+    };
+    let mut txn = OwnedTransaction::declare_with_controller(controller, None)
+        .await
+        .map_err(|e| AmqpError::Transaction(e.to_string()))?;
+    // The client rolls back a transaction dropped undischarged from its destructor, waiting on
+    // the outcome with a blocking sleep of up to seconds, on whichever runtime thread drops it.
+    // Here that happens when a discharge failed and no outcome comes, or when a publisher goes
+    // away holding an open transaction, so the rollback is sent without the wait.
+    txn.set_rollback_on_drop_trials(0);
+    Ok(txn)
+}
+
 impl TransactionalPublisher for AmqpTxnPublisher {
     // The slot guard intentionally spans the declare so two begins cannot race an open slot.
     #[allow(clippy::significant_drop_tightening)]
@@ -242,23 +281,7 @@ impl TransactionalPublisher for AmqpTxnPublisher {
                 "a transaction is already open on this publisher".into(),
             ));
         }
-        let txn = {
-            let mut session = live.core.session.lock().await;
-            // The control link is attached with snd-settle-mode Mixed rather than through
-            // `OwnedTransaction::declare`, which hardcodes Unsettled: the client requires the
-            // broker to echo the mode verbatim, and ActiveMQ Artemis answers Mixed. Declare and
-            // discharge transfers are still sent unsettled per transfer, as the spec requires.
-            let controller = Controller::builder()
-                .name(live.core.link_name("txn"))
-                .coordinator(Coordinator::default())
-                .sender_settle_mode(SenderSettleMode::Mixed)
-                .attach(&mut session)
-                .await
-                .map_err(|e| AmqpError::Transaction(e.to_string()))?;
-            OwnedTransaction::declare_with_controller(controller, None)
-                .await
-                .map_err(|e| AmqpError::Transaction(e.to_string()))?
-        };
+        let txn = declare(&live.core).await?;
         *slot = Some(txn);
         Ok(())
     }

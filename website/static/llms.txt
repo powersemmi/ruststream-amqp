@@ -45,7 +45,7 @@ This site holds the guides, one page per component and the architecture of the c
 - [Keys](https://powersemmi.github.io/ruststream-amqp/latest/components/publishing/keys/): the partition-key header as the AMQP `group-id`, for message groups
 - [Request-reply](https://powersemmi.github.io/ruststream-amqp/latest/components/request-reply/): `request` over a dynamic reply link, and `RequestTimeout`
 - [Responders](https://powersemmi.github.io/ruststream-amqp/latest/components/request-reply/responders/): a handler that answers on the `reply-to` address and echoes `correlation-id`
-- [Transactions](https://powersemmi.github.io/ruststream-amqp/latest/components/transactions/): `TransactionalPublish`, messages visible together on the commit (feature `transaction`)
+- [Transactions](https://powersemmi.github.io/ruststream-amqp/latest/components/transactions/): `TransactionalPublish`, messages visible together on the commit, and a transaction per delivery under `workers(n)` (feature `transaction`)
 - [AMQP bindings](https://powersemmi.github.io/ruststream-amqp/latest/components/asyncapi/): the `amqp1` protocol and the `x-ruststream-amqp1` extension of the AsyncAPI document
 - [Server](https://powersemmi.github.io/ruststream-amqp/latest/components/asyncapi/server/): the host and port, the protocol version and the container id, never the credentials
 - [Channels](https://powersemmi.github.io/ruststream-amqp/latest/components/asyncapi/channels/): the address, terminus, credit and settle mode of each channel

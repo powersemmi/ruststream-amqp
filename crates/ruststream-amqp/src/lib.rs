@@ -12,6 +12,7 @@ mod in_process;
 mod message;
 pub mod prelude;
 mod publisher;
+mod settle;
 mod subscriber;
 #[cfg(any(feature = "rustls", feature = "native-tls"))]
 mod tls;
@@ -27,5 +28,7 @@ pub use publisher::{AmqpPublish, AmqpPublisher};
 pub use subscriber::AmqpSubscriber;
 #[cfg(any(feature = "rustls", feature = "native-tls"))]
 pub use tls::Tls;
+#[cfg(feature = "transaction")]
+pub use txn::AmqpTransaction;
 #[cfg(feature = "transaction")]
 pub use txn::{AmqpTransactionalPublish, AmqpTxnPublisher};

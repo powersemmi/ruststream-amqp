@@ -35,13 +35,13 @@ that id in its transactional state. `discharge` ends the transaction: with `fail
 and with `fail` true it rolls back.
 
 [`AmqpTxnPublisher`](../../components/transactions/index.md) posts under a transaction. Each
-`begin_transaction` attaches a controller link on the connection's publisher session and declares
-one transaction, and `commit` and `abort` discharge it. The controller asks for the `mixed`
+`begin_transaction` and each owned transaction attaches a controller link of its own on the
+connection's publisher session and declares one transaction, and `commit` and `abort` discharge
+it. Several transactions are open on one connection at a time, and Artemis keeps them apart. The controller asks for the `mixed`
 sender settle mode, because Artemis answers with that mode and the client requires the broker to
 echo the one it asked for.
 
-Brokers differ here. Artemis serves one transaction per session, and the publishers of a
-connection share one session. RabbitMQ 4 does not support AMQP 1.0 transactions. Azure Service Bus
+Brokers differ here. RabbitMQ 4 does not support AMQP 1.0 transactions. Azure Service Bus
 supports them, and posts to several entities in one transaction through a send-via entity.
 
 The protocol is the specification's

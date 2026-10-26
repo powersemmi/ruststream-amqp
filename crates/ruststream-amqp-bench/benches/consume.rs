@@ -32,8 +32,8 @@ fn app(messages: usize) -> Pending {
     })
 }
 
-// Each of five runs of this tree allocated 34,418 blocks.
-#[library_benchmark(config = common::config(common::floor(34_418)))]
+// Each of five runs of this tree allocated 32,421 blocks.
+#[library_benchmark(config = common::config(common::floor(32_421)))]
 #[bench::first(app(1))]
 #[bench::base(app(MESSAGES))]
 #[bench::twice(app(2 * MESSAGES))]

@@ -9,6 +9,7 @@
 
 use std::fmt;
 use std::num::NonZeroUsize;
+use std::sync::Arc;
 
 use futures::Stream;
 #[cfg(feature = "testing")]
@@ -27,9 +28,8 @@ use crate::broker::{AmqpCore, PumpGuard, is_at_most_once, source_for};
 use crate::error::{AmqpError, box_err};
 #[cfg(feature = "testing")]
 use crate::in_process::BusDeliveries;
-use crate::message::{
-    AmqpMessage, SettleCmd, SettleKind, SettleSender, headers_from_amqp, payload_from_body,
-};
+use crate::message::{AmqpMessage, headers_from_amqp, payload_from_body};
+use crate::settle::{SettleCmd, SettleCommands, SettleKind, SettleLine};
 
 /// A subscription to one `AMQP` address; yields [`AmqpMessage`]s one at a time, or in batches.
 ///
@@ -81,14 +81,17 @@ impl AmqpSubscriber {
         // never buffers beyond what the broker was allowed to send. The credit is non-zero by
         // construction, so it is already a legal channel capacity.
         let (out_tx, out_rx) = mpsc::channel(credit as usize);
-        let (settle_tx, settle_rx) = mpsc::unbounded_channel();
+        // The credit sizes the subscription's answer slots: as many settlements at once as the
+        // broker may send deliveries ahead. A settlement beyond them waits for one to come free.
+        let slots = NonZeroUsize::new(credit as usize).unwrap_or(NonZeroUsize::MIN);
+        let (line, commands) = SettleLine::open(slots);
         let addr = address.address().to_owned();
         core.runtime.spawn(pump(Pump {
             session,
             receiver,
             out: out_tx,
-            settle_tx,
-            settle_rx,
+            line,
+            commands,
             address: addr.clone(),
             at_most_once,
             guard,
@@ -188,9 +191,9 @@ struct Pump {
     receiver: FeReceiver,
     out: mpsc::Sender<Result<AmqpMessage, AmqpError>>,
     /// Held to mint per-message settle handles; dropped before the drain phase so the settle
-    /// channel can close once every outstanding message handle is gone.
-    settle_tx: SettleSender,
-    settle_rx: mpsc::UnboundedReceiver<SettleCmd>,
+    /// line can close once every outstanding message handle is gone.
+    line: Arc<SettleLine>,
+    commands: SettleCommands,
     address: String,
     at_most_once: bool,
     /// Carries the connection's stop signal in, and its drop tells the connection this pump's
@@ -221,7 +224,7 @@ async fn pump(mut p: Pump) {
             // unpolled stream can never wedge in-flight acks.
             tokio::select! {
                 biased;
-                cmd = p.settle_rx.recv() => {
+                cmd = p.commands.recv() => {
                     if let Some(cmd) = cmd {
                         apply(&p.receiver, cmd).await;
                     }
@@ -236,7 +239,7 @@ async fn pump(mut p: Pump) {
         } else {
             tokio::select! {
                 biased;
-                cmd = p.settle_rx.recv() => {
+                cmd = p.commands.recv() => {
                     if let Some(cmd) = cmd {
                         apply(&p.receiver, cmd).await;
                     }
@@ -259,7 +262,7 @@ async fn pump(mut p: Pump) {
                                         payload,
                                         headers,
                                         delivery_count,
-                                        p.settle_tx.clone(),
+                                        Arc::clone(&p.line),
                                         info,
                                     )
                                 });
@@ -304,11 +307,11 @@ async fn pump(mut p: Pump) {
     // dispositions fail and report the same way. The delivery channel goes first: deliveries it
     // still holds for a dropped subscriber hold settle handles of their own.
     drop(p.out);
-    drop(p.settle_tx);
+    drop(p.line);
     loop {
         tokio::select! {
             biased;
-            cmd = p.settle_rx.recv() => match cmd {
+            cmd = p.commands.recv() => match cmd {
                 Some(cmd) => apply(&p.receiver, cmd).await,
                 None => break,
             },
@@ -350,12 +353,17 @@ async fn stopped(stop: &mut watch::Receiver<bool>) {
 }
 
 async fn apply(receiver: &FeReceiver, cmd: SettleCmd) {
-    let result = match cmd.kind {
-        SettleKind::Accept => receiver.accept(cmd.info).await,
+    let SettleCmd {
+        delivery,
+        kind,
+        reply,
+    } = cmd;
+    let result = match kind {
+        SettleKind::Accept => receiver.accept(delivery).await,
         SettleKind::Modify => {
             receiver
                 .modify(
-                    cmd.info,
+                    delivery,
                     Modified {
                         delivery_failed: Some(true),
                         // The delivery is to come back to this subscription: a retry that
@@ -366,11 +374,9 @@ async fn apply(receiver: &FeReceiver, cmd: SettleCmd) {
                 )
                 .await
         }
-        SettleKind::Reject => receiver.reject(cmd.info, None).await,
+        SettleKind::Reject => receiver.reject(delivery, None).await,
     };
-    let _ = cmd
-        .done
-        .send(result.map_err(|e| AckError::Broker(box_err(e))));
+    reply.send(result.map_err(|e| AckError::Broker(box_err(e))));
 }
 
 #[cfg(test)]

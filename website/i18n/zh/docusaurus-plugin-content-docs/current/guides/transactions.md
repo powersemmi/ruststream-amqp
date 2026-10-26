@@ -70,6 +70,7 @@ ruststream-amqp = { version = "0.7", features = ["transaction"] }
 在已有事务开启时再次调用 `begin_transaction` 会返回错误，已开启的事务不受影响。
 每次注册都得到自己的发布者，所以两个处理器可以同时各持有一个事务。
 在事务之外通过这个发布者发布的消息会立即发出。
+带 `workers(n)` 的处理器让它的各个工作者共用一个发布者，所以每次投递都用 `owned_transaction()` 开启自己的事务，参见 [事务](../components/transactions/index.md#a-transaction-per-delivery)。
 
 服务启动时执行、没有投递可处理的事务，放在启动钩子中运行：`b.after_startup(TransactionalPublish, ..)` 把同一个发布者交给钩子。
 

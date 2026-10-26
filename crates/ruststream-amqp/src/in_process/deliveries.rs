@@ -11,7 +11,8 @@ use ruststream::{AckError, HeaderMap, Subscriber};
 use super::bus::Bus;
 use super::router::{Delivery, DeliveryReceiver, SubscriptionId};
 use crate::error::AmqpError;
-use crate::message::{AmqpMessage, SettleKind};
+use crate::message::AmqpMessage;
+use crate::settle::SettleKind;
 
 /// One subscription on the in-process transport, one delivery at a time: what the subscriber
 /// batches over, as it batches over a live link.
