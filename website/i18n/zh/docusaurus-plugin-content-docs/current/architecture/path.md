@@ -29,7 +29,7 @@ export const words = {
 
 订阅的泵任务拥有它的接收链路。接收需要独占链路，而结算只读取链路，处理器持有的投递又要在任务之间传递。所以由泵任务负责接收，每次结算都作为一条命令回到泵任务。客户端的答复经由订阅反复使用的槽位回到处理器，因此结算不分配内存。
 
-泵任务把一次 transfer 变成一条 [`AmqpMessage`](api:ruststream_amqp::AmqpMessage)。消息头取自 `properties` 和 `application-properties` 段，字节取自 `data` 段，`delivery-count` 取自 `header` 段。字符串或二进制的值段也按字节读取，其他任何消息体都被拒绝，并报告给订阅。随后泵任务把投递放进一个深度等于[链路信用](../components/subscriptions/credit.md)的通道，在等待通道腾出空间时继续处理结算命令。
+泵任务把一次 transfer 变成一条 [`AmqpMessage`](api:ruststream_amqp::AmqpMessage)。消息头取自 `properties` 和 `application-properties` 段，字节取自 `data` 段，`delivery-count` 取自 `header` 段。多个 `data` 段按顺序拼接成一份字节。字符串或二进制的值段也按字节读取，其他任何消息体（包括序列消息体）都被拒绝，并报告给订阅。随后泵任务把投递放进一个深度等于[链路信用](../components/subscriptions/credit.md)的通道，在等待通道腾出空间时继续处理结算命令。
 
 客户端无法读取的投递，比如超过链路允许大小的投递，会被报告，链路仍保持附加。Broker 超出所给信用发送 transfer 时，链路被破坏，订阅随之结束。
 

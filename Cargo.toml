@@ -24,6 +24,9 @@ ruststream = { version = "0.7", default-features = false }
 # settled at once could wait forever for an outcome the client had already dropped.
 fe2o3-amqp = "0.18.2"
 fe2o3-amqp-types = "0.18"
+# The client's own encoder: a described value a peer puts in `application-properties` has no text
+# form, and its `AMQP` encoding is the one byte form that keeps it whole.
+serde_amqp = "0.18"
 bytes = "1.2"
 futures = "0.3"
 # A one-shot channel whose receiver recycles its sender without allocating: the answer slot a

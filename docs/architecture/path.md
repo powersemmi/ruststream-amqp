@@ -35,8 +35,9 @@ handler through a slot the subscription reuses, so a settlement allocates nothin
 
 The pump turns a transfer into an [`AmqpMessage`](api:ruststream_amqp::AmqpMessage). The headers
 come from the `properties` and `application-properties` sections, the bytes from the `data` section,
-and `delivery-count` from the `header` section. A string or binary value section is read as bytes
-too, and any other body is rejected and reported to the subscription. The pump then puts the
+and `delivery-count` from the `header` section. Several `data` sections read as their bytes joined
+in order. A string or binary value section is read as bytes too, and any other body, a sequence
+body included, is rejected and reported to the subscription. The pump then puts the
 delivery in a channel as deep as the [link credit](../components/subscriptions/credit.md), and
 settles commands while it waits for room there.
 

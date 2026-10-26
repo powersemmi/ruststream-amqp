@@ -24,7 +24,18 @@ A value outside its property's form fails the publish with `AmqpError::Unsupport
 On delivery a handler reads both sections as one header map, through `ctx.headers()`.
 `correlation_id()` and `reply_to()` read the two properties [request-reply](../request-reply/index.md) uses.
 A message id or a correlation id the sender wrote as a string or binary reads as its bytes; one written as a UUID reads as its hyphenated hex, and a number as its decimal digits.
-An application property the sender wrote as a number, a boolean or a timestamp reads as text too; a timestamp reads as milliseconds.
+An application property reads in a form that keeps its value, though not its AMQP type:
+
+| Sender wrote | Header value |
+|---|---|
+| a string or a symbol | its UTF-8 bytes |
+| binary | its bytes |
+| a boolean, a number or a char | its text, which parses back to the same value |
+| a timestamp | milliseconds since the epoch, as text |
+| a UUID | its hyphenated lowercase hex |
+| null | an empty value |
+| a decimal | its IEEE 754 bytes |
+| a described value | its AMQP encoding |
 
 A message type declares its headers with `#[outgoing(headers = ..)]`, and a field renamed to `correlation-id` lands in the property.
 A `HeaderMap` with the same entries works the same.

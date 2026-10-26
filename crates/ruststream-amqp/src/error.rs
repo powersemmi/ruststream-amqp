@@ -81,8 +81,9 @@ pub enum AmqpError {
         source: Box<dyn StdError + Send + Sync>,
     },
 
-    /// A delivery arrived whose body the crate cannot expose as bytes (an `AMQP` value section
-    /// that is neither binary nor a string).
+    /// A delivery arrived whose body the crate cannot expose as bytes: an `AMQP` value section
+    /// that is neither binary nor a string, or `amqp-sequence` sections. The subscription rejects
+    /// the delivery, so it is not redelivered.
     #[error("amqp delivery on '{address}' has an unsupported body section")]
     UnsupportedBody {
         /// The source address of the subscription.

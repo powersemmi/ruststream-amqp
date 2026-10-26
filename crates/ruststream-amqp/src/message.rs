@@ -287,7 +287,9 @@ pub(crate) fn headers_from_amqp<B>(message: &Message<B>) -> HeaderMap {
     }
     if let Some(application) = &message.application_properties {
         for (name, value) in application.iter() {
-            headers.insert(name.clone(), simple_value_bytes(value));
+            if let Some(bytes) = simple_value_bytes(name, value) {
+                headers.insert(name.clone(), bytes);
+            }
         }
     }
     headers
@@ -304,42 +306,58 @@ fn message_id_bytes(id: &MessageId) -> Bytes {
     }
 }
 
-fn simple_value_bytes(value: &SimpleValue) -> Bytes {
-    match value {
+/// The header value of an application property, in a form that keeps the value: the bytes of a
+/// string, a symbol or binary; the text of a boolean, a number, a char, a timestamp (milliseconds
+/// since the epoch) or a UUID (hyphenated lowercase hex), which parses back to the same value;
+/// nothing for null; the IEEE 754 bytes of a decimal; the `AMQP` encoding of a described value.
+/// The header map holds bytes, so the `AMQP` type itself does not travel.
+fn simple_value_bytes(name: &str, value: &SimpleValue) -> Option<Bytes> {
+    let bytes = match value {
         SimpleValue::String(s) => Bytes::copy_from_slice(s.as_bytes()),
         SimpleValue::Binary(b) => Bytes::copy_from_slice(b),
         SimpleValue::Symbol(s) => Bytes::copy_from_slice(s.as_str().as_bytes()),
-        other => Bytes::from(format_simple_value(other)),
-    }
-}
-
-/// Scalar fallback: peers may put numbers or booleans into application-properties; text is the
-/// only lossless byte form the header map can carry for them.
-fn format_simple_value(value: &SimpleValue) -> String {
-    match value {
-        SimpleValue::Bool(v) => v.to_string(),
-        SimpleValue::Ubyte(v) => v.to_string(),
-        SimpleValue::Ushort(v) => v.to_string(),
-        SimpleValue::Uint(v) => v.to_string(),
-        SimpleValue::Ulong(v) => v.to_string(),
-        SimpleValue::Byte(v) => v.to_string(),
-        SimpleValue::Short(v) => v.to_string(),
-        SimpleValue::Int(v) => v.to_string(),
-        SimpleValue::Long(v) => v.to_string(),
-        SimpleValue::Float(v) => v.to_string(),
-        SimpleValue::Double(v) => v.to_string(),
-        SimpleValue::Char(v) => v.to_string(),
-        SimpleValue::Timestamp(v) => v.milliseconds().to_string(),
-        SimpleValue::Uuid(v) => format!("{v:x}"),
-        other => format!("{other:?}"),
-    }
+        SimpleValue::Null => Bytes::new(),
+        SimpleValue::Bool(v) => Bytes::from(v.to_string()),
+        SimpleValue::Ubyte(v) => Bytes::from(v.to_string()),
+        SimpleValue::Ushort(v) => Bytes::from(v.to_string()),
+        SimpleValue::Uint(v) => Bytes::from(v.to_string()),
+        SimpleValue::Ulong(v) => Bytes::from(v.to_string()),
+        SimpleValue::Byte(v) => Bytes::from(v.to_string()),
+        SimpleValue::Short(v) => Bytes::from(v.to_string()),
+        SimpleValue::Int(v) => Bytes::from(v.to_string()),
+        SimpleValue::Long(v) => Bytes::from(v.to_string()),
+        SimpleValue::Float(v) => Bytes::from(v.to_string()),
+        SimpleValue::Double(v) => Bytes::from(v.to_string()),
+        SimpleValue::Char(v) => Bytes::from(v.to_string()),
+        SimpleValue::Timestamp(v) => Bytes::from(v.milliseconds().to_string()),
+        SimpleValue::Uuid(v) => Bytes::from(format!("{v:x}")),
+        SimpleValue::Decimal32(v) => Bytes::copy_from_slice(v.as_inner()),
+        SimpleValue::Decimal64(v) => Bytes::copy_from_slice(v.as_inner()),
+        SimpleValue::Decimal128(v) => Bytes::copy_from_slice(v.as_inner()),
+        SimpleValue::Described(v) => match serde_amqp::to_vec(v.as_ref()) {
+            Ok(encoded) => Bytes::from(encoded),
+            Err(err) => {
+                // A value the client decoded encodes again; this is the client failing its own
+                // round trip, and the header is left out rather than carried in a form that lies.
+                tracing::warn!(
+                    header = name,
+                    error = %err,
+                    "amqp application property has a described value the client cannot encode; \
+                     the header is left out"
+                );
+                return None;
+            }
+        },
+    };
+    Some(bytes)
 }
 
 /// Extracts the payload bytes from a delivered body.
 ///
-/// `Data` sections are the native byte path (what this crate publishes); a string or binary
-/// `AmqpValue` from a foreign peer is accepted as bytes too. Anything else has no faithful byte
-/// form and is reported as [`AmqpError::UnsupportedBody`].
+/// `Data` sections are the native byte path (this crate publishes one); a body of several reads as
+/// their bytes joined in order. A string or binary `AmqpValue` from a foreign peer is accepted as
+/// its bytes too, and an empty body as no bytes. Any other value and an `AmqpSequence` body have no faithful byte form and are reported
+/// as [`AmqpError::UnsupportedBody`].
 pub(crate) fn payload_from_body(body: Body<Value>, address: &str) -> Result<Bytes, AmqpError> {
     match body {
         Body::Data(batch) => {
@@ -373,7 +391,11 @@ pub(crate) fn payload_from_body(body: Body<Value>, address: &str) -> Result<Byte
 
 #[cfg(test)]
 mod tests {
+    use fe2o3_amqp_types::messaging::AmqpSequence;
+    use fe2o3_amqp_types::primitives::{Dec32, Dec128, Timestamp, Uuid};
     use ruststream::{BytesMut, OutgoingMessage};
+    use serde_amqp::described::Described;
+    use serde_amqp::descriptor::Descriptor;
 
     use super::*;
 
@@ -509,6 +531,70 @@ mod tests {
         }
     }
 
+    fn read_property(value: SimpleValue) -> Option<Bytes> {
+        let mut application = ApplicationProperties::default();
+        application.insert("x-value".to_owned(), value);
+        let message = Message::builder()
+            .application_properties(application)
+            .data(Binary::from(Vec::new()))
+            .build();
+        headers_from_amqp(&message)
+            .get("x-value")
+            .map(Bytes::copy_from_slice)
+    }
+
+    #[test]
+    fn a_property_with_no_text_form_reads_as_bytes_that_keep_it() {
+        assert_eq!(
+            read_property(SimpleValue::Null).as_deref(),
+            Some(b"".as_slice()),
+            "null is present with no value"
+        );
+        assert_eq!(
+            read_property(SimpleValue::Decimal32(Dec32::from([1, 2, 3, 4]))).as_deref(),
+            Some([1, 2, 3, 4].as_slice()),
+            "a decimal reads as its IEEE 754 bytes"
+        );
+        assert_eq!(
+            read_property(SimpleValue::Decimal128(Dec128::from([7; 16]))).as_deref(),
+            Some([7; 16].as_slice())
+        );
+        let described = Described {
+            descriptor: Descriptor::Code(0x77),
+            value: Value::String("inner".into()),
+        };
+        let encoded = serde_amqp::to_vec(&described).expect("a described value encodes");
+        assert_eq!(
+            read_property(SimpleValue::Described(Box::new(described))).as_deref(),
+            Some(encoded.as_slice()),
+            "a described value reads as its AMQP encoding"
+        );
+    }
+
+    #[test]
+    fn a_scalar_property_reads_as_text_that_parses_back() {
+        let text = |value| {
+            String::from_utf8(read_property(value).expect("present").to_vec()).expect("text")
+        };
+        assert_eq!(text(SimpleValue::Bool(true)), "true");
+        assert_eq!(text(SimpleValue::Long(-42)), "-42");
+        assert_eq!(text(SimpleValue::Ulong(u64::MAX)), u64::MAX.to_string());
+        let double = 0.1_f64 + 0.2;
+        assert_eq!(
+            text(SimpleValue::Double(double.into())).parse::<f64>(),
+            Ok(double)
+        );
+        assert_eq!(text(SimpleValue::Char('\u{e4}')), "\u{e4}");
+        assert_eq!(
+            text(SimpleValue::Timestamp(Timestamp::from_milliseconds(-1))),
+            "-1"
+        );
+        assert_eq!(
+            text(SimpleValue::Uuid(Uuid::from([0xab; 16]))),
+            "abababab-abab-abab-abab-abababababab"
+        );
+    }
+
     #[test]
     fn data_body_yields_payload_bytes() {
         let outgoing = OutgoingMessage::new("orders", b"payload".as_slice());
@@ -516,6 +602,27 @@ mod tests {
         let body = Body::<Value>::Data(vec![message.body].into());
         let payload = payload_from_body(body, "orders").expect("data body decodes");
         assert_eq!(payload.as_ref(), b"payload");
+    }
+
+    #[test]
+    fn data_sections_read_as_one_payload_in_their_order() {
+        let sections = [b"ab".as_slice(), b"", b"cd", b"e"]
+            .map(|chunk| Data(Binary::from(chunk.to_vec())))
+            .to_vec();
+        let payload =
+            payload_from_body(Body::<Value>::Data(sections.into()), "orders").expect("decodes");
+        assert_eq!(payload.as_ref(), b"abcde");
+    }
+
+    #[test]
+    fn a_sequence_body_is_reported_unsupported() {
+        let sequence = AmqpSequence(vec![Value::String("a".into())]);
+        let err = payload_from_body(Body::<Value>::Sequence(vec![sequence].into()), "orders")
+            .expect_err("a list of values has no byte form");
+        assert!(
+            matches!(&err, AmqpError::UnsupportedBody { address } if address == "orders"),
+            "got {err}"
+        );
     }
 
     #[test]
