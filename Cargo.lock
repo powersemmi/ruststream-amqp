@@ -1122,7 +1122,7 @@ dependencies = [
 
 [[package]]
 name = "ruststream-amqp"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "bytes",
  "crossbeam-queue",
@@ -1149,7 +1149,7 @@ dependencies = [
 
 [[package]]
 name = "ruststream-amqp-bench"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "fe2o3-amqp",
  "fe2o3-amqp-types",
