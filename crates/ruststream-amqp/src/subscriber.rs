@@ -20,7 +20,7 @@ use fe2o3_amqp::link::{Receiver as FeReceiver, RecvError};
 use fe2o3_amqp::session::SessionHandle;
 use fe2o3_amqp_types::messaging::{Body, Modified};
 use fe2o3_amqp_types::primitives::Value;
-use ruststream::{AckError, BatchSubscriber, BufferedSubscriber, Subscriber};
+use ruststream::{AckError, BatchStream, BatchSubscriber, BufferedSubscriber, Subscriber};
 use tokio::sync::{mpsc, watch};
 
 use crate::address::AmqpAddress;
@@ -120,7 +120,7 @@ impl Subscriber for AmqpSubscriber {
     type Message = AmqpMessage;
     type Error = AmqpError;
 
-    fn stream(&mut self) -> impl Stream<Item = Result<AmqpMessage, AmqpError>> + Send + '_ {
+    fn stream(&mut self) -> impl Stream<Item = Result<AmqpMessage, AmqpError>> + '_ {
         self.deliveries.stream()
     }
 }
@@ -136,7 +136,7 @@ impl BatchSubscriber for AmqpSubscriber {
     fn batches(
         &mut self,
         size: NonZeroUsize,
-    ) -> impl Stream<Item = Result<Self::Batch, <Self as Subscriber>::Error>> + Send + '_ {
+    ) -> impl BatchStream<Self::Batch, Error = <Self as Subscriber>::Error> + '_ {
         self.deliveries.batches(size)
     }
 }
@@ -162,7 +162,7 @@ impl Subscriber for Deliveries {
     type Message = AmqpMessage;
     type Error = AmqpError;
 
-    fn stream(&mut self) -> impl Stream<Item = Result<AmqpMessage, AmqpError>> + Send + '_ {
+    fn stream(&mut self) -> impl Stream<Item = Result<AmqpMessage, AmqpError>> + '_ {
         match self {
             #[cfg(not(feature = "testing"))]
             Self::Amqp(rx) => pump_stream(rx),
@@ -177,7 +177,7 @@ impl Subscriber for Deliveries {
 /// The pump channel as a stream.
 fn pump_stream(
     rx: &mut PumpReceiver,
-) -> impl Stream<Item = Result<AmqpMessage, AmqpError>> + Send + '_ {
+) -> impl Stream<Item = Result<AmqpMessage, AmqpError>> + '_ {
     // Poll the channel in place rather than wrapping it in an owning stream, so `stream` can be
     // called again after the returned stream is dropped (the runtime and the conformance helpers
     // re-enter it per call).

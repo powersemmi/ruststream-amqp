@@ -2,12 +2,13 @@
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use ruststream::{OutgoingFor, Take};
+use ruststream::{OutgoingFor, PublishOutcome, Take};
 
 use super::bus::Bus;
 use super::router::Delivery;
 use super::{ensure_node, frame};
 use crate::error::AmqpError;
+use crate::message::keep;
 
 /// One publish held back until its transaction commits.
 type Buffered = (String, Delivery);
@@ -41,10 +42,13 @@ impl TxnBuffer {
 
     /// Buffers `msg` while a transaction is open, and routes it at once otherwise, as the live
     /// publisher posts outside a transaction.
-    pub(crate) fn publish(&self, msg: OutgoingFor<'_, Take>) -> Result<(), AmqpError> {
-        self.bus.ensure_live()?;
+    pub(crate) fn publish<'msg>(
+        &self,
+        msg: OutgoingFor<'msg, Take>,
+    ) -> PublishOutcome<'msg, AmqpError, Take> {
+        let ((), msg) = keep(self.bus.ensure_live(), msg)?;
         let address = msg.name();
-        ensure_node(address)?;
+        let ((), msg) = keep(ensure_node(address), msg)?;
         let delivery = frame(msg, None)?;
         let mut open = self.open();
         if let Some(buffer) = open.as_mut() {
@@ -117,10 +121,13 @@ impl OwnedBuffer {
         self.buffered.len()
     }
 
-    pub(crate) fn publish(&mut self, msg: OutgoingFor<'_, Take>) -> Result<(), AmqpError> {
-        self.bus.ensure_live()?;
+    pub(crate) fn publish<'msg>(
+        &mut self,
+        msg: OutgoingFor<'msg, Take>,
+    ) -> PublishOutcome<'msg, AmqpError, Take> {
+        let ((), msg) = keep(self.bus.ensure_live(), msg)?;
         let address = msg.name();
-        ensure_node(address)?;
+        let ((), msg) = keep(ensure_node(address), msg)?;
         let delivery = frame(msg, None)?;
         self.buffered.push((address.to_owned(), delivery));
         Ok(())

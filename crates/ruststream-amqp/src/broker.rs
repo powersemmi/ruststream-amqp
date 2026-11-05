@@ -653,7 +653,7 @@ impl Broker for AmqpBroker {
 impl InProcess for AmqpBroker {
     fn connect_in_process(
         self,
-    ) -> impl Future<Output = Result<Self::Connected, Self::Error>> + Send {
+    ) -> impl Future<Output = Result<Self::Connected, Self::Error>> {
         let connected = in_process::check_url(&self.url).and_then(|()| {
             // The URL's half of the TLS settings is checked as `connect` checks it. The
             // certificates are not read: a test runs the service's logic, and the deployment's

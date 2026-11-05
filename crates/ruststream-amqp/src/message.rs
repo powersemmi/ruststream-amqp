@@ -14,7 +14,10 @@ use fe2o3_amqp_types::messaging::{
     ApplicationProperties, Body, Data, Message, MessageId, Properties,
 };
 use fe2o3_amqp_types::primitives::{Binary, SimpleValue, Symbol, Value};
-use ruststream::{AckError, HeaderMap, IncomingMessage, OutgoingFor, Partitioned, Str, Take};
+use ruststream::{
+    AckError, HeaderMap, IncomingMessage, OutgoingFor, Partitioned, PublishMessageError, Settle, Str,
+    Take,
+};
 
 use crate::error::AmqpError;
 #[cfg(feature = "testing")]
@@ -216,19 +219,6 @@ impl IncomingMessage for AmqpMessage {
         &self.headers
     }
 
-    async fn ack(self) -> Result<(), AckError> {
-        self.settle(SettleKind::Accept).await
-    }
-
-    async fn nack(self, requeue: bool) -> Result<(), AckError> {
-        let kind = if requeue {
-            SettleKind::Modify
-        } else {
-            SettleKind::Reject
-        };
-        self.settle(kind).await
-    }
-
     /// The broker's own count of deliveries of this message, from the `delivery-count` field of
     /// the `AMQP` `header` section, counting this delivery.
     ///
@@ -246,18 +236,73 @@ impl IncomingMessage for AmqpMessage {
     }
 }
 
+impl Settle for AmqpMessage {
+    async fn ack(self) -> Result<(), AckError> {
+        self.settle(SettleKind::Accept).await
+    }
+
+    async fn nack(self, requeue: bool) -> Result<(), AckError> {
+        let kind = if requeue {
+            SettleKind::Modify
+        } else {
+            SettleKind::Reject
+        };
+        self.settle(kind).await
+    }
+}
+
+/// A publish this crate refused before the client took the message, with the message handed back.
+pub(crate) type Refused<'msg> = PublishMessageError<AmqpError, OutgoingFor<'msg, Take>>;
+
+/// Hands `msg` on with the value of `step`, or back inside the refusal when `step` failed: what a
+/// publish does with every step that runs before the client takes the message.
+///
+/// # Errors
+///
+/// The error of `step`, carrying `msg`.
+pub(crate) fn keep<T>(
+    step: Result<T, AmqpError>,
+    msg: OutgoingFor<'_, Take>,
+) -> Result<(T, OutgoingFor<'_, Take>), Refused<'_>> {
+    match step {
+        Ok(value) => Ok((value, msg)),
+        Err(error) => Err(PublishMessageError::with_message(error, msg)),
+    }
+}
+
 /// Builds the `AMQP` message for an outgoing publish.
 ///
 /// # Errors
 ///
 /// [`AmqpError::UnsupportedHeader`] when a header the `properties` section carries has a value
-/// its property cannot hold.
-pub(crate) fn to_amqp_message(
-    msg: OutgoingFor<'_, Take>,
+/// its property cannot hold, with `msg` handed back.
+pub(crate) fn to_amqp_message<'msg>(
+    msg: OutgoingFor<'msg, Take>,
+    correlation: Option<&AmqpId>,
+) -> Result<Message<Data>, Refused<'msg>> {
+    let (mut message, msg) = keep(framed(&msg, correlation), msg)?;
+    fill(&mut message, msg);
+    Ok(message)
+}
+
+/// The `AMQP` message for an outgoing publish with its body still empty, so a publish that fails
+/// before the client takes the message still holds it.
+///
+/// # Errors
+///
+/// [`AmqpError::UnsupportedHeader`] as for [`to_amqp_message`].
+pub(crate) fn framed(
+    msg: &OutgoingFor<'_, Take>,
     correlation: Option<&AmqpId>,
 ) -> Result<Message<Data>, AmqpError> {
-    let (address, payload, headers) = msg.into_parts();
-    build_message(address, &headers, Vec::from(payload), correlation)
+    // An empty vector holds no allocation, so the body the message is built with costs nothing.
+    build_message(msg.name(), msg.headers(), Vec::new(), correlation)
+}
+
+/// Moves the payload of `msg` into the body of `message`, which [`framed`] built for it.
+pub(crate) fn fill(message: &mut Message<Data>, msg: OutgoingFor<'_, Take>) {
+    let (_, payload, _) = msg.into_parts();
+    message.body = Data(Binary::from(Vec::from(payload)));
 }
 
 /// Builds the `AMQP` message carrying `body` with `headers` spread over its sections: the
@@ -576,6 +621,22 @@ mod tests {
             OutgoingMessage::new("orders", b"{}".as_slice()).with_headers(headers),
             None,
         )
+        .map_err(Refused::into_error)
+    }
+
+    /// A header the message cannot carry is refused before the payload moves into the body, so
+    /// the refusal hands the whole message back.
+    #[test]
+    fn a_refused_header_hands_the_message_back() {
+        let mut headers = HeaderMap::new();
+        headers.insert("reply-to", Bytes::from_static(NOT_UTF8));
+        let outgoing = OutgoingMessage::new("orders", b"{}".as_slice()).with_headers(headers.clone());
+
+        let refused = to_amqp_message(outgoing, None).expect_err("the header cannot travel");
+        let unsent = refused.into_message().expect("nothing took the message");
+        assert_eq!(unsent.name(), "orders");
+        assert_eq!(&unsent.payload()[..], b"{}");
+        assert_eq!(unsent.headers(), &headers);
     }
 
     #[test]

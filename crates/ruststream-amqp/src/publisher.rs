@@ -8,7 +8,7 @@ use std::time::Duration;
 use fe2o3_amqp_types::messaging::{Data, Message, Outcome, Properties};
 #[cfg(feature = "asyncapi")]
 use ruststream::asyncapi::Bindings;
-use ruststream::{OutgoingFor, PairError, PublishPolicy, Publisher, RequestReply, Take};
+use ruststream::{OutgoingFor, PairError, PublishOutcome, PublishPolicy, Publisher, RequestReply, Take};
 
 #[cfg(feature = "asyncapi")]
 use crate::bindings;
@@ -17,7 +17,9 @@ use crate::broker::{AmqpCore, ConnectedAmqpBroker, CoreCell, Link, SenderLink};
 use crate::error::{AmqpError, box_err};
 #[cfg(feature = "testing")]
 use crate::in_process;
-use crate::message::{AmqpMessage, Read, payload_from_body, read_amqp, to_amqp_message};
+use crate::message::{
+    AmqpMessage, Read, Refused, fill, framed, keep, payload_from_body, read_amqp, to_amqp_message,
+};
 use crate::publish_step::AmqpPublishOptions;
 
 /// Publishes messages to `AMQP` addresses, one sender link per address, attached lazily on the
@@ -159,22 +161,30 @@ impl Publisher for AmqpPublisher {
 
     /// `options` sets the `AMQP` properties that travel apart from the headers: the typed
     /// `correlation-id` a reply carries back to its requester.
-    async fn publish(
+    ///
+    /// A refusal before the client takes the message hands it back: a publisher that has not
+    /// connected or outlived its connection, a header no `AMQP` property holds, a sender link the
+    /// peer would not attach. Once the client sends it the message is the client's, and a send the
+    /// peer refuses returns none.
+    async fn publish<'msg>(
         &self,
-        msg: OutgoingFor<'_, Take>,
+        msg: OutgoingFor<'msg, Take>,
         options: Option<&Self::Options>,
-    ) -> Result<(), Self::Error> {
+    ) -> PublishOutcome<'msg, AmqpError, Take> {
         let correlation = options.and_then(|options| options.correlation_id.as_ref());
-        let core = match self.link()? {
-            Link::Amqp(core) => open(core)?,
+        let (link, msg) = keep(self.link(), msg)?;
+        let (core, msg) = match link {
+            Link::Amqp(core) => keep(open(core), msg)?,
             #[cfg(feature = "testing")]
             Link::InProcess(bus) => return in_process::publish(bus, msg, correlation),
         };
-        // The destination is the caller's string and outlives the message the conversion takes.
         let address = msg.name();
-        let message = to_amqp_message(msg, correlation)?;
-        let sender = core.sender_for(address).await?;
-        send_message(&sender, address, message).await
+        // The message is built before the link is asked for, so a header that cannot travel is
+        // refused without attaching a sender; its body moves in last, once nothing else can fail.
+        let (mut message, msg) = keep(framed(&msg, correlation), msg)?;
+        let (sender, msg) = keep(core.sender_for(address).await, msg)?;
+        fill(&mut message, msg);
+        Ok(send_message(&sender, address, message).await?)
     }
 }
 
@@ -208,7 +218,7 @@ impl RequestReply for AmqpPublisher {
         // The destination is the caller's string and outlives the message the conversion takes.
         let address = msg.name();
         let exchange = async {
-            let mut message = to_amqp_message(msg, None)?;
+            let mut message = to_amqp_message(msg, None).map_err(Refused::into_error)?;
             let properties = message.properties.get_or_insert_with(Properties::default);
             properties.reply_to = Some(reply_to);
             properties.correlation_id = Some(correlation_id.clone().into());

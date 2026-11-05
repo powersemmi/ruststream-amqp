@@ -594,7 +594,7 @@ impl RedeliveryAddressed<ConnectedAmqpBroker> for AmqpAddress {
     fn redelivery_address(
         &self,
         _connected: &ConnectedAmqpBroker,
-    ) -> impl Future<Output = Result<RedeliveryAddress, AmqpError>> + Send {
+    ) -> impl Future<Output = Result<RedeliveryAddress, AmqpError>> {
         ready(Ok(self.redelivery_target()))
     }
 }

@@ -10,7 +10,7 @@ use super::deliveries::Settlement;
 use super::{ensure_node, frame};
 use crate::address::Routing;
 use crate::error::AmqpError;
-use crate::message::AmqpMessage;
+use crate::message::{AmqpMessage, Refused};
 use crate::message::ReplyId;
 
 /// One request and its correlated reply, the way the live publisher performs it.
@@ -35,7 +35,7 @@ pub(crate) async fn request(
     ensure_node(address)?;
     let reply_to = bus.next_reply_address();
     let correlation_id = format!("{reply_to}-corr");
-    let mut delivery = frame(msg, None)?;
+    let mut delivery = frame(msg, None).map_err(Refused::into_error)?;
     delivery.headers.insert("reply-to", reply_to.clone());
     delivery
         .headers

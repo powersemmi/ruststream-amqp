@@ -26,7 +26,9 @@ use fe2o3_amqp_types::definitions::SenderSettleMode;
 use fe2o3_amqp_types::transaction::Coordinator;
 #[cfg(feature = "asyncapi")]
 use ruststream::asyncapi::Bindings;
-use ruststream::{OutgoingFor, PairError, PublishPolicy, Publisher, Take, TransactionalPublisher};
+use ruststream::{
+    OutgoingFor, PairError, PublishOutcome, PublishPolicy, Publisher, Take, TransactionalPublisher,
+};
 
 #[cfg(feature = "asyncapi")]
 use crate::bindings;
@@ -36,7 +38,7 @@ use crate::broker::{AmqpCore, ConnectedAmqpBroker, Link};
 use crate::error::{AmqpError, box_err};
 #[cfg(feature = "testing")]
 use crate::in_process::TxnBuffer;
-use crate::message::to_amqp_message;
+use crate::message::{fill, framed, keep};
 use crate::publisher::accepted;
 
 mod owned;
@@ -143,7 +145,9 @@ impl ConnectedAmqpBroker {
             #[cfg(feature = "testing")]
             Link::InProcess(bus) => Transport::InProcess(TxnBuffer::new(Arc::clone(bus))),
         };
-        AmqpTxnPublisher { transport }
+        AmqpTxnPublisher {
+            transport: Arc::new(transport),
+        }
     }
 }
 
@@ -156,8 +160,14 @@ impl ConnectedAmqpBroker {
 /// the handle open owned transactions instead: each
 /// [`transaction`](ruststream::OwnedTransactions::transaction) call returns an
 /// [`AmqpTransaction`] of its own.
+///
+/// A clone is the same handle: it shares the connection and the borrowed transaction, so a
+/// message a clone publishes between `begin_transaction` and `commit` joins the open one.
+#[derive(Clone)]
 pub struct AmqpTxnPublisher {
-    transport: Transport,
+    // Shared so that a clone, which a handler makes to carry the publisher into a continuation,
+    // sees the transaction the handle opened. Cloning costs a reference count, never a publish.
+    transport: Arc<Transport>,
 }
 
 /// What a transactional publisher posts over: a controller on the live connection, or, under the
@@ -198,21 +208,24 @@ impl Publisher for AmqpTxnPublisher {
     /// and the transactional state, and this crate adds no `header` section to either.
     type Options = ();
 
-    async fn publish(
+    /// A refusal before the client takes the message hands it back, as on [`AmqpPublisher`].
+    ///
+    /// [`AmqpPublisher`]: crate::AmqpPublisher
+    async fn publish<'msg>(
         &self,
-        msg: OutgoingFor<'_, Take>,
+        msg: OutgoingFor<'msg, Take>,
         _options: Option<&Self::Options>,
-    ) -> Result<(), Self::Error> {
-        let live = match &self.transport {
+    ) -> PublishOutcome<'msg, AmqpError, Take> {
+        let live = match &*self.transport {
             Transport::Amqp(live) => live,
             #[cfg(feature = "testing")]
             Transport::InProcess(buffer) => return buffer.publish(msg),
         };
-        live.core.ensure_open()?;
-        // The destination is the caller's string and outlives the message the conversion takes.
+        let ((), msg) = keep(live.core.ensure_open(), msg)?;
         let address = msg.name();
-        let message = to_amqp_message(msg, None)?;
-        let sender = live.core.sender_for(address).await?;
+        let (mut message, msg) = keep(framed(&msg, None), msg)?;
+        let (sender, msg) = keep(live.core.sender_for(address).await, msg)?;
+        fill(&mut message, msg);
 
         let txn = live.txn.lock().await;
         if let Some(txn) = txn.as_ref() {
@@ -226,10 +239,10 @@ impl Publisher for AmqpTxnPublisher {
                         })
                 })
                 .await?;
-            accepted(outcome, address)
+            Ok(accepted(outcome, address)?)
         } else {
             drop(txn);
-            crate::publisher::send_message(&sender, address, message).await
+            Ok(crate::publisher::send_message(&sender, address, message).await?)
         }
     }
 }
@@ -268,7 +281,7 @@ impl TransactionalPublisher for AmqpTxnPublisher {
     // The slot guard intentionally spans the declare so two begins cannot race an open slot.
     #[allow(clippy::significant_drop_tightening)]
     async fn begin_transaction(&self) -> Result<(), Self::Error> {
-        let live = match &self.transport {
+        let live = match &*self.transport {
             Transport::Amqp(live) => live,
             #[cfg(feature = "testing")]
             Transport::InProcess(buffer) => return buffer.begin(),
@@ -287,7 +300,7 @@ impl TransactionalPublisher for AmqpTxnPublisher {
     }
 
     async fn commit(&self) -> Result<(), Self::Error> {
-        let live = match &self.transport {
+        let live = match &*self.transport {
             Transport::Amqp(live) => live,
             #[cfg(feature = "testing")]
             Transport::InProcess(buffer) => return buffer.commit(),
@@ -303,7 +316,7 @@ impl TransactionalPublisher for AmqpTxnPublisher {
     }
 
     async fn abort(&self) -> Result<(), Self::Error> {
-        let live = match &self.transport {
+        let live = match &*self.transport {
             Transport::Amqp(live) => live,
             #[cfg(feature = "testing")]
             Transport::InProcess(buffer) => return buffer.abort(),
