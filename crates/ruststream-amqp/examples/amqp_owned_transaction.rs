@@ -36,7 +36,7 @@ struct InvoiceLine {
 #[subscriber(AmqpAddress::queue("orders"), workers(4))]
 async fn bill(order: &Order, Out(invoices): Out<impl OwnedTransactions>) -> HandlerOutcome {
     // A transaction of this delivery's own: the other workers open theirs on the same publisher.
-    let Ok(mut txn) = invoices.owned_transaction().await else {
+    let Ok(mut txn) = invoices.transaction().await else {
         return HandlerOutcome::retry();
     };
     for line in &order.lines {
@@ -75,9 +75,7 @@ fn app() -> impl App {
         AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
         |b| {
             // The transactional policy is what opens the transactions on the slot.
-            b.include(bill)
-                .out(DefaultSlot, TransactionalPublish)
-                .build();
+            b.include(bill).out(DefaultSlot, TransactionalPublish)
         },
     )
 }

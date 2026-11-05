@@ -47,10 +47,7 @@ async fn issue_receipt(order: &Order) -> Receipt {
 fn app() -> impl App<State = ()> {
     RustStream::new(AppInfo::new("payments", "0.1.0")).with_broker(
         AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
-        |b| {
-            b.include(accept);
-            b.include(issue_receipt).out_reply(Publish);
-        },
+        |b| b.include(accept).include(issue_receipt).out_reply(Publish),
     )
 }
 

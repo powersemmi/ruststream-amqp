@@ -25,9 +25,7 @@ async fn confirm(order: &Order) -> Confirmation {
 fn app() -> impl App {
     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
         AmqpBroker::new("amqp://broker.internal:5672").sasl(Sasl::anonymous()),
-        |b| {
-            b.include(confirm).out_reply(Publish);
-        },
+        |b| b.include(confirm).out_reply(Publish),
     )
 }
 // --8<-- [end:app]

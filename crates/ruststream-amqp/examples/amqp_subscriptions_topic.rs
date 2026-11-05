@@ -33,10 +33,8 @@ async fn notify(event: &OrderPlaced) -> HandlerOutcome {
 #[ruststream::app]
 fn app() -> impl App {
     let broker = AmqpBroker::new("amqp://artemis:artemis@localhost:5672");
-    RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(broker, |b| {
-        b.include(audit);
-        b.include(notify);
-    })
+    RustStream::new(AppInfo::new("orders", "0.1.0"))
+        .with_broker(broker, |b| b.include(audit).include(notify))
 }
 // --8<-- [end:topic]
 

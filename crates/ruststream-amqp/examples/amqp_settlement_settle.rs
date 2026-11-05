@@ -41,9 +41,7 @@ async fn record(reading: &Reading) -> HandlerOutcome {
 #[ruststream::app]
 fn app() -> impl App {
     let broker = AmqpBroker::new("amqp://artemis:artemis@localhost:5672");
-    RustStream::new(AppInfo::new("telemetry", "0.1.0")).with_broker(broker, |b| {
-        b.include(record);
-    })
+    RustStream::new(AppInfo::new("telemetry", "0.1.0")).with_broker(broker, |b| b.include(record))
 }
 
 #[cfg(test)]

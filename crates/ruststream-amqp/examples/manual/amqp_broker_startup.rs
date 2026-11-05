@@ -44,7 +44,7 @@ impl Handle<Order> for Place {
 fn service(url: &str) -> impl App<State = ()> + use<> {
     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(AmqpBroker::new(url), |b| {
         let place = subscriber(AmqpAddress::queue("orders"), Place);
-        b.include(place.build());
+        b.include(place.build())
     })
 }
 

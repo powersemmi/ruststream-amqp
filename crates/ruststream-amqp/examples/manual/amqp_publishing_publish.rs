@@ -50,7 +50,7 @@ fn app() -> impl App {
         |b| {
             let issue_receipt = subscriber(AmqpAddress::queue("orders"), IssueReceipt);
             // The reply waits for the broker's disposition; anything but `accepted` fails it.
-            b.include(issue_receipt.reply().build()).out_reply(Publish);
+            b.include(issue_receipt.reply().build()).out_reply(Publish)
         },
     )
 }

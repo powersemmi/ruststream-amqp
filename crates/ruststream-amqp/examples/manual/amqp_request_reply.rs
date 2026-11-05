@@ -109,9 +109,7 @@ fn app() -> impl App {
         AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
         |b| {
             let greet = subscriber(AmqpAddress::queue("greeter"), Greet);
-            b.include(greet.build()).out(DefaultSlot, Publish).build();
             let welcome = subscriber(AmqpAddress::queue("visitors"), Welcome);
-            b.include(welcome.build()).out(DefaultSlot, Publish).build();
             // A request that opens a conversation has no delivery to answer, so it runs once the
             // subscriptions are open.
             b.after_startup(Publish, async move |publisher| -> io::Result<()> {
@@ -123,7 +121,11 @@ fn app() -> impl App {
                 let greeting = String::from_utf8_lossy(reply.payload());
                 tracing::info!(%greeting, "the greeter is up");
                 Ok(())
-            });
+            })
+            .include(greet.build())
+            .out(DefaultSlot, Publish)
+            .include(welcome.build())
+            .out(DefaultSlot, Publish)
         },
     )
 }

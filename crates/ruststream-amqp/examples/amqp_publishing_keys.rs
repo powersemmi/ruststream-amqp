@@ -60,9 +60,7 @@ async fn ship(order: &Order, Out(shipments): Out<impl Publisher, Shipments>) -> 
 fn app() -> impl App {
     RustStream::new(AppInfo::new("shipping", "0.1.0")).with_broker(
         AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
-        |b| {
-            b.include(ship).out(Shipments, Publish).build();
-        },
+        |b| b.include(ship).out(Shipments, Publish),
     )
 }
 
@@ -134,10 +132,14 @@ mod tests {
 
     fn packer(url: &str) -> RustStream {
         RustStream::new(AppInfo::new("packing", "0.1.0")).with_broker(AmqpBroker::new(url), |b| {
-            b.include(read_key).out_reply(Publish);
+            b.include(read_key).out_reply(Publish)
         })
     }
 
+    // Start and shutdown are cold steps whose futures carry no `Send`; the test awaits them on
+
+    // its own runtime.
+    #[allow(clippy::future_not_send)]
     async fn the_key_comes_back_to_the_consumer(tb: TestApp<()>) -> Result<(), Box<dyn Error>> {
         let key = ShipmentKey {
             customer: "customer-42".to_owned(),

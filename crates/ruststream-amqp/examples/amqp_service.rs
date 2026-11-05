@@ -23,9 +23,7 @@ async fn place(order: &Order) -> HandlerOutcome {
 fn app() -> impl App {
     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
         AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
-        |b| {
-            b.include(place);
-        },
+        |b| b.include(place),
     )
 }
 // --8<-- [end:app]

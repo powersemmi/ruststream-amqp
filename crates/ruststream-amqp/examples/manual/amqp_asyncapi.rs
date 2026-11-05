@@ -175,17 +175,16 @@ fn broker(password: &str) -> AmqpBroker {
 fn service(broker: AmqpBroker) -> impl App<State = ()> {
     RustStream::new(AppInfo::new("billing", "1.0.0")).with_broker_labeled("amqp", broker, |b| {
         let confirm = subscriber(orders(), Confirm);
+        let book = subscriber(AmqpAddress::queue("payments"), Book);
         b.include(confirm.reply().to("receipts").build())
             .out_reply(Publish)
-            .transform(ToReplyTo);
-        b.include(subscriber(events(), Watch).build())
+            .transform(ToReplyTo)
+            .include(subscriber(events(), Watch).build())
             .max_attempts(nonzero!(3u32))
-            .dead_letter("orders.dead");
-        b.include(subscriber(audit_queue(), Audit).build());
-        let book = subscriber(AmqpAddress::queue("payments"), Book);
-        b.include(book.build())
+            .dead_letter("orders.dead")
+            .include(subscriber(audit_queue(), Audit).build())
+            .include(book.build())
             .out(Ledger, TransactionalPublish)
-            .build();
     })
 }
 // --8<-- [end:operations]

@@ -134,11 +134,11 @@ fn app() -> impl App {
     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
         AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
         |b| {
-            b.include(quote).out(Answers, Publish).build();
-            b.include(price_order)
+            b.include(quote)
+                .out(Answers, Publish)
+                .include(price_order)
                 .out_reply(Publish)
                 .out(Pricing, Publish)
-                .build();
         },
     )
 }

@@ -68,6 +68,7 @@ async fn on_dead_letter(payment: &Payment, ctx: &mut Context<'_>) -> HandlerOutc
 // --8<-- [start:transform]
 /// Marks every copy with the subscription the delivery came from, so a redelivery is
 /// recognisable downstream. A transform on the retry position reads the delivery being retried.
+#[derive(Clone)]
 struct Retried;
 
 impl<C, Options> PublishTransform<ForReply<C>, Options> for Retried {
@@ -96,8 +97,8 @@ fn app() -> impl App {
             .max_attempts(nonzero!(5u32))
             .dead_letter("payments.dead")
             .out_retry(Publish)
-            .transform(Retried);
-        b.include(on_dead_letter);
+            .transform(Retried)
+            .include(on_dead_letter)
     })
 }
 // --8<-- [end:declaration]
@@ -250,12 +251,8 @@ mod tests {
             .subscribe_address(AmqpAddress::queue(ARTEMIS_DEAD_LETTERS).settle(Settle::AtMostOnce))
             .await
             .expect("the dead-letter subscription opens");
-        let service = RustStream::new(AppInfo::new("payments", "0.1.0")).with_broker(
-            AmqpBroker::new(&url),
-            |b| {
-                b.include(defer_once);
-            },
-        );
+        let service = RustStream::new(AppInfo::new("payments", "0.1.0"))
+            .with_broker(AmqpBroker::new(&url), |b| b.include(defer_once));
         let tb = TestApp::start_live(service)
             .await
             .expect("the service starts");

@@ -50,7 +50,7 @@ impl Handle<Invoice> for Render {
 fn app() -> impl App {
     let broker = AmqpBroker::new("amqp://artemis:artemis@localhost:5672");
     RustStream::new(AppInfo::new("billing", "0.1.0")).with_broker(broker, |b| {
-        b.include(subscriber(AmqpAddress::queue("invoices").credit(nonzero!(16)), Render).build());
+        b.include(subscriber(AmqpAddress::queue("invoices").credit(nonzero!(16)), Render).build())
     })
 }
 // --8<-- [end:credit]

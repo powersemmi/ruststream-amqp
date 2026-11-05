@@ -94,7 +94,6 @@ fn app() -> impl App {
             // The transactional policy is what gives the slot begin, commit and abort.
             b.include(bill.build())
                 .out(DefaultSlot, TransactionalPublish)
-                .build();
         },
     )
 }

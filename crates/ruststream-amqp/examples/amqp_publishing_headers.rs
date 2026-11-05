@@ -66,9 +66,7 @@ async fn ship(
 fn app() -> impl App {
     RustStream::new(AppInfo::new("shipping", "0.1.0")).with_broker(
         AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
-        |b| {
-            b.include(ship).out(Shipments, Publish).build();
-        },
+        |b| b.include(ship).out(Shipments, Publish),
     )
 }
 

@@ -55,7 +55,7 @@ where
         // publisher.
         let mut txn = outs
             .get(DefaultSlot)
-            .owned_transaction()
+            .transaction()
             .await
             .map_err(|_| HandlerOutcome::retry())?;
         for line in &order.lines {
@@ -91,7 +91,6 @@ fn app() -> impl App {
             // The transactional policy is what opens the transactions on the slot.
             b.include(bill.build())
                 .out(DefaultSlot, TransactionalPublish)
-                .build();
         },
     )
 }

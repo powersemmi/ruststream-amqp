@@ -100,7 +100,7 @@ fn service(broker: AmqpBroker) -> RustStream {
                 .reply()
                 .build(),
         )
-        .out_reply(Publish);
+        .out_reply(Publish)
     })
 }
 

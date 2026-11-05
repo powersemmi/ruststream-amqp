@@ -38,7 +38,7 @@ fn app() -> impl App {
                     .settle(Settle::AtLeastOnce),
                 Confirm,
             );
-            b.include(confirm.reply().build()).out_reply(Publish);
+            b.include(confirm.reply().build()).out_reply(Publish)
         },
     )
 }
