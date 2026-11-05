@@ -1,4 +1,4 @@
-//! At-most-once delivery: `Settle::AtMostOnce` settles each delivery on receipt, so the broker is
+//! At-most-once delivery: `SettleMode::AtMostOnce` settles each delivery on receipt, so the broker is
 //! done with a message the moment it hands it over.
 //!
 //! ```text
@@ -28,7 +28,7 @@ async fn store(reading: &Reading) -> Result<(), &'static str> {
 // --8<-- [start:settle]
 /// A sensor reports every second, so a lost reading costs nothing. Each delivery is settled on
 /// receipt: a reading the store refused is not delivered again.
-#[subscriber(AmqpAddress::queue("readings").settle(Settle::AtMostOnce))]
+#[subscriber(AmqpAddress::queue("readings").settle(SettleMode::AtMostOnce))]
 async fn record(reading: &Reading) -> HandlerOutcome {
     if let Err(err) = store(reading).await {
         tracing::warn!(reading.sensor, err, "reading lost");

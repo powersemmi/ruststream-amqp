@@ -15,11 +15,10 @@ use std::pin::pin;
 use std::time::Duration;
 
 use futures::{FutureExt, Stream, StreamExt};
+use ruststream::Settle;
 use ruststream::schemars::JsonSchema;
 use ruststream::testing::{InProcess, TestApp, TestableBroker};
 use ruststream::{AckError, ConnectedBroker, IncomingMessage, OutgoingMessage, Subscriber};
-// The trait is imported for its methods: `Settle` here names this crate's settle mode.
-use ruststream::Settle as _;
 use ruststream_amqp::prelude::*;
 use ruststream_amqp::{AmqpMessage, AmqpSubscriber, ConnectedAmqpBroker};
 use serde::{Deserialize, Serialize};
@@ -150,7 +149,7 @@ async fn in_process() -> ConnectedAmqpBroker {
 async fn an_at_most_once_descriptor_settles_on_receipt() {
     let broker = in_process().await;
     let mut subscriber = broker
-        .subscribe_address(AmqpAddress::queue("fire").settle(Settle::AtMostOnce))
+        .subscribe_address(AmqpAddress::queue("fire").settle(SettleMode::AtMostOnce))
         .await
         .expect("subscription opens");
     broker

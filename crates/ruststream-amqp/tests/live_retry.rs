@@ -14,10 +14,9 @@ use std::pin::pin;
 use std::time::Duration;
 
 use futures::{Stream, StreamExt};
+use ruststream::Settle;
 use ruststream::runtime::RETRY_COUNT_HEADER;
 use ruststream::{Broker, ConnectedBroker, IncomingMessage, Subscriber};
-// The trait is imported for its methods: `Settle` here names this crate's settle mode.
-use ruststream::Settle as _;
 use ruststream_amqp::prelude::*;
 use ruststream_amqp::{AmqpMessage, ConnectedAmqpBroker};
 use serde::{Deserialize, Serialize};

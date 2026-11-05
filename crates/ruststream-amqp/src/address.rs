@@ -55,7 +55,7 @@ pub const DEFAULT_BATCH_WAIT: Duration = Duration::from_millis(10);
 ///     id: u64,
 /// }
 ///
-/// #[subscriber(AmqpAddress::queue("orders").settle(Settle::AtLeastOnce))]
+/// #[subscriber(AmqpAddress::queue("orders").settle(SettleMode::AtLeastOnce))]
 /// async fn fulfil(order: &Order) -> HandlerOutcome {
 ///     if order.id == 0 {
 ///         // Not ready yet: ask for the delivery again in half a minute.
@@ -100,7 +100,7 @@ pub const DEFAULT_BATCH_WAIT: Duration = Duration::from_millis(10);
 /// # fn main() {}
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Settle {
+pub enum SettleMode {
     /// Deliveries are settled by the handler. The default.
     ///
     /// `ack` sends `accepted`. A retry, `nack(true)`, sends `modified` with `delivery-failed`,
@@ -169,7 +169,7 @@ pub struct AmqpAddress {
     address: String,
     kind: Kind,
     credit: NonZeroU32,
-    settle: Settle,
+    settle: SettleMode,
     batch_wait: Duration,
 }
 
@@ -179,7 +179,7 @@ impl AmqpAddress {
             address,
             kind,
             credit: DEFAULT_CREDIT,
-            settle: Settle::default(),
+            settle: SettleMode::default(),
             batch_wait: DEFAULT_BATCH_WAIT,
         }
     }
@@ -337,7 +337,7 @@ impl AmqpAddress {
         self
     }
 
-    /// Sets the delivery guarantee. Defaults to [`Settle::AtLeastOnce`].
+    /// Sets the delivery guarantee. Defaults to [`SettleMode::AtLeastOnce`].
     ///
     /// # Examples
     ///
@@ -353,7 +353,7 @@ impl AmqpAddress {
     ///
     /// // Settled on receipt: the audit may miss an event when the process stops, and the broker
     /// // never waits for it.
-    /// #[subscriber(AmqpAddress::topic("events").settle(Settle::AtMostOnce))]
+    /// #[subscriber(AmqpAddress::topic("events").settle(SettleMode::AtMostOnce))]
     /// async fn audit(events: &[Event]) -> HandlerOutcome {
     ///     for event in events {
     ///         tracing::info!(kind = %event.kind, "audited");
@@ -371,7 +371,7 @@ impl AmqpAddress {
     /// # }
     /// # fn main() {}
     /// ```
-    pub fn settle(mut self, settle: Settle) -> Self {
+    pub fn settle(mut self, settle: SettleMode) -> Self {
         self.settle = settle;
         self
     }
@@ -429,7 +429,7 @@ impl AmqpAddress {
         self.credit.get()
     }
 
-    pub(crate) fn settle_value(&self) -> Settle {
+    pub(crate) fn settle_value(&self) -> SettleMode {
         self.settle
     }
 

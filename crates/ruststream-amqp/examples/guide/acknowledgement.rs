@@ -49,7 +49,7 @@ struct Picked {
     shipment: u64,
 }
 
-#[subscriber(AmqpAddress::queue("pick-log").settle(Settle::AtMostOnce))]
+#[subscriber(AmqpAddress::queue("pick-log").settle(SettleMode::AtMostOnce))]
 async fn log_pick(picked: &Picked) -> HandlerOutcome {
     tracing::info!(picked.shipment, "pick logged");
     HandlerOutcome::ack()

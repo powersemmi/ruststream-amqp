@@ -34,7 +34,7 @@ fn the_mount_vocabulary_names_the_policies_without_the_broker_prefix() {
 fn the_glob_carries_the_surface_a_declaration_names() {
     let password = format!("{:016x}", RandomState::new().hash_one("password"));
     let broker = AmqpBroker::new("amqp://localhost:5672").sasl(Sasl::plain("svc", password));
-    let source = AmqpAddress::topic("events").settle(Settle::AtMostOnce);
+    let source = AmqpAddress::topic("events").settle(SettleMode::AtMostOnce);
     let reported: Result<(), AmqpError> = Ok(());
 
     let _ = (broker, source, reported);

@@ -41,7 +41,7 @@ use url::Url;
 
 #[cfg(feature = "testing")]
 use crate::address::Routing;
-use crate::address::{AmqpAddress, Settle};
+use crate::address::{AmqpAddress, SettleMode};
 #[cfg(feature = "asyncapi")]
 use crate::bindings;
 use crate::config::{Sasl, sasl_profile};
@@ -972,9 +972,9 @@ impl ConnectedAmqpBroker {
     }
 }
 
-// Re-exported for the subscriber module without making Settle a broker concern.
-pub(crate) fn is_at_most_once(settle: Settle) -> bool {
-    matches!(settle, Settle::AtMostOnce)
+// Re-exported for the subscriber module without making SettleMode a broker concern.
+pub(crate) fn is_at_most_once(settle: SettleMode) -> bool {
+    matches!(settle, SettleMode::AtMostOnce)
 }
 
 #[cfg(test)]

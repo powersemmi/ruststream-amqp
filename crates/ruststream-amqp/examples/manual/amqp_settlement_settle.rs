@@ -60,7 +60,7 @@ impl Handle<Reading> for Record {
 }
 
 fn readings() -> AmqpAddress {
-    AmqpAddress::queue("readings").settle(Settle::AtMostOnce)
+    AmqpAddress::queue("readings").settle(SettleMode::AtMostOnce)
 }
 // --8<-- [end:settle]
 

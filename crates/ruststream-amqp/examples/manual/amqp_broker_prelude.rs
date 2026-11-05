@@ -35,7 +35,7 @@ fn app() -> impl App {
             let confirm = subscriber(
                 AmqpAddress::queue("orders")
                     .credit(nonzero!(64))
-                    .settle(Settle::AtLeastOnce),
+                    .settle(SettleMode::AtLeastOnce),
                 Confirm,
             );
             b.include(confirm.reply().build()).out_reply(Publish)

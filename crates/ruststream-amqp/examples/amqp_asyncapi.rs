@@ -75,7 +75,7 @@ async fn confirm(order: &Order) -> Receipt {
     Receipt { order_id: order.id }
 }
 
-#[subscriber(AmqpAddress::topic("events").settle(Settle::AtMostOnce))]
+#[subscriber(AmqpAddress::topic("events").settle(SettleMode::AtMostOnce))]
 async fn watch(order: &Order) -> HandlerOutcome {
     tracing::info!(order.id, "event seen");
     HandlerOutcome::ack()

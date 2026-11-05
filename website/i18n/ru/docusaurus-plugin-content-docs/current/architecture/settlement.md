@@ -66,7 +66,7 @@ export const retries = {
 увеличения счётчика сообщение, которое всегда возвращает ошибку, возвращалось бы бесконечно.
 `undeliverable-here` остаётся false, поэтому сообщение может вернуться в ту же подписку.
 
-[`Settle::AtMostOnce`](../components/settlement/settle.md) урегулирует каждую доставку при
+[`SettleMode::AtMostOnce`](../components/settlement/settle.md) урегулирует каждую доставку при
 получении.
 
 | Исход | At most once |

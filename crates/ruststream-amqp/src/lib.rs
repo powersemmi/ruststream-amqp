@@ -21,7 +21,7 @@ mod tls;
 #[cfg(feature = "transaction")]
 mod txn;
 
-pub use address::{AmqpAddress, DEFAULT_BATCH_WAIT, DEFAULT_CREDIT, Settle};
+pub use address::{AmqpAddress, DEFAULT_BATCH_WAIT, DEFAULT_CREDIT, SettleMode};
 pub use broker::{AmqpBroker, ConnectedAmqpBroker};
 pub use config::Sasl;
 pub use context::{AmqpContext, Correlate, ReplyCorrelation};

@@ -20,7 +20,7 @@
     "Mount a handler written without the macros as `subscriber(AmqpAddress::queue(..), Body)`, the descriptor passed as the source as it is (Components > Subscriptions).",
     "Set the link credit with `.credit(nonzero!(n))` on the descriptor; it is the window the broker may send ahead, refilled once half of it is settled, so more than `n` deliveries can be unsettled (Components > Subscriptions > credit).",
     "Settle through the handler's outcome: `ack()` sends `accepted`, `retry()` sends `modified` with `delivery-failed` so the broker counts the attempt, and `drop()` sends `rejected` (Components > Dispositions).",
-    "Read a subscription at most once with `.settle(Settle::AtMostOnce)` only where a lost message costs less than a repeated one; its `ack` and `nack` report `AckError::Unsupported` (Components > Dispositions > Settle).",
+    "Read a subscription at most once with `.settle(SettleMode::AtMostOnce)` only where a lost message costs less than a repeated one; its `ack` and `nack` report `AckError::Unsupported` (Components > Dispositions > Settle).",
     "Cap redeliveries with `.max_attempts(n).dead_letter(address)` after `include`; a `retry_after(delay)` copy goes back to the subscription's own address, and `.out_retry(Publish).transform(..)` marks the copies (Guides > Retries and dead letters).",
     "Take a batch with a slice handler and `.batch(n)` at the mount site; the client assembles it, and `.batch_wait(duration)` on the descriptor closes a partial one (Components > Subscriptions > Batches).",
     "Publish through `Publish` at the mount site (`.out_reply(Publish)`, `.out(marker, Publish)`); a publish the broker does not accept fails with `AmqpError::PublishNotAccepted` (Components > Publish).",

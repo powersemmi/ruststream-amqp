@@ -128,7 +128,7 @@ Here is where each part goes in RustStream:
 | `Receiver::attach` and a `recv` loop | a `#[subscriber(AmqpAddress::..)]` handler |
 | `CreditMode::Auto(n)` | [`AmqpAddress::credit`](../components/subscriptions/credit.md) |
 | `accept`, `modify`, `reject` | the handler's outcome: `ack`, `retry`, `drop` ([Acknowledgement and delivery guarantees](acknowledgement.md)) |
-| `auto_accept(true)` | [`Settle::AtMostOnce`](../components/settlement/settle.md) |
+| `auto_accept(true)` | [`SettleMode::AtMostOnce`](../components/settlement/settle.md) |
 | `Sender::attach` and `send` | a reply or an `Out` parameter, sent through the [`Publish`](../components/publishing/index.md) policy |
 | a dynamic receiver for replies | [`request`](../components/request-reply/index.md) ([Requests and replies](request-reply.md)) |
 | `Controller` and `Transaction::declare` | [`TransactionalPublish`](../components/transactions/index.md) ([Publishing all or nothing](transactions.md)) |

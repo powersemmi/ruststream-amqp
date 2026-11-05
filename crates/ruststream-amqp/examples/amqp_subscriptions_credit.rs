@@ -39,12 +39,11 @@ mod tests {
     use std::time::Duration;
 
     use futures::{Stream, StreamExt};
+    use ruststream::Settle;
     use ruststream::testing::TestApp;
     use ruststream::{
         Broker, ConnectedBroker, IncomingMessage, OutgoingMessage, Publisher, Subscriber,
     };
-    // The trait is imported for its methods: `Settle` here names this crate's settle mode.
-    use ruststream::Settle as _;
     use ruststream_amqp::AmqpMessage;
     use ruststream_amqp::prelude::*;
 

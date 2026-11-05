@@ -93,7 +93,7 @@ Artemis 在 [`max-delivery-attempts`](https://artemis.apache.org/components/arte
 </TabItem>
 </Tabs>
 
-[`Settle::AtMostOnce`](../components/settlement/settle.md) 在每次投递到达时就结算它。
+[`SettleMode::AtMostOnce`](../components/settlement/settle.md) 在每次投递到达时就结算它。
 Broker 交出消息的那一刻就忘掉了它，所以处理器完成前的崩溃会丢失这条消息。
 这适合拣选日志：缺一行的代价比让 Broker 再处理一遍要小。
 处理器的结果已经没有东西可结算：`ack` 和 `nack` 返回 `AckError::Unsupported`，运行时为每一次记录一条警告。

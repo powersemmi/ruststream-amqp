@@ -129,7 +129,7 @@ cargo test
 | `Receiver::attach` и цикл `recv` | обработчик `#[subscriber(AmqpAddress::..)]` |
 | `CreditMode::Auto(n)` | [`AmqpAddress::credit`](../components/subscriptions/credit.md) |
 | `accept`, `modify`, `reject` | исход обработчика: `ack`, `retry`, `drop` ([Подтверждение и гарантии доставки](acknowledgement.md)) |
-| `auto_accept(true)` | [`Settle::AtMostOnce`](../components/settlement/settle.md) |
+| `auto_accept(true)` | [`SettleMode::AtMostOnce`](../components/settlement/settle.md) |
 | `Sender::attach` и `send` | ответ или параметр `Out`, отправленный через политику [`Publish`](../components/publishing/index.md) |
 | динамический получатель для ответов | [`request`](../components/request-reply/index.md) ([Запросы и ответы](request-reply.md)) |
 | `Controller` и `Transaction::declare` | [`TransactionalPublish`](../components/transactions/index.md) ([Публикация «всё или ничего»](transactions.md)) |

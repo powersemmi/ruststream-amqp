@@ -248,7 +248,9 @@ mod tests {
             .await
             .expect("the watcher connects");
         let mut dead_letters = watcher
-            .subscribe_address(AmqpAddress::queue(ARTEMIS_DEAD_LETTERS).settle(Settle::AtMostOnce))
+            .subscribe_address(
+                AmqpAddress::queue(ARTEMIS_DEAD_LETTERS).settle(SettleMode::AtMostOnce),
+            )
             .await
             .expect("the dead-letter subscription opens");
         let service = RustStream::new(AppInfo::new("payments", "0.1.0"))

@@ -66,7 +66,7 @@ retry did act on it and failed, and an attempt cap reads that count: without the
 message that always fails would come back forever. `undeliverable-here` stays false, so the
 message may come back to this same subscription.
 
-[`Settle::AtMostOnce`](../components/settlement/settle.md) settles each delivery as it
+[`SettleMode::AtMostOnce`](../components/settlement/settle.md) settles each delivery as it
 arrives.
 
 | Outcome | At most once |

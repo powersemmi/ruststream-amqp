@@ -153,7 +153,7 @@ fn orders() -> AmqpAddress {
 
 /// The topic `events`, settled on receipt.
 fn events() -> AmqpAddress {
-    AmqpAddress::topic("events").settle(Settle::AtMostOnce)
+    AmqpAddress::topic("events").settle(SettleMode::AtMostOnce)
 }
 
 /// The address `/queues/audit`, sent as written.

@@ -14,7 +14,7 @@ use ruststream_amqp::prelude::*;
 #[subscriber(
     AmqpAddress::queue("orders")
         .credit(nonzero!(64))
-        .settle(Settle::AtLeastOnce),
+        .settle(SettleMode::AtLeastOnce),
     reply
 )]
 async fn confirm(order: &Order) -> Confirmation {

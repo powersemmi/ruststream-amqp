@@ -60,7 +60,7 @@
 //!     Receipt { order_id: order.id }
 //! }
 //!
-//! #[subscriber(AmqpAddress::topic("events").settle(Settle::AtMostOnce))]
+//! #[subscriber(AmqpAddress::topic("events").settle(SettleMode::AtMostOnce))]
 //! async fn audit(event: &Event, ctx: &mut Context<'_>) -> HandlerOutcome {
 //!     tracing::info!(address = ctx.name(), kind = %event.kind, "audited");
 //!     HandlerOutcome::ack()
@@ -89,7 +89,7 @@ pub use ruststream::RequestReply;
 // service that names them has left the broker-agnostic path.
 pub use crate::{
     AmqpAddress, AmqpBroker, AmqpContext, AmqpError, AmqpId, AmqpPublish, AmqpPublish as Publish,
-    AmqpPublishOptions, AmqpPublishSteps, Correlate, ReplyCorrelation, Sasl, Settle,
+    AmqpPublishOptions, AmqpPublishSteps, Correlate, ReplyCorrelation, Sasl, SettleMode,
 };
 
 #[cfg(feature = "transaction")]

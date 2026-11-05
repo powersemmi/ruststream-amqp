@@ -58,7 +58,7 @@ export const retries = {
 
 `retry()` 发送带 `delivery-failed` 的 `modified`，从不发送 `released`。release 告诉 Broker 这次投递没有被处理，`delivery-count` 保持不变。要求重试的处理器确实处理了它，只是失败了，而尝试上限读取的正是这个计数：计数不增加，一条总是失败的消息就会永远回来。`undeliverable-here` 保持为 false，因此消息可以再次回到同一个订阅。
 
-[`Settle::AtMostOnce`](../components/settlement/settle.md) 在每次投递到达时就结算它。
+[`SettleMode::AtMostOnce`](../components/settlement/settle.md) 在每次投递到达时就结算它。
 
 | 结果 | 至多一次 |
 |---|---|
