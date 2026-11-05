@@ -8,7 +8,9 @@ use std::time::Duration;
 use fe2o3_amqp_types::messaging::{Data, Message, Outcome, Properties};
 #[cfg(feature = "asyncapi")]
 use ruststream::asyncapi::Bindings;
-use ruststream::{OutgoingFor, PairError, PublishOutcome, PublishPolicy, Publisher, RequestReply, Take};
+use ruststream::{
+    OutgoingFor, PairError, PublishOutcome, PublishPolicy, Publisher, RequestReply, Take,
+};
 
 #[cfg(feature = "asyncapi")]
 use crate::bindings;
@@ -85,9 +87,7 @@ use crate::publish_step::AmqpPublishOptions;
 /// fn app() -> impl App {
 ///     RustStream::new(AppInfo::new("greeter", "0.1.0")).with_broker(
 ///         AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
-///         |b| {
-///             b.include(greet).out(DefaultSlot, Publish).build();
-///         },
+///         |b| b.include(greet).out(DefaultSlot, Publish),
 ///     )
 /// }
 /// # }
@@ -293,7 +293,7 @@ impl RequestReply for AmqpPublisher {
 /// fn app() -> impl App {
 ///     RustStream::new(AppInfo::new("orders", "0.1.0"))
 ///         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| {
-///             b.include(issue_receipt).out_reply(Publish);
+///             b.include(issue_receipt).out_reply(Publish)
 ///         })
 /// }
 /// # }

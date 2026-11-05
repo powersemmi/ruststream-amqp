@@ -77,7 +77,6 @@ pub use owned::AmqpTransaction;
 ///     RustStream::new(AppInfo::new("billing", "0.1.0")).with_broker(
 ///         AmqpBroker::new("amqp://localhost:5672"),
 ///         |b| {
-///             b.include(handle);
 ///             b.after_startup(
 ///                 TransactionalPublish,
 ///                 async move |publisher| -> io::Result<()> {
@@ -90,7 +89,8 @@ pub use owned::AmqpTransaction;
 ///                     }
 ///                     publisher.commit().await.map_err(io::Error::other)
 ///                 },
-///             );
+///             )
+///             .include(handle)
 ///         },
 ///     )
 /// }

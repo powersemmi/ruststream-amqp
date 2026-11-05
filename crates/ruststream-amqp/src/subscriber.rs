@@ -175,9 +175,7 @@ impl Subscriber for Deliveries {
 }
 
 /// The pump channel as a stream.
-fn pump_stream(
-    rx: &mut PumpReceiver,
-) -> impl Stream<Item = Result<AmqpMessage, AmqpError>> + '_ {
+fn pump_stream(rx: &mut PumpReceiver) -> impl Stream<Item = Result<AmqpMessage, AmqpError>> + '_ {
     // Poll the channel in place rather than wrapping it in an owning stream, so `stream` can be
     // called again after the returned stream is dropped (the runtime and the conformance helpers
     // re-enter it per call).

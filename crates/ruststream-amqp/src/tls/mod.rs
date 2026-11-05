@@ -71,9 +71,7 @@ pub(crate) type Connector = tokio_rustls::TlsConnector;
 ///         AmqpBroker::new("amqps://broker.internal:5671")
 ///             .tls(tls)
 ///             .sasl(Sasl::external()),
-///         |b| {
-///             b.include(handle);
-///         },
+///         |b| b.include(handle),
 ///     )
 /// }
 /// # }
@@ -125,9 +123,7 @@ impl Tls {
     ///         AmqpBroker::new("amqps://broker.internal:5671")
     ///             .tls(Tls::new().root_certificates(ca))
     ///             .sasl(Sasl::plain("orders-svc", "secret")),
-    ///         |b| {
-    ///             b.include(handle);
-    ///         },
+    ///         |b| b.include(handle),
     ///     )
     /// }
     /// # }
@@ -167,9 +163,7 @@ impl Tls {
     ///         AmqpBroker::new("amqps://broker.internal:5671")
     ///             .tls(Tls::new().root_certificates(ca))
     ///             .sasl(Sasl::plain("orders-svc", "secret")),
-    ///         |b| {
-    ///             b.include(handle);
-    ///         },
+    ///         |b| b.include(handle),
     ///     )
     /// }
     /// # }
@@ -212,9 +206,7 @@ impl Tls {
     ///         AmqpBroker::new("amqps://broker.internal:5671")
     ///             .tls(tls)
     ///             .sasl(Sasl::external()),
-    ///         |b| {
-    ///             b.include(handle);
-    ///         },
+    ///         |b| b.include(handle),
     ///     )
     /// }
     /// # }

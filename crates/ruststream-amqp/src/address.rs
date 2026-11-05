@@ -66,6 +66,7 @@ pub const DEFAULT_BATCH_WAIT: Duration = Duration::from_millis(10);
 /// }
 ///
 /// /// Stamps a deferred copy with the address it came from, so a redelivery is recognisable.
+/// #[derive(Clone)]
 /// struct Retried;
 ///
 /// impl<C, Options> PublishTransform<ForReply<C>, Options> for Retried {
@@ -91,7 +92,7 @@ pub const DEFAULT_BATCH_WAIT: Duration = Duration::from_millis(10);
 ///                 .max_attempts(nonzero!(5u32))
 ///                 .dead_letter("orders.dead")
 ///                 .out_retry(Publish)
-///                 .transform(Retried);
+///                 .transform(Retried)
 ///         },
 ///     )
 /// }
@@ -157,9 +158,7 @@ pub(crate) enum Routing {
 /// # #[ruststream::app]
 /// # fn app() -> impl App {
 /// #     RustStream::new(AppInfo::new("orders", "0.1.0"))
-/// #         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| {
-/// #             b.include(fulfil);
-/// #         })
+/// #         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| b.include(fulfil))
 /// # }
 /// # }
 /// # fn main() {}
@@ -209,9 +208,7 @@ impl AmqpAddress {
     /// # #[ruststream::app]
     /// # fn app() -> impl App {
     /// #     RustStream::new(AppInfo::new("orders", "0.1.0"))
-    /// #         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| {
-    /// #             b.include(fulfil);
-    /// #         })
+    /// #         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| b.include(fulfil))
     /// # }
     /// # }
     /// # fn main() {}
@@ -244,9 +241,7 @@ impl AmqpAddress {
     /// # #[ruststream::app]
     /// # fn app() -> impl App {
     /// #     RustStream::new(AppInfo::new("orders", "0.1.0"))
-    /// #         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| {
-    /// #             b.include(audit);
-    /// #         })
+    /// #         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| b.include(audit))
     /// # }
     /// # }
     /// # fn main() {}
@@ -280,9 +275,7 @@ impl AmqpAddress {
     /// # #[ruststream::app]
     /// # fn app() -> impl App {
     /// #     RustStream::new(AppInfo::new("orders", "0.1.0"))
-    /// #         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| {
-    /// #             b.include(fulfil);
-    /// #         })
+    /// #         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| b.include(fulfil))
     /// # }
     /// # }
     /// # fn main() {}
@@ -324,9 +317,7 @@ impl AmqpAddress {
     /// # #[ruststream::app]
     /// # fn app() -> impl App {
     /// #     RustStream::new(AppInfo::new("orders", "0.1.0"))
-    /// #         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| {
-    /// #             b.include(fulfil);
-    /// #         })
+    /// #         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| b.include(fulfil))
     /// # }
     /// # }
     /// # fn main() {}
@@ -374,7 +365,7 @@ impl AmqpAddress {
     /// fn app() -> impl App {
     ///     RustStream::new(AppInfo::new("audit", "0.1.0"))
     ///         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| {
-    ///             b.include(audit.batch(nonzero!(32)));
+    ///             b.include(audit.batch(nonzero!(32)))
     ///         })
     /// }
     /// # }
@@ -417,7 +408,7 @@ impl AmqpAddress {
     /// fn app() -> impl App {
     ///     RustStream::new(AppInfo::new("orders", "0.1.0"))
     ///         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| {
-    ///             b.include(fulfil.batch(nonzero!(32)));
+    ///             b.include(fulfil.batch(nonzero!(32)))
     ///         })
     /// }
     /// # }
@@ -550,9 +541,7 @@ impl AmqpAddress {
 /// fn app() -> RustStream {
 ///     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
 ///         AmqpBroker::new("amqp://localhost:5672"),
-///         |b| {
-///             b.include(subscriber(AmqpAddress::queue("orders"), TakeOrder).build());
-///         },
+///         |b| b.include(subscriber(AmqpAddress::queue("orders"), TakeOrder).build()),
 ///     )
 /// }
 /// # }

@@ -10,8 +10,8 @@ use super::deliveries::Settlement;
 use super::{ensure_node, frame};
 use crate::address::Routing;
 use crate::error::AmqpError;
-use crate::message::{AmqpMessage, Refused};
 use crate::message::ReplyId;
+use crate::message::{AmqpMessage, Refused};
 
 /// One request and its correlated reply, the way the live publisher performs it.
 ///

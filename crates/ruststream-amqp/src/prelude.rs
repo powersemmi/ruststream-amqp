@@ -70,10 +70,7 @@
 //! fn app() -> impl App {
 //!     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
 //!         AmqpBroker::new("amqp://localhost:5672").sasl(Sasl::plain("svc", "secret")),
-//!         |b| {
-//!             b.include(issue_receipt).out_reply(Publish);
-//!             b.include(audit);
-//!         },
+//!         |b| b.include(issue_receipt).out_reply(Publish).include(audit),
 //!     )
 //! }
 //! # }

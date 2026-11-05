@@ -53,7 +53,7 @@ use crate::publisher::accepted;
 ///
 /// #[subscriber(AmqpAddress::queue("batches"), workers(4))]
 /// async fn post(batch: &Batch, Out(out): Out<impl OwnedTransactions>) -> HandlerOutcome {
-///     let Ok(mut txn) = out.owned_transaction().await else {
+///     let Ok(mut txn) = out.transaction().await else {
 ///         return HandlerOutcome::retry();
 ///     };
 ///     for line in 0..3 {
@@ -73,9 +73,7 @@ use crate::publisher::accepted;
 /// fn app() -> impl App {
 ///     RustStream::new(AppInfo::new("ledger", "0.1.0")).with_broker(
 ///         AmqpBroker::new("amqp://localhost:5672"),
-///         |b| {
-///             b.include(post).out(DefaultSlot, TransactionalPublish).build();
-///         },
+///         |b| b.include(post).out(DefaultSlot, TransactionalPublish),
 ///     )
 /// }
 /// # }

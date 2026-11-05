@@ -15,8 +15,8 @@ use fe2o3_amqp_types::messaging::{
 };
 use fe2o3_amqp_types::primitives::{Binary, SimpleValue, Symbol, Value};
 use ruststream::{
-    AckError, HeaderMap, IncomingMessage, OutgoingFor, Partitioned, PublishMessageError, Settle, Str,
-    Take,
+    AckError, HeaderMap, IncomingMessage, OutgoingFor, Partitioned, PublishMessageError, Settle,
+    Str, Take,
 };
 
 use crate::error::AmqpError;
@@ -630,12 +630,13 @@ mod tests {
     fn a_refused_header_hands_the_message_back() {
         let mut headers = HeaderMap::new();
         headers.insert("reply-to", Bytes::from_static(NOT_UTF8));
-        let outgoing = OutgoingMessage::new("orders", b"{}".as_slice()).with_headers(headers.clone());
+        let outgoing =
+            OutgoingMessage::new("orders", b"{}".as_slice()).with_headers(headers.clone());
 
         let refused = to_amqp_message(outgoing, None).expect_err("the header cannot travel");
         let unsent = refused.into_message().expect("nothing took the message");
         assert_eq!(unsent.name(), "orders");
-        assert_eq!(&unsent.payload()[..], b"{}");
+        assert_eq!(unsent.payload(), b"{}");
         assert_eq!(unsent.headers(), &headers);
     }
 
