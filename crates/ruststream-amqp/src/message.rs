@@ -224,26 +224,22 @@ impl IncomingMessage for AmqpMessage {
     /// count from the `delivery-count` field of the `AMQP` `header` section, continued from the
     /// framework's retry-count header on a deferred `retry_after` copy.
     ///
-    /// The copy is a new message to the broker, so its `delivery-count` starts over while the
-    /// header carries the attempts made before it; the count goes on from the header, and a
-    /// registration's `max_attempts` is spent against every delivery of the message. A delivery
-    /// with neither answers `None`, which is what a message this crate published looks like on
-    /// its first delivery: nothing has counted an attempt for it.
+    /// A delivery with no `header` section answers `None`, which is what a message this crate
+    /// published looks like: nothing has counted an attempt for it, and the framework's
+    /// retry-count header carries the attempt instead. Once the broker counts a copy, by a
+    /// requeue, its `delivery-count` has started over while the header holds the attempts made
+    /// before the copy, so the count goes on from the header and a registration's `max_attempts`
+    /// is spent against every delivery of the message.
     fn redelivery_count(&self) -> Option<u64> {
+        let counted = u64::from(self.delivery_count?);
         // Read only when the runtime asks, which is when a delivery failed: a delivery that is
         // handled pays nothing for it.
         let retried = self
             .headers
             .get_str(RETRY_COUNT_HEADER)
-            .and_then(|count| count.parse::<u64>().ok());
-        if retried.is_none() && self.delivery_count.is_none() {
-            return None;
-        }
-        Some(
-            1_u64
-                .saturating_add(retried.unwrap_or(0))
-                .saturating_add(self.delivery_count.map_or(0, u64::from)),
-        )
+            .and_then(|count| count.parse::<u64>().ok())
+            .unwrap_or(0);
+        Some(1_u64.saturating_add(retried).saturating_add(counted))
     }
 
     fn partition_key(&self) -> Option<&[u8]> {
@@ -652,11 +648,12 @@ mod tests {
         AmqpMessage::settled(read, delivery_count)
     }
 
-    /// A deferred copy is a new message to the broker, whose own count starts over: the count
-    /// goes on from the retry-count header the copy carries.
+    /// A deferred copy is a new message to the broker, whose own count starts over: once the
+    /// broker counts it, the count goes on from the retry-count header the copy carries.
     #[test]
     fn a_retry_copy_continues_the_count_its_header_holds() {
-        assert_eq!(delivered_with(Some("1"), None).redelivery_count(), Some(2));
+        // Uncounted by the broker, the copy leaves the count to its header.
+        assert_eq!(delivered_with(Some("1"), None).redelivery_count(), None);
         assert_eq!(
             delivered_with(Some("1"), Some(1)).redelivery_count(),
             Some(3)
