@@ -46,12 +46,12 @@ middleware come from the framework; this crate is the transport.
 
 ```toml
 [dependencies]
-ruststream = { version = "0.7", features = ["macros", "json"] }
-ruststream-amqp = "0.7"
+ruststream = { version = "0.8", features = ["macros", "json"] }
+ruststream-amqp = "0.8"
 serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
-ruststream-amqp = { version = "0.7", features = ["testing"] }
+ruststream-amqp = { version = "0.8", features = ["testing"] }
 ```
 
 Optional features: TLS for `amqps://` (`rustls` or `native-tls`, with the client certificate SASL
@@ -87,9 +87,7 @@ async fn handle(order: &Order, Out(out): Out<impl Publisher>) -> HandlerOutcome 
 fn app() -> impl App {
     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
         AmqpBroker::new("amqp://localhost:5672"),
-        |b| {
-            b.include(handle).out(DefaultSlot, Publish).build();
-        },
+        |b| b.include(handle).out(DefaultSlot, Publish),
     )
 }
 ```

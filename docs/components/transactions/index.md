@@ -12,7 +12,7 @@ import TabItem from '@theme/TabItem';
 
 The policy needs the `transaction` feature.
 The runtime pairs it into an [`AmqpTxnPublisher`](api:ruststream_amqp::AmqpTxnPublisher), which implements [`TransactionalPublisher`](api:ruststream::TransactionalPublisher).
-A handler binds its slot as `Out<impl TransactionalPublisher>`, and the mount site names the policy with `.out(DefaultSlot, TransactionalPublish).build()`.
+A handler binds its slot as `Out<impl TransactionalPublisher>`, and the mount site names the policy with `.out(DefaultSlot, TransactionalPublish)`.
 `begin_transaction` declares a transaction on the broker.
 Each publish after it is posted under that transaction and waits for the broker's outcome, as a plain publish does.
 `commit` makes every posted message visible at once; `abort` discards them.
@@ -35,7 +35,7 @@ The delivery the handler answers settles on its own after the handler returns, s
 ## A transaction per delivery
 
 The same publisher implements [`OwnedTransactions`](api:ruststream::OwnedTransactions).
-`owned_transaction()` declares a transaction of its own and returns it as a value, an [`AmqpTransaction`](api:ruststream_amqp::AmqpTransaction).
+`transaction()` declares a transaction of its own and returns it as a value, an [`AmqpTransaction`](api:ruststream_amqp::AmqpTransaction).
 The value posts with `publish`, and `commit` or `abort` consumes it.
 Any number of these are open on one publisher at a time, and settling one leaves the others whole.
 A registration with `workers(n)` uses this form: its workers share the slot's publisher, and each delivery opens its own transaction there.
@@ -47,7 +47,7 @@ A transaction dropped without `commit` or `abort` is rolled back, and a warning 
 The dependency line:
 
 ```toml
-ruststream-amqp = { version = "0.7", features = ["transaction"] }
+ruststream-amqp = { version = "0.8", features = ["transaction"] }
 ```
 
 The handler posts one invoice line per order line and commits them together; an empty line aborts the order.

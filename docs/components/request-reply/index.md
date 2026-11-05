@@ -18,7 +18,7 @@ With no match inside the timeout the call returns `RequestTimeout`.
 The reply link is detached either way, so each request costs a link attach and a detach on top of the two messages.
 
 A handler asks through a slot it binds as `Out<impl RequestReply>`.
-The mount site gives the slot the plain policy: `.out(DefaultSlot, Publish).build()`.
+The mount site gives the slot the plain policy: `.out(DefaultSlot, Publish)`.
 The reply arrives already settled; the handler reads its payload and headers.
 A request that opens a conversation has no delivery to answer, so it runs from [`after_startup`](api:ruststream::runtime::BrokerScope::after_startup), where the publisher is already live.
 The other side of the exchange is a [responder](./responders.md).

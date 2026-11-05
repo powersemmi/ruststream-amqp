@@ -14,7 +14,7 @@ A responder reads the private reply address from `reply-to` and answers there th
 The reply address is new for every request, so neither the reply type nor the mount site can name it.
 The handler reads it with `ctx.headers().reply_to()` and publishes with `.to(reply_to)` at the call site.
 That call site exists only for a reply type whose `Outgoing` derive names no destination.
-The slot is bound as `Out<impl Publisher<Options = AmqpPublishOptions>>` and mounted with `.out(DefaultSlot, Publish).build()`.
+The slot is bound as `Out<impl Publisher<Options = AmqpPublishOptions>>` and mounted with `.out(DefaultSlot, Publish)`.
 
 The answer carries the request's correlation with `.correlation_id(correlation)`, read by `Ctx(correlation): Ctx<ReplyCorrelation>`.
 It is the request's `correlation-id`, or its `message-id` when it has none, in the type the requester wrote it: a string, binary, a UUID or a number.

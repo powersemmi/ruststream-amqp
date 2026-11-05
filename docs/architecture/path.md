@@ -50,8 +50,8 @@ The handler's reply is encoded into a buffer the dispatch loop reuses. The
 section, without a copy. It sends the message unsettled on the address's sender link and holds the
 link until the broker's disposition arrives. So the publishes to one address from one connection go
 out one at a time, each one round trip. A disposition other than `accepted` is an
-[error](../components/broker/errors.md), and a reply that fails to publish settles the delivery with
-a retry.
+[error](../components/broker/errors.md). A reply that fails to publish acks the delivery and reaches
+the handler's `.error` continuation with the broker's error.
 
 The delivery settles after the reply. Its outcome becomes a disposition, as
 [Settlement](settlement.md) draws.
