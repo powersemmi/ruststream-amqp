@@ -16,6 +16,8 @@ use std::time::Duration;
 use futures::{Stream, StreamExt};
 use ruststream::runtime::RETRY_COUNT_HEADER;
 use ruststream::{Broker, ConnectedBroker, IncomingMessage, Subscriber};
+// The trait is imported for its methods: the prelude's `Settle` is the link's settle mode.
+use ruststream::Settle as _;
 use ruststream_amqp::prelude::*;
 use ruststream_amqp::{AmqpMessage, ConnectedAmqpBroker};
 use serde::{Deserialize, Serialize};
@@ -185,7 +187,7 @@ async fn a_deferred_retry_comes_back_to_the_subscription_that_asked_for_it() {
 
     let app = RustStream::new(AppInfo::new("retry", "0.1.0"))
         .with_broker(AmqpBroker::new(url.clone()), |b| {
-            b.include(defer_once).out(DefaultSlot, Publish).build();
+            b.include(defer_once).out(DefaultSlot, Publish)
         })
         .start()
         .await
@@ -238,7 +240,6 @@ async fn a_capped_registration_carries_the_spent_delivery_to_its_dead_letter_add
                 .max_attempts(nonzero!(2u32))
                 .dead_letter(capped_dead())
                 .out(DefaultSlot, Publish)
-                .build();
         })
         .start()
         .await

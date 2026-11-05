@@ -105,18 +105,22 @@ async fn relay_to_greeter(order: &Order, Out(out): Out<impl RequestReply>) -> Ha
 /// The service's app, on the broker it is handed.
 fn app_on(broker: AmqpBroker) -> RustStream {
     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(broker, |b| {
-        b.include(confirm).out_reply(Publish);
-        // No publisher named: the broker's default policy carries the reply.
-        b.include(confirm_by_default);
-        b.include(greet).out(DefaultSlot, Publish).build();
-        b.include(relay).out(DefaultSlot, Publish).build();
-        b.include(relay_to_greeter)
+        let chain = b
+            .include(confirm)
+            .out_reply(Publish)
+            // No publisher named: the broker's default policy carries the reply.
+            .include(confirm_by_default)
+            .include(greet)
             .out(DefaultSlot, Publish)
-            .build();
+            .include(relay)
+            .out(DefaultSlot, Publish)
+            .include(relay_to_greeter)
+            .out(DefaultSlot, Publish);
         #[cfg(feature = "transaction")]
-        b.include(transactional::post_batch)
-            .out(DefaultSlot, TransactionalPublish)
-            .build();
+        let chain = chain
+            .include(transactional::post_batch)
+            .out(DefaultSlot, TransactionalPublish);
+        chain
     })
 }
 
@@ -392,7 +396,14 @@ async fn an_aliasing_publisher_refuses_outside_the_connection() {
         .publish(OutgoingMessage::new("orders", b"early".as_slice()), None)
         .await
         .expect_err("a publish before connect must not report success");
-    assert!(matches!(before, AmqpError::NotConnected), "got {before}");
+    assert!(
+        matches!(before.error(), AmqpError::NotConnected),
+        "got {before}"
+    );
+    let unsent = before
+        .into_message()
+        .expect("the refusal hands the message back");
+    assert_eq!((unsent.name(), unsent.payload()), ("orders", &b"early"[..]));
 
     let connected = broker.connect_in_process().await.expect("connect failed");
     early
@@ -405,7 +416,14 @@ async fn an_aliasing_publisher_refuses_outside_the_connection() {
         .publish(OutgoingMessage::new("orders", b"late".as_slice()), None)
         .await
         .expect_err("a publish after shutdown must not report success");
-    assert!(matches!(after, AmqpError::NotConnected), "got {after}");
+    assert!(
+        matches!(after.error(), AmqpError::NotConnected),
+        "got {after}"
+    );
+    let unsent = after
+        .into_message()
+        .expect("the refusal hands the message back");
+    assert_eq!((unsent.name(), unsent.payload()), ("orders", &b"late"[..]));
 }
 
 // A sender with no target address is an anonymous one, and the peer rejects a message that names
@@ -421,7 +439,8 @@ async fn a_publish_to_the_empty_address_is_refused() {
         .publisher()
         .publish(OutgoingMessage::new("", b"nowhere".as_slice()), None)
         .await
-        .expect_err("a message to the empty address must not be accepted");
+        .expect_err("a message to the empty address must not be accepted")
+        .into_error();
     assert!(
         matches!(err, AmqpError::PublishNotAccepted { .. }),
         "got {err}"
@@ -447,6 +466,7 @@ async fn a_header_its_property_cannot_hold_fails_the_publish() {
         )
         .await
         .expect_err("a reply address that is not UTF-8 must not be rewritten");
+    let err = err.into_error();
     assert!(
         matches!(
             &err,
@@ -509,9 +529,13 @@ async fn a_reply_through_the_reply_position_keeps_the_typed_correlation() {
     let app = RustStream::new(AppInfo::new("correlation", "0.1.0")).with_broker(
         AmqpBroker::new(URL),
         |b| {
-            b.include(ask).out(DefaultSlot, Publish).build();
-            b.include(answer).out_reply(Publish).transform(Correlate);
-            b.include(observe).out_reply(Publish);
+            b.include(ask)
+                .out(DefaultSlot, Publish)
+                .include(answer)
+                .out_reply(Publish)
+                .transform(Correlate)
+                .include(observe)
+                .out_reply(Publish)
         },
     );
     let tb = TestApp::start(app).await.expect("startup failed");

@@ -18,6 +18,8 @@ use futures::future::join_all;
 use futures::{Stream, StreamExt};
 use ruststream::testing::TestApp;
 use ruststream::{Broker, IncomingMessage, Subscriber};
+// The trait is imported for its methods: the prelude's `Settle` is the link's settle mode.
+use ruststream::Settle as _;
 use ruststream_amqp::AmqpMessage;
 use ruststream_amqp::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -70,7 +72,7 @@ async fn post_batch(
     ctx: &mut Context<'_, (), Arc<Barrier>>,
     Out(out): Out<impl OwnedTransactions>,
 ) -> HandlerOutcome {
-    let Ok(mut txn) = out.owned_transaction().await else {
+    let Ok(mut txn) = out.transaction().await else {
         return HandlerOutcome::drop();
     };
     for line in 0..2 {
@@ -94,7 +96,7 @@ async fn post_batch(
 /// rolls it back.
 #[subscriber(AmqpAddress::queue(abandoned()))]
 async fn abandon(batch: &Batch, Out(out): Out<impl OwnedTransactions>) -> HandlerOutcome {
-    let Ok(mut txn) = out.owned_transaction().await else {
+    let Ok(mut txn) = out.transaction().await else {
         return HandlerOutcome::drop();
     };
     let entry = Entry {
@@ -113,10 +115,8 @@ fn app(url: &str) -> impl App<State = Arc<Barrier>> {
         .with_broker(AmqpBroker::new(url), |b| {
             b.include(post_batch)
                 .out(DefaultSlot, TransactionalPublish)
-                .build();
-            b.include(abandon)
+                .include(abandon)
                 .out(DefaultSlot, TransactionalPublish)
-                .build();
         })
 }
 

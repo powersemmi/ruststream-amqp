@@ -29,9 +29,8 @@ async fn settle(orders: &[Order]) -> HandlerOutcome {
 
 /// The service's app, on the broker it is handed.
 fn app(broker: AmqpBroker) -> RustStream {
-    RustStream::new(AppInfo::new("billing", "0.1.0")).with_broker(broker, |b| {
-        b.include(settle.batch(nonzero!(SIZE)));
-    })
+    RustStream::new(AppInfo::new("billing", "0.1.0"))
+        .with_broker(broker, |b| b.include(settle.batch(nonzero!(SIZE))))
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

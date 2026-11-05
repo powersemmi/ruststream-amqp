@@ -128,19 +128,21 @@ impl<C, Options> PublishTransform<ForReply<C>, Options> for DeferredStamp {
 /// The service's app, on the broker at `url`.
 fn app(url: &str) -> RustStream {
     RustStream::new(AppInfo::new("retry", "0.1.0")).with_broker(AmqpBroker::new(url), |b| {
-        b.include(from_a_descriptor).out_retry(Publish);
-        b.include(from_a_name).out_retry(Publish);
-        b.include(from_a_stamped_position)
+        b.include(from_a_descriptor)
             .out_retry(Publish)
-            .transform(DeferredStamp);
-        b.include(capped_from_a_descriptor)
+            .include(from_a_name)
+            .out_retry(Publish)
+            .include(from_a_stamped_position)
+            .out_retry(Publish)
+            .transform(DeferredStamp)
+            .include(capped_from_a_descriptor)
             .max_attempts(nonzero!(3u32))
-            .dead_letter(capped_dead());
-        b.include(capped_from_a_name)
+            .dead_letter(capped_dead())
+            .include(capped_from_a_name)
             .max_attempts(nonzero!(2u32))
-            .dead_letter("capped.dead");
-        b.include(capped_without_a_destination)
-            .max_attempts(nonzero!(2u32));
+            .dead_letter("capped.dead")
+            .include(capped_without_a_destination)
+            .max_attempts(nonzero!(2u32))
     })
 }
 
@@ -152,6 +154,9 @@ fn test_url() -> Option<String> {
 
 /// The descriptor's answer: a publish to the node address reaches the subscription opened on it,
 /// so the deferred copy comes back to the handler that asked for the delay.
+// Start and shutdown are cold steps whose futures carry no `Send`; the test awaits them on
+// its own runtime.
+#[allow(clippy::future_not_send)]
 async fn a_deferred_retry_comes_back(tb: TestApp<()>) {
     let orders = deferred_orders();
     tb.broker::<AmqpBroker>()
@@ -178,6 +183,9 @@ async fn a_deferred_retry_comes_back(tb: TestApp<()>) {
 
 /// The declaration ends a poison message on this broker: three deliveries, then the delivery is
 /// carried to the dead-letter address instead of coming back a fourth time.
+// Start and shutdown are cold steps whose futures carry no `Send`; the test awaits them on
+// its own runtime.
+#[allow(clippy::future_not_send)]
 async fn a_capped_registration_dead_letters_the_spent_delivery(tb: TestApp<()>) {
     let orders = capped_orders();
     tb.broker::<AmqpBroker>()

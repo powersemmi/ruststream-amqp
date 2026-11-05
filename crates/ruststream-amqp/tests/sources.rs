@@ -18,6 +18,8 @@ use futures::{FutureExt, Stream, StreamExt};
 use ruststream::schemars::JsonSchema;
 use ruststream::testing::{InProcess, TestApp, TestableBroker};
 use ruststream::{AckError, ConnectedBroker, IncomingMessage, OutgoingMessage, Subscriber};
+// The trait is imported for its methods: the prelude's `Settle` is the link's settle mode.
+use ruststream::Settle as _;
 use ruststream_amqp::prelude::*;
 use ruststream_amqp::{AmqpMessage, AmqpSubscriber, ConnectedAmqpBroker};
 use serde::{Deserialize, Serialize};
@@ -66,10 +68,10 @@ async fn in_batches(orders: &[Order]) -> HandlerOutcome {
 /// The service's app, on the broker it is handed.
 fn app_on(broker: AmqpBroker) -> RustStream {
     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(broker, |b| {
-        b.include(from_a_queue);
-        b.include(from_a_topic);
-        b.include(from_a_raw_address);
-        b.include(in_batches.batch(nonzero!(2usize)));
+        b.include(from_a_queue)
+            .include(from_a_topic)
+            .include(from_a_raw_address)
+            .include(in_batches.batch(nonzero!(2usize)))
     })
 }
 
@@ -495,8 +497,8 @@ impl Handle<Notice> for Audit {
 async fn a_handler_written_without_the_macros_mounts_on_a_descriptor() {
     let app =
         RustStream::new(AppInfo::new("audit", "0.1.0")).with_broker(AmqpBroker::new(URL), |b| {
-            b.include(subscriber(AmqpAddress::topic("notices"), Audit).build());
-            b.include(subscriber(AmqpAddress::topic("notices"), Audit).build());
+            b.include(subscriber(AmqpAddress::topic("notices"), Audit).build())
+                .include(subscriber(AmqpAddress::topic("notices"), Audit).build())
         });
     let tb = TestApp::start(app).await.expect("startup failed");
 

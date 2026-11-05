@@ -58,8 +58,7 @@ async fn confirm(order: &Order) -> Confirmation {
 /// The service's app.
 fn app() -> RustStream {
     RustStream::new(AppInfo::new("billing", "0.1.0")).with_broker(AmqpBroker::new(URL), |b| {
-        b.include(issue_receipt);
-        b.include(confirm);
+        b.include(issue_receipt).include(confirm)
     })
 }
 

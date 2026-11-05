@@ -10,6 +10,7 @@ use fe2o3_amqp::{Connection, Sender, Session};
 use fe2o3_amqp_types::messaging::{ApplicationProperties, Data, Message, MessageId, Properties};
 use fe2o3_amqp_types::primitives::{Binary, Dec64, SimpleValue, Uuid};
 use futures::StreamExt;
+use ruststream::Settle;
 use ruststream::{
     Broker, Bytes, ConnectedBroker, HeaderMap, IncomingMessage, OutgoingMessage, Publisher,
     Subscriber,
@@ -61,7 +62,8 @@ async fn identifiers_keep_their_bytes_and_a_string_property_refuses_others() {
             None,
         )
         .await
-        .expect_err("a reply address that is not UTF-8 must not be rewritten");
+        .expect_err("a reply address that is not UTF-8 must not be rewritten")
+        .into_error();
     assert!(
         matches!(&err, AmqpError::UnsupportedHeader { header, .. } if header == "reply-to"),
         "got {err}"

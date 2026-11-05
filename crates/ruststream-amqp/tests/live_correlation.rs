@@ -133,8 +133,11 @@ async fn a_reply_carries_the_correlation_in_the_type_the_requester_wrote() {
     let Some(url) = test_url() else { return };
     let app = RustStream::new(AppInfo::new("correlation", "0.1.0"))
         .with_broker(AmqpBroker::new(url.clone()), |b| {
-            b.include(respond).out(DefaultSlot, Publish).build();
-            b.include(receipt).out_reply(Publish).transform(Correlate);
+            b.include(respond)
+                .out(DefaultSlot, Publish)
+                .include(receipt)
+                .out_reply(Publish)
+                .transform(Correlate)
         })
         .start()
         .await

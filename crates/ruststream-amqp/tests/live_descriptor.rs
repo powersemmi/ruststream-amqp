@@ -18,6 +18,8 @@ use ruststream::{
     Broker, ConnectedBroker, IncomingMessage, OutgoingMessage, Publisher, Subscribe, Subscriber,
     nonzero,
 };
+// The trait is imported for its methods: the prelude's `Settle` is the link's settle mode.
+use ruststream::Settle as _;
 use ruststream_amqp::{
     AmqpAddress, AmqpBroker, AmqpError, AmqpMessage, ConnectedAmqpBroker, Settle,
 };
