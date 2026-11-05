@@ -66,7 +66,9 @@ use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use gungraun::{Callgrind, Dhat, DhatMetric, EntryPoint, LibraryBenchmarkConfig};
-use ruststream::runtime::{AppInfo, BrokerScope, Identity, RunningApp, RustStream};
+use ruststream::runtime::{
+    AppInfo, BrokerScope, Identity, MountChain, MountRoutes, RunningApp, RustStream,
+};
 use ruststream::{Broker, ConnectedBroker, OutgoingMessage, Publisher};
 use ruststream_amqp::AmqpBroker;
 use serde::Deserialize;
@@ -258,14 +260,18 @@ pub struct Pending {
     messages: usize,
 }
 
-/// The mount a scenario passes in: what `with_broker` does with the scope.
-pub type Mount<'a> = &'a mut BrokerScope<AmqpBroker, Identity, (), Latch>;
+/// The scope a scenario mounts its handler on: `with_broker` hands it over, and the scenario
+/// returns the chain its `include` opens.
+pub type Mount = BrokerScope<AmqpBroker, Identity, (), Latch>;
 
 /// Builds a one-handler service on the production broker, ready to be started by the body.
 ///
 /// The constructor records the URL and opens nothing, so building the service is setup and
 /// connecting it is the start the body measures.
-pub fn pending(messages: usize, mount: impl FnOnce(Mount<'_>)) -> Pending {
+pub fn pending<Chain>(messages: usize, mount: impl FnOnce(Mount) -> Chain) -> Pending
+where
+    Chain: MountChain<Routes: MountRoutes<AmqpBroker, Identity, Latch>>,
+{
     let latch = Latch::default();
     let state = latch.clone();
     let app = RustStream::new(AppInfo::new("bench", "0.0.0"))
