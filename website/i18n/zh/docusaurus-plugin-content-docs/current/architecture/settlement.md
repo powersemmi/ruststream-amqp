@@ -33,7 +33,7 @@ export const table = {
 export const retries = {
   "title": "AMQP 1.0 上的一次重试：尝试上限决定把消息送回、发往死信地址，还是拒绝",
   "text": "以文字阅读本图",
-  "delivery": ["一次投递：它的尝试次数是 delivery-count + 1，", "副本上则是 x-ruststream-retry-count"],
+  "delivery": ["一次投递：它的尝试次数是 delivery-count + 1，", "副本上再加上 x-ruststream-retry-count"],
   "outcome": ["处理器返回", "retry() 或 retry_after(delay)"],
   "cap": ["max_attempts：这次尝试是否低于上限？"],
   "requeue": ["retry()：", "modified，", "回到", "队列"],
@@ -67,7 +67,7 @@ export const retries = {
 | `retry_after(d)` | 在 `d` 之后把一份副本发布到该地址 |
 | 没有结果 | 什么也不做：Broker 已经放走了这条消息 |
 
-一条消息被投递了多少次，等于 `delivery-count` + 1，由 [`redelivery_count`](api:ruststream_amqp::AmqpMessage) 报告。本 crate 发布的消息没有 `header` 段，因此不带计数，此时由框架的重试计数消息头来计数。
+一条消息被投递了多少次，等于 `delivery-count` + 1，由 [`redelivery_count`](api:ruststream_amqp::AmqpMessage) 报告。本 crate 发布的消息没有 `header` 段，因此不带计数，此时由框架的重试计数消息头来计数。框架发布的副本从这个消息头接着计数：它的计数是消息头的值加上 `delivery-count` + 1，因此被重新入队的副本会在它之前的尝试次数上继续累加。
 
 ## 重试 {/* #retries */}
 

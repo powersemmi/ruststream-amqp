@@ -14,6 +14,7 @@ use fe2o3_amqp_types::messaging::{
     ApplicationProperties, Body, Data, Message, MessageId, Properties,
 };
 use fe2o3_amqp_types::primitives::{Binary, SimpleValue, Symbol, Value};
+use ruststream::runtime::RETRY_COUNT_HEADER;
 use ruststream::{
     AckError, HeaderMap, IncomingMessage, OutgoingFor, Partitioned, PublishMessageError, Settle,
     Str, Take,
@@ -219,16 +220,30 @@ impl IncomingMessage for AmqpMessage {
         &self.headers
     }
 
-    /// The broker's own count of deliveries of this message, from the `delivery-count` field of
-    /// the `AMQP` `header` section, counting this delivery.
+    /// How many times this message has been delivered, counting this delivery: the broker's own
+    /// count from the `delivery-count` field of the `AMQP` `header` section, continued from the
+    /// framework's retry-count header on a deferred `retry_after` copy.
     ///
-    /// A delivery with no `header` section answers `None`, which is what a message this crate
-    /// published looks like: nothing has counted an attempt for it, and the framework's
-    /// retry-count header carries the attempt instead. That is the answer a deferred `retry_after`
-    /// copy needs, because the copy is a new message to the broker and its `delivery-count` starts
-    /// over while the framework's header does not.
+    /// The copy is a new message to the broker, so its `delivery-count` starts over while the
+    /// header carries the attempts made before it; the count goes on from the header, and a
+    /// registration's `max_attempts` is spent against every delivery of the message. A delivery
+    /// with neither answers `None`, which is what a message this crate published looks like on
+    /// its first delivery: nothing has counted an attempt for it.
     fn redelivery_count(&self) -> Option<u64> {
-        self.delivery_count.map(|count| u64::from(count) + 1)
+        // Read only when the runtime asks, which is when a delivery failed: a delivery that is
+        // handled pays nothing for it.
+        let retried = self
+            .headers
+            .get_str(RETRY_COUNT_HEADER)
+            .and_then(|count| count.parse::<u64>().ok());
+        if retried.is_none() && self.delivery_count.is_none() {
+            return None;
+        }
+        Some(
+            1_u64
+                .saturating_add(retried.unwrap_or(0))
+                .saturating_add(self.delivery_count.map_or(0, u64::from)),
+        )
     }
 
     fn partition_key(&self) -> Option<&[u8]> {
@@ -622,6 +637,41 @@ mod tests {
             None,
         )
         .map_err(Refused::into_error)
+    }
+
+    fn delivered_with(retried: Option<&'static str>, delivery_count: Option<u32>) -> AmqpMessage {
+        let mut headers = HeaderMap::new();
+        if let Some(retried) = retried {
+            headers.insert(RETRY_COUNT_HEADER, retried);
+        }
+        let read = Read {
+            payload: Bytes::new(),
+            headers,
+            reply_id: ReplyId::of(None),
+        };
+        AmqpMessage::settled(read, delivery_count)
+    }
+
+    /// A deferred copy is a new message to the broker, whose own count starts over: the count
+    /// goes on from the retry-count header the copy carries.
+    #[test]
+    fn a_retry_copy_continues_the_count_its_header_holds() {
+        assert_eq!(delivered_with(Some("1"), None).redelivery_count(), Some(2));
+        assert_eq!(
+            delivered_with(Some("1"), Some(1)).redelivery_count(),
+            Some(3)
+        );
+    }
+
+    #[test]
+    fn a_message_counts_its_own_deliveries() {
+        assert_eq!(delivered_with(None, None).redelivery_count(), None);
+        assert_eq!(delivered_with(None, Some(2)).redelivery_count(), Some(3));
+        // A header that is not a count is not an attempt.
+        assert_eq!(
+            delivered_with(Some("soon"), Some(1)).redelivery_count(),
+            Some(2)
+        );
     }
 
     /// A header the message cannot carry is refused before the payload moves into the body, so
