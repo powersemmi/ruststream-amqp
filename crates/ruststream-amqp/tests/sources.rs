@@ -18,7 +18,7 @@ use futures::{FutureExt, Stream, StreamExt};
 use ruststream::schemars::JsonSchema;
 use ruststream::testing::{InProcess, TestApp, TestableBroker};
 use ruststream::{AckError, ConnectedBroker, IncomingMessage, OutgoingMessage, Subscriber};
-// The trait is imported for its methods: the prelude's `Settle` is the link's settle mode.
+// The trait is imported for its methods: `Settle` here names this crate's settle mode.
 use ruststream::Settle as _;
 use ruststream_amqp::prelude::*;
 use ruststream_amqp::{AmqpMessage, AmqpSubscriber, ConnectedAmqpBroker};

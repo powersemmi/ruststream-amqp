@@ -19,7 +19,7 @@ use futures::future::{join_all, try_join_all};
 use futures::{Stream, StreamExt};
 use ruststream::testing::TestApp;
 use ruststream::{Broker, ConnectedBroker, IncomingMessage, OutgoingMessage, Subscriber};
-// The trait is imported for its methods: the prelude's `Settle` is the link's settle mode.
+// The trait is imported for its methods: `Settle` here names this crate's settle mode.
 use ruststream::Settle as _;
 use ruststream_amqp::prelude::*;
 use ruststream_amqp::{AmqpMessage, ConnectedAmqpBroker};

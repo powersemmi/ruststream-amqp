@@ -16,7 +16,7 @@ use std::time::Duration;
 use futures::{Stream, StreamExt};
 use ruststream::runtime::RETRY_COUNT_HEADER;
 use ruststream::{Broker, ConnectedBroker, IncomingMessage, Subscriber};
-// The trait is imported for its methods: the prelude's `Settle` is the link's settle mode.
+// The trait is imported for its methods: `Settle` here names this crate's settle mode.
 use ruststream::Settle as _;
 use ruststream_amqp::prelude::*;
 use ruststream_amqp::{AmqpMessage, ConnectedAmqpBroker};
