@@ -9,7 +9,7 @@ import TabItem from '@theme/TabItem';
 
 # Dead letters
 
-[`dead_letter(address)`](api:ruststream::runtime::Mounting::dead_letter) names the address a spent delivery is published to; a cap without one rejects it, and the broker's own dead-letter policy applies.
+[`dead_letter(address)`](api:ruststream::runtime::RouterWith::dead_letter) names the address a spent delivery is published to; a cap without one rejects it, and the broker's own dead-letter policy applies.
 
 It follows [`max_attempts(n)`](./retries.md) at the mount site.
 When the delivery that fails is the `n`-th one, the runtime rejects it and publishes a copy to the dead-letter address instead of the subscription's.
