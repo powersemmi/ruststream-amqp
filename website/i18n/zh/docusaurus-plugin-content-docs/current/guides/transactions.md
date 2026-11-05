@@ -16,7 +16,7 @@ AMQP 1.0 在协议中定义了[事务](../components/transactions/index.md)：�
 
 ```toml title="Cargo.toml"
 [dependencies]
-ruststream-amqp = { version = "0.7", features = ["transaction"] }
+ruststream-amqp = { version = "0.8", features = ["transaction"] }
 ```
 
 示例是一个账务服务。
@@ -70,9 +70,9 @@ ruststream-amqp = { version = "0.7", features = ["transaction"] }
 在已有事务开启时再次调用 `begin_transaction` 会返回错误，已开启的事务不受影响。
 每次注册都得到自己的发布者，所以两个处理器可以同时各持有一个事务。
 在事务之外通过这个发布者发布的消息会立即发出。
-带 `workers(n)` 的处理器让它的各个工作者共用一个发布者，所以每次投递都用 `owned_transaction()` 开启自己的事务，参见 [事务](../components/transactions/index.md#a-transaction-per-delivery)。
+带 `workers(n)` 的处理器让它的各个工作者共用一个发布者，所以每次投递都用 `transaction()` 开启自己的事务，参见 [事务](../components/transactions/index.md#a-transaction-per-delivery)。
 
-服务启动时执行、没有投递可处理的事务，放在启动钩子中运行：`b.after_startup(TransactionalPublish, ..)` 把同一个发布者交给钩子。
+服务启动时执行、没有投递可处理的事务，放在启动钩子中运行。钩子是挂载链上写在 `include` 之前的一步：`b.after_startup(TransactionalPublish, ..).include(..)` 把同一个发布者交给它。
 
 ## 订单自身的投递 {/* #the-orders-own-delivery */}
 

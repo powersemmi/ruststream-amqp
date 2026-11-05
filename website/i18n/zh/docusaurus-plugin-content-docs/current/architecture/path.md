@@ -33,6 +33,6 @@ export const words = {
 
 客户端无法读取的投递，比如超过链路允许大小的投递，会被报告，链路仍保持附加。Broker 超出所给信用发送 transfer 时，链路被破坏，订阅随之结束。
 
-处理器的应答编码进分发循环复用的缓冲区。发布者 [`AmqpPublisher`](../components/publishing/index.md) 把这个缓冲区直接作为消息的 `data` 段，不做复制。它在该地址的发送链路上以未结算方式发送消息，并占用这条链路，直到 Broker 的 disposition 到达。因此，同一连接发往同一地址的发布逐条发出，每条一次往返。`accepted` 以外的 disposition 都是[错误](../components/broker/errors.md)；应答发布失败时，这次投递以重试的方式结算。
+处理器的应答编码进分发循环复用的缓冲区。发布者 [`AmqpPublisher`](../components/publishing/index.md) 把这个缓冲区直接作为消息的 `data` 段，不做复制。它在该地址的发送链路上以未结算方式发送消息，并占用这条链路，直到 Broker 的 disposition 到达。因此，同一连接发往同一地址的发布逐条发出，每条一次往返。`accepted` 以外的 disposition 都是[错误](../components/broker/errors.md)；应答发布失败时，这次投递被确认，Broker 的错误交给处理器的 `.error` 续体。
 
 投递在应答之后结算。它的结果变成一个 disposition，[结算](settlement.md)一页用图说明了这一点。
