@@ -1,0 +1,1 @@
+"use strict";(self.webpackChunkruststream_amqp_website=self.webpackChunkruststream_amqp_website||[]).push([["1668"],{6569(e,s,r){r.r(s),r.d(s,{default:()=>i});var a=r(4848);r(6540);var t=r(4164),u=r(4308),c=r(8287),n=r(2831),p=r(2225);function i(e){return(0,a.jsx)(u.e3,{className:(0,t.A)(c.G.wrapper.docsPages),children:(0,a.jsx)(p.A,{children:(0,n.v)(e.route.routes)})})}}}]);
