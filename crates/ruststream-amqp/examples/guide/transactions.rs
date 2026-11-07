@@ -92,9 +92,7 @@ async fn bill(
 fn app() -> impl App {
     RustStream::new(AppInfo::new("billing", "0.1.0")).with_broker(
         AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
-        |b| {
-            b.include(bill).out(Billing, TransactionalPublish).build();
-        },
+        |b| b.include(bill).out(Billing, TransactionalPublish),
     )
 }
 // --8<-- [end:app]

@@ -99,6 +99,7 @@ impl Handle<Payment> for OnDeadLetter {
 // --8<-- [start:transform]
 /// Marks every copy with the subscription the delivery came from, so a redelivery is
 /// recognisable downstream. A transform on the retry position reads the delivery being retried.
+#[derive(Clone)]
 struct Retried;
 
 impl<C, Options> PublishTransform<ForReply<C>, Options> for Retried {
@@ -126,8 +127,8 @@ fn app() -> impl App {
             .max_attempts(nonzero!(5u32))
             .dead_letter("payments.dead")
             .out_retry(Publish)
-            .transform(Retried);
-        b.include(subscriber(AmqpAddress::queue("payments.dead"), OnDeadLetter).build());
+            .transform(Retried)
+            .include(subscriber(AmqpAddress::queue("payments.dead"), OnDeadLetter).build())
     })
 }
 // --8<-- [end:declaration]

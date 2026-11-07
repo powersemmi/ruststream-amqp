@@ -28,9 +28,7 @@ async fn render(invoice: &Invoice) -> HandlerOutcome {
 #[ruststream::app]
 fn app() -> impl App {
     let broker = AmqpBroker::new("amqp://artemis:artemis@localhost:5672");
-    RustStream::new(AppInfo::new("billing", "0.1.0")).with_broker(broker, |b| {
-        b.include(render);
-    })
+    RustStream::new(AppInfo::new("billing", "0.1.0")).with_broker(broker, |b| b.include(render))
 }
 // --8<-- [end:credit]
 
@@ -41,6 +39,7 @@ mod tests {
     use std::time::Duration;
 
     use futures::{Stream, StreamExt};
+    use ruststream::Settle;
     use ruststream::testing::TestApp;
     use ruststream::{
         Broker, ConnectedBroker, IncomingMessage, OutgoingMessage, Publisher, Subscriber,

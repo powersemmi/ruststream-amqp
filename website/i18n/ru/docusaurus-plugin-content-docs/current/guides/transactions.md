@@ -16,7 +16,7 @@ import TabItem from '@theme/TabItem';
 
 ```toml title="Cargo.toml"
 [dependencies]
-ruststream-amqp = { version = "0.7", features = ["transaction"] }
+ruststream-amqp = { version = "0.8", features = ["transaction"] }
 ```
 
 Пример - сервис биллинга.
@@ -70,9 +70,9 @@ ruststream-amqp = { version = "0.7", features = ["transaction"] }
 Второй `begin_transaction` при открытой транзакции возвращает ошибку и не трогает открытую.
 Каждая регистрация получает собственного издателя, поэтому два обработчика могут держать по транзакции одновременно.
 Публикация на этом издателе вне транзакции уходит сразу.
-Обработчик с `workers(n)` делит одного издателя между своими воркерами, поэтому каждая доставка открывает собственную транзакцию через `owned_transaction()`, как показано в разделе [Транзакции](../components/transactions/index.md#a-transaction-per-delivery).
+Обработчик с `workers(n)` делит одного издателя между своими воркерами, поэтому каждая доставка открывает собственную транзакцию через `transaction()`, как показано в разделе [Транзакции](../components/transactions/index.md#a-transaction-per-delivery).
 
-Транзакция, которая начинает работу сервиса и не обрабатывает никакую доставку, выполняется из хука запуска: `b.after_startup(TransactionalPublish, ..)` передаёт хуку того же издателя.
+Транзакция, которая начинает работу сервиса и не обрабатывает никакую доставку, выполняется из хука запуска. Хук записывается шагом цепочки монтирования перед вызовами `include`: `b.after_startup(TransactionalPublish, ..).include(..)` передаёт ему того же издателя.
 
 ## Доставка самого заказа {/* #the-orders-own-delivery */}
 

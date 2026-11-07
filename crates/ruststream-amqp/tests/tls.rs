@@ -38,9 +38,7 @@ async fn place(order: &Order) -> HandlerOutcome {
 }
 
 fn service(broker: AmqpBroker) -> impl App<State = ()> {
-    RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(broker, |b| {
-        b.include(place);
-    })
+    RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(broker, |b| b.include(place))
 }
 
 /// The `AmqpError` behind a failed start, or a panic naming what failed instead.
@@ -83,6 +81,9 @@ async fn a_test_starts_without_reading_the_certificates() -> Result<(), Box<dyn 
 }
 
 /// The body every mode runs: an order reaches the handler on the connection.
+// Start and shutdown are cold steps whose futures carry no `Send`; the test awaits them on
+// its own runtime.
+#[allow(clippy::future_not_send)]
 async fn places_an_order(tb: TestApp<()>) -> Result<(), Box<dyn Error>> {
     tb.broker::<AmqpBroker>()
         .message(&Order { id: 7 })
@@ -132,6 +133,9 @@ async fn external_logs_in_with_the_client_certificate() -> Result<(), Box<dyn Er
 }
 
 /// Asserts that a start against the stand with `tls` fails with a connection error.
+// Start and shutdown are cold steps whose futures carry no `Send`; the test awaits them on
+// its own runtime.
+#[allow(clippy::future_not_send)]
 async fn refused(url: &str, tls: Tls) {
     let failed = TestApp::start_live(service(external(url, tls))).await.err();
     let refused = amqp_error(failed.as_ref().map(|err| err as _));

@@ -33,7 +33,7 @@ export const table = {
 export const retries = {
   "title": "A retry on AMQP 1.0: the attempt cap decides between bringing the message back, the dead-letter address and a rejection",
   "text": "The diagram as text",
-  "delivery": ["A delivery: its attempt is delivery-count + 1,", "or x-ruststream-retry-count on a copy"],
+  "delivery": ["A delivery: its attempt is delivery-count + 1,", "plus x-ruststream-retry-count on a copy"],
   "outcome": ["The handler returns", "retry() or retry_after(delay)"],
   "cap": ["max_attempts: is this attempt below the cap?"],
   "requeue": ["retry():", "modified,", "back on", "the queue"],
@@ -66,7 +66,7 @@ retry did act on it and failed, and an attempt cap reads that count: without the
 message that always fails would come back forever. `undeliverable-here` stays false, so the
 message may come back to this same subscription.
 
-[`Settle::AtMostOnce`](../components/settlement/settle.md) settles each delivery as it
+[`SettleMode::AtMostOnce`](../components/settlement/settle.md) settles each delivery as it
 arrives.
 
 | Outcome | At most once |
@@ -79,6 +79,8 @@ arrives.
 How many times a message has been delivered is `delivery-count` + 1, which
 [`redelivery_count`](api:ruststream_amqp::AmqpMessage) reports. A message this crate published has
 no `header` section, so it carries no count, and the framework's retry-count header counts for it.
+A copy the framework published goes on from that header: its count is the header's value plus
+`delivery-count` + 1, so a copy that is requeued keeps counting from the attempts before it.
 
 ## Retries
 

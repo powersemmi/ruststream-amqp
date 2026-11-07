@@ -33,6 +33,9 @@ The client's error behind it is its `source`, so the `fe2o3-amqp` types stay out
 A service meets the error in two places.
 A failed [startup](./startup.md) carries it as a source of the runtime's error, and the service exits before it reads anything.
 A [publish](../publishing/index.md) from a handler returns it as the source of the core's `PublishError`, and the handler decides how the delivery settles.
+
+A publish refused before the message leaves hands the message back with the error: `NotConnected`, `UnsupportedHeader`, and an `Attach` of the publisher's sender link.
+Once the client sends the message it owns it, so a `Publish` or `PublishNotAccepted` refusal carries none.
 The enum is `#[non_exhaustive]`, so a `match` on it ends with a wildcard arm.
 
 ## Example

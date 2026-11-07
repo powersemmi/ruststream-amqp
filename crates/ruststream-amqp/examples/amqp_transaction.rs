@@ -73,9 +73,7 @@ fn app() -> impl App {
         AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
         |b| {
             // The transactional policy is what gives the slot begin, commit and abort.
-            b.include(bill)
-                .out(DefaultSlot, TransactionalPublish)
-                .build();
+            b.include(bill).out(DefaultSlot, TransactionalPublish)
         },
     )
 }

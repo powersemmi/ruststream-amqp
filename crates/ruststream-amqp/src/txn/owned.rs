@@ -8,7 +8,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use fe2o3_amqp::transaction::{OwnedTransaction, TransactionDischarge, TransactionPosting};
-use ruststream::{OutgoingFor, OwnedTransactions, Take, Transaction};
+use ruststream::{OutgoingFor, OwnedTransactions, PublishOutcome, Take, Transaction};
 use tracing::warn;
 
 use super::{AmqpTxnPublisher, Transport, declare};
@@ -16,7 +16,7 @@ use crate::broker::AmqpCore;
 use crate::error::{AmqpError, box_err};
 #[cfg(feature = "testing")]
 use crate::in_process::OwnedBuffer;
-use crate::message::to_amqp_message;
+use crate::message::{fill, framed, keep};
 use crate::publisher::accepted;
 
 /// A broker-side transaction opened by [`transaction`](OwnedTransactions::transaction) on an
@@ -53,7 +53,7 @@ use crate::publisher::accepted;
 ///
 /// #[subscriber(AmqpAddress::queue("batches"), workers(4))]
 /// async fn post(batch: &Batch, Out(out): Out<impl OwnedTransactions>) -> HandlerOutcome {
-///     let Ok(mut txn) = out.owned_transaction().await else {
+///     let Ok(mut txn) = out.transaction().await else {
 ///         return HandlerOutcome::retry();
 ///     };
 ///     for line in 0..3 {
@@ -73,9 +73,7 @@ use crate::publisher::accepted;
 /// fn app() -> impl App {
 ///     RustStream::new(AppInfo::new("ledger", "0.1.0")).with_broker(
 ///         AmqpBroker::new("amqp://localhost:5672"),
-///         |b| {
-///             b.include(post).out(DefaultSlot, TransactionalPublish).build();
-///         },
+///         |b| b.include(post).out(DefaultSlot, TransactionalPublish),
 ///     )
 /// }
 /// # }
@@ -175,11 +173,13 @@ impl Transaction for AmqpTransaction {
     /// hold, and [`AmqpError::Publish`] or [`AmqpError::PublishNotAccepted`] when the server
     /// refuses the post. A failed post leaves the transaction open: the caller decides between another post
     /// and an abort.
-    async fn publish(
+    ///
+    /// A refusal before the client takes the message hands it back, as on the publisher.
+    async fn publish<'msg>(
         &mut self,
-        msg: OutgoingFor<'_, Take>,
+        msg: OutgoingFor<'msg, Take>,
         _options: Option<&Self::Options>,
-    ) -> Result<(), Self::Error> {
+    ) -> PublishOutcome<'msg, AmqpError, Take> {
         let open = self
             .open
             .as_mut()
@@ -189,11 +189,11 @@ impl Transaction for AmqpTransaction {
             #[cfg(feature = "testing")]
             Open::InProcess(buffer) => return buffer.publish(msg),
         };
-        live.core.ensure_open()?;
-        // The destination is the caller's string and outlives the message the conversion takes.
+        let ((), msg) = keep(live.core.ensure_open(), msg)?;
         let address = msg.name();
-        let message = to_amqp_message(msg, None)?;
-        let sender = live.core.sender_for(address).await?;
+        let (mut message, msg) = keep(framed(&msg, None), msg)?;
+        let (sender, msg) = keep(live.core.sender_for(address).await, msg)?;
+        fill(&mut message, msg);
         let txn = &live.txn;
         let outcome = sender
             .with(async |sender| {
@@ -265,7 +265,7 @@ impl OwnedTransactions for AmqpTxnPublisher {
     /// Returns [`AmqpError::NotConnected`] once the broker has shut down, and
     /// [`AmqpError::Transaction`] when the server refuses the control link or the declare.
     async fn transaction(&self) -> Result<Self::Transaction, Self::Error> {
-        let open = match &self.transport {
+        let open = match &*self.transport {
             Transport::Amqp(live) => {
                 live.core.ensure_open()?;
                 Open::Amqp(Declared {

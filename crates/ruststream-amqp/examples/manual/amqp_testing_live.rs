@@ -64,7 +64,7 @@ impl Handle<Payment> for Accept {
 fn app(url: &str) -> impl App<State = ()> + use<> {
     RustStream::new(AppInfo::new("payments", "0.1.0")).with_broker(AmqpBroker::new(url), |b| {
         let accept = subscriber(AmqpAddress::queue(payments()), Accept);
-        b.include(accept.build());
+        b.include(accept.build())
     })
 }
 
@@ -84,6 +84,9 @@ mod tests {
 
     // --8<-- [start:both]
     /// The body both modes run; only the start call differs.
+    // Start and shutdown are cold steps whose futures carry no `Send`; the test awaits them on
+    // its own runtime.
+    #[allow(clippy::future_not_send)]
     async fn accepts_a_payment(tb: TestApp<()>) -> Result<(), Box<dyn Error>> {
         tb.broker::<AmqpBroker>()
             .message(&Payment { amount: 100 })

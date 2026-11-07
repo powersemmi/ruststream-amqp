@@ -55,7 +55,7 @@ pub const DEFAULT_BATCH_WAIT: Duration = Duration::from_millis(10);
 ///     id: u64,
 /// }
 ///
-/// #[subscriber(AmqpAddress::queue("orders").settle(Settle::AtLeastOnce))]
+/// #[subscriber(AmqpAddress::queue("orders").settle(SettleMode::AtLeastOnce))]
 /// async fn fulfil(order: &Order) -> HandlerOutcome {
 ///     if order.id == 0 {
 ///         // Not ready yet: ask for the delivery again in half a minute.
@@ -66,6 +66,7 @@ pub const DEFAULT_BATCH_WAIT: Duration = Duration::from_millis(10);
 /// }
 ///
 /// /// Stamps a deferred copy with the address it came from, so a redelivery is recognisable.
+/// #[derive(Clone)]
 /// struct Retried;
 ///
 /// impl<C, Options> PublishTransform<ForReply<C>, Options> for Retried {
@@ -91,7 +92,7 @@ pub const DEFAULT_BATCH_WAIT: Duration = Duration::from_millis(10);
 ///                 .max_attempts(nonzero!(5u32))
 ///                 .dead_letter("orders.dead")
 ///                 .out_retry(Publish)
-///                 .transform(Retried);
+///                 .transform(Retried)
 ///         },
 ///     )
 /// }
@@ -99,7 +100,7 @@ pub const DEFAULT_BATCH_WAIT: Duration = Duration::from_millis(10);
 /// # fn main() {}
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Settle {
+pub enum SettleMode {
     /// Deliveries are settled by the handler. The default.
     ///
     /// `ack` sends `accepted`. A retry, `nack(true)`, sends `modified` with `delivery-failed`,
@@ -157,9 +158,7 @@ pub(crate) enum Routing {
 /// # #[ruststream::app]
 /// # fn app() -> impl App {
 /// #     RustStream::new(AppInfo::new("orders", "0.1.0"))
-/// #         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| {
-/// #             b.include(fulfil);
-/// #         })
+/// #         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| b.include(fulfil))
 /// # }
 /// # }
 /// # fn main() {}
@@ -170,7 +169,7 @@ pub struct AmqpAddress {
     address: String,
     kind: Kind,
     credit: NonZeroU32,
-    settle: Settle,
+    settle: SettleMode,
     batch_wait: Duration,
 }
 
@@ -180,7 +179,7 @@ impl AmqpAddress {
             address,
             kind,
             credit: DEFAULT_CREDIT,
-            settle: Settle::default(),
+            settle: SettleMode::default(),
             batch_wait: DEFAULT_BATCH_WAIT,
         }
     }
@@ -209,9 +208,7 @@ impl AmqpAddress {
     /// # #[ruststream::app]
     /// # fn app() -> impl App {
     /// #     RustStream::new(AppInfo::new("orders", "0.1.0"))
-    /// #         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| {
-    /// #             b.include(fulfil);
-    /// #         })
+    /// #         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| b.include(fulfil))
     /// # }
     /// # }
     /// # fn main() {}
@@ -244,9 +241,7 @@ impl AmqpAddress {
     /// # #[ruststream::app]
     /// # fn app() -> impl App {
     /// #     RustStream::new(AppInfo::new("orders", "0.1.0"))
-    /// #         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| {
-    /// #             b.include(audit);
-    /// #         })
+    /// #         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| b.include(audit))
     /// # }
     /// # }
     /// # fn main() {}
@@ -280,9 +275,7 @@ impl AmqpAddress {
     /// # #[ruststream::app]
     /// # fn app() -> impl App {
     /// #     RustStream::new(AppInfo::new("orders", "0.1.0"))
-    /// #         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| {
-    /// #             b.include(fulfil);
-    /// #         })
+    /// #         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| b.include(fulfil))
     /// # }
     /// # }
     /// # fn main() {}
@@ -324,9 +317,7 @@ impl AmqpAddress {
     /// # #[ruststream::app]
     /// # fn app() -> impl App {
     /// #     RustStream::new(AppInfo::new("orders", "0.1.0"))
-    /// #         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| {
-    /// #             b.include(fulfil);
-    /// #         })
+    /// #         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| b.include(fulfil))
     /// # }
     /// # }
     /// # fn main() {}
@@ -346,7 +337,7 @@ impl AmqpAddress {
         self
     }
 
-    /// Sets the delivery guarantee. Defaults to [`Settle::AtLeastOnce`].
+    /// Sets the delivery guarantee. Defaults to [`SettleMode::AtLeastOnce`].
     ///
     /// # Examples
     ///
@@ -362,7 +353,7 @@ impl AmqpAddress {
     ///
     /// // Settled on receipt: the audit may miss an event when the process stops, and the broker
     /// // never waits for it.
-    /// #[subscriber(AmqpAddress::topic("events").settle(Settle::AtMostOnce))]
+    /// #[subscriber(AmqpAddress::topic("events").settle(SettleMode::AtMostOnce))]
     /// async fn audit(events: &[Event]) -> HandlerOutcome {
     ///     for event in events {
     ///         tracing::info!(kind = %event.kind, "audited");
@@ -374,13 +365,13 @@ impl AmqpAddress {
     /// fn app() -> impl App {
     ///     RustStream::new(AppInfo::new("audit", "0.1.0"))
     ///         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| {
-    ///             b.include(audit.batch(nonzero!(32)));
+    ///             b.include(audit.batch(nonzero!(32)))
     ///         })
     /// }
     /// # }
     /// # fn main() {}
     /// ```
-    pub fn settle(mut self, settle: Settle) -> Self {
+    pub fn settle(mut self, settle: SettleMode) -> Self {
         self.settle = settle;
         self
     }
@@ -417,7 +408,7 @@ impl AmqpAddress {
     /// fn app() -> impl App {
     ///     RustStream::new(AppInfo::new("orders", "0.1.0"))
     ///         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| {
-    ///             b.include(fulfil.batch(nonzero!(32)));
+    ///             b.include(fulfil.batch(nonzero!(32)))
     ///         })
     /// }
     /// # }
@@ -438,7 +429,7 @@ impl AmqpAddress {
         self.credit.get()
     }
 
-    pub(crate) fn settle_value(&self) -> Settle {
+    pub(crate) fn settle_value(&self) -> SettleMode {
         self.settle
     }
 
@@ -550,9 +541,7 @@ impl AmqpAddress {
 /// fn app() -> RustStream {
 ///     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
 ///         AmqpBroker::new("amqp://localhost:5672"),
-///         |b| {
-///             b.include(subscriber(AmqpAddress::queue("orders"), TakeOrder).build());
-///         },
+///         |b| b.include(subscriber(AmqpAddress::queue("orders"), TakeOrder).build()),
 ///     )
 /// }
 /// # }
@@ -594,7 +583,7 @@ impl RedeliveryAddressed<ConnectedAmqpBroker> for AmqpAddress {
     fn redelivery_address(
         &self,
         _connected: &ConnectedAmqpBroker,
-    ) -> impl Future<Output = Result<RedeliveryAddress, AmqpError>> + Send {
+    ) -> impl Future<Output = Result<RedeliveryAddress, AmqpError>> {
         ready(Ok(self.redelivery_target()))
     }
 }

@@ -35,7 +35,7 @@ fn app() -> impl App {
         AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
         |b| {
             // The reply waits for the broker's disposition; anything but `accepted` fails it.
-            b.include(issue_receipt).out_reply(Publish);
+            b.include(issue_receipt).out_reply(Publish)
         },
     )
 }

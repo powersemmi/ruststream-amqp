@@ -38,7 +38,7 @@ fn app() -> impl App {
         AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
         |b| {
             let place = subscriber(AmqpAddress::queue("orders"), Place);
-            b.include(place.build());
+            b.include(place.build())
         },
     )
 }

@@ -16,7 +16,7 @@ A subscription's extension has four fields, read from its [`AmqpAddress`](../sub
 `capability` is the terminus it asks for, `queue` or `topic`.
 An [`AmqpAddress::raw`](../subscriptions/raw.md) address asks for none, so its channel has no `capability`.
 `credit` is the link credit, 256 unless the descriptor sets [`credit`](../subscriptions/credit.md).
-`settleMode` is `at-least-once`, or `at-most-once` for a descriptor with [`Settle::AtMostOnce`](../settlement/settle.md).
+`settleMode` is `at-least-once`, or `at-most-once` for a descriptor with [`SettleMode::AtMostOnce`](../settlement/settle.md).
 
 A channel the service publishes to carries one field, `address`: the node the sender attaches its target to.
 That is a reply destination, the name of an `Out` slot, or a [dead-letter address](../settlement/dead-letters.md).

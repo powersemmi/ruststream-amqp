@@ -9,7 +9,7 @@
 use ruststream::asyncapi::{Binding, Bindings};
 use serde::Serialize;
 
-use crate::address::Settle;
+use crate::address::SettleMode;
 
 /// The extension key this crate writes at every level.
 const EXTENSION: &str = "x-ruststream-amqp1";
@@ -71,15 +71,15 @@ pub(crate) fn channel(
     address: &str,
     capability: Option<&'static str>,
     credit: u32,
-    settle: Settle,
+    settle: SettleMode,
 ) -> Bindings {
     extension(&Channel {
         address,
         capability,
         credit,
         settle_mode: match settle {
-            Settle::AtLeastOnce => "at-least-once",
-            Settle::AtMostOnce => "at-most-once",
+            SettleMode::AtLeastOnce => "at-least-once",
+            SettleMode::AtMostOnce => "at-most-once",
         },
     })
 }

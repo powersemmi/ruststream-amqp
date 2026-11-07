@@ -33,7 +33,7 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use fe2o3_amqp_types::messaging::{Data, Message};
-use ruststream::{OutgoingFor, OutgoingMessage, Take};
+use ruststream::{OutgoingFor, OutgoingMessage, PublishOutcome, Take};
 use url::Url;
 
 pub(crate) use bus::Bus;
@@ -46,7 +46,7 @@ pub(crate) use self::router::Delivery;
 use crate::address::AmqpAddress;
 use crate::broker::is_at_most_once;
 use crate::error::{AmqpError, box_err};
-use crate::message::{build_message, read_amqp, to_amqp_message};
+use crate::message::{Refused, build_message, keep, read_amqp, to_amqp_message};
 use crate::publish_step::AmqpId;
 
 /// Checks the broker URL the way `connect` reads it, so a broker a service could not connect is
@@ -111,15 +111,15 @@ pub(crate) fn subscribe(bus: &Arc<Bus>, address: &AmqpAddress) -> Result<BusDeli
 /// Returns [`AmqpError::NotConnected`] once the connection has shut down,
 /// [`AmqpError::PublishNotAccepted`] for a message to the empty address, and
 /// [`AmqpError::UnsupportedHeader`] for a header the live message could not carry.
-pub(crate) fn publish(
+pub(crate) fn publish<'msg>(
     bus: &Bus,
-    msg: OutgoingFor<'_, Take>,
+    msg: OutgoingFor<'msg, Take>,
     correlation: Option<&AmqpId>,
-) -> Result<(), AmqpError> {
-    bus.ensure_live()?;
+) -> PublishOutcome<'msg, AmqpError, Take> {
+    let ((), msg) = keep(bus.ensure_live(), msg)?;
     let address = msg.name();
-    ensure_node(address)?;
-    bus.route(address, &frame(msg, correlation)?)
+    let ((), msg) = keep(ensure_node(address), msg)?;
+    Ok(bus.route(address, &frame(msg, correlation)?)?)
 }
 
 /// Refuses a message to the empty address, as the peer does: a sender with no target address is
@@ -146,7 +146,10 @@ pub(crate) fn inject(bus: &Bus, msg: &OutgoingMessage<'_>) -> Result<(), AmqpErr
 /// The delivery a live subscription would read for `msg`: the message this crate sends for it,
 /// read back the way a delivery is read. The headers a live delivery carries are the ones the
 /// `AMQP` sections hold, not the map the publish was handed.
-fn frame(msg: OutgoingFor<'_, Take>, correlation: Option<&AmqpId>) -> Result<Delivery, AmqpError> {
+fn frame<'msg>(
+    msg: OutgoingFor<'msg, Take>,
+    correlation: Option<&AmqpId>,
+) -> Result<Delivery, Refused<'msg>> {
     to_amqp_message(msg, correlation).map(delivered)
 }
 

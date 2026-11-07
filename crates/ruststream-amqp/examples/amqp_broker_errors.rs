@@ -51,9 +51,7 @@ fn refused_by_the_broker(err: &(dyn Error + 'static)) -> bool {
 fn app() -> impl App<State = ()> {
     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
         AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
-        |b| {
-            b.include(ship).out(DefaultSlot, Publish).build();
-        },
+        |b| b.include(ship).out(DefaultSlot, Publish),
     )
 }
 
@@ -127,9 +125,7 @@ mod tests {
     async fn a_failed_startup_carries_the_amqp_error() {
         let app = RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
             AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
-            |b| {
-                b.include(nowhere);
-            },
+            |b| b.include(nowhere),
         );
 
         let failed = TestApp::start(app).await.err();

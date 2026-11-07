@@ -23,9 +23,7 @@ fn broker() -> AmqpBroker {
 
 #[ruststream::app]
 fn app() -> impl App<State = ()> {
-    RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(broker(), |b| {
-        b.include(place);
-    })
+    RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(broker(), |b| b.include(place))
 }
 // --8<-- [end:broker]
 
@@ -66,9 +64,7 @@ mod tests {
         let app = RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker_labeled(
             "amqp",
             broker,
-            |b| {
-                b.include(place);
-            },
+            |b| b.include(place),
         );
         let document: Value = serde_json::from_str(&build_spec(&app).to_json()?)?;
         Ok(document["servers"]["amqp"].clone())

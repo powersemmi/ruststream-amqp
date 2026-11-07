@@ -76,7 +76,7 @@ impl Subscriber for BusDeliveries {
     type Message = AmqpMessage;
     type Error = AmqpError;
 
-    fn stream(&mut self) -> impl Stream<Item = Result<Self::Message, Self::Error>> + Send + '_ {
+    fn stream(&mut self) -> impl Stream<Item = Result<Self::Message, Self::Error>> + '_ {
         let Self {
             bus,
             id,

@@ -17,6 +17,7 @@ use std::time::Duration;
 
 use futures::future::{join_all, try_join_all};
 use futures::{Stream, StreamExt};
+use ruststream::Settle;
 use ruststream::testing::TestApp;
 use ruststream::{Broker, ConnectedBroker, IncomingMessage, OutgoingMessage, Subscriber};
 use ruststream_amqp::prelude::*;
@@ -78,9 +79,8 @@ async fn run(job: &Job) -> HandlerOutcome {
 }
 
 fn app(url: &str) -> impl App<State = ()> + use<> {
-    RustStream::new(AppInfo::new("settlement", "0.1.0")).with_broker(AmqpBroker::new(url), |b| {
-        b.include(run);
-    })
+    RustStream::new(AppInfo::new("settlement", "0.1.0"))
+        .with_broker(AmqpBroker::new(url), |b| b.include(run))
 }
 
 /// A service with eight workers on one subscription: deliveries published at once are handled

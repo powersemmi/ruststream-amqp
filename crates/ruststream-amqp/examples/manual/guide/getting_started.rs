@@ -44,9 +44,7 @@ impl Handle<Order> for TakeOrder {
 fn app() -> impl App {
     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
         AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
-        |b| {
-            b.include(subscriber(AmqpAddress::queue("orders"), TakeOrder).build());
-        },
+        |b| b.include(subscriber(AmqpAddress::queue("orders"), TakeOrder).build()),
     )
 }
 

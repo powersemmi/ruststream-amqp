@@ -49,7 +49,7 @@ struct Picked {
     shipment: u64,
 }
 
-#[subscriber(AmqpAddress::queue("pick-log").settle(Settle::AtMostOnce))]
+#[subscriber(AmqpAddress::queue("pick-log").settle(SettleMode::AtMostOnce))]
 async fn log_pick(picked: &Picked) -> HandlerOutcome {
     tracing::info!(picked.shipment, "pick logged");
     HandlerOutcome::ack()
@@ -74,9 +74,10 @@ async fn restock(items: &[Restock]) -> HandlerOutcome {
 // --8<-- [start:app]
 fn service(broker: AmqpBroker) -> RustStream {
     RustStream::new(AppInfo::new("warehouse", "0.1.0")).with_broker(broker, |b| {
-        b.include(pick).max_attempts(nonzero!(5u32));
-        b.include(log_pick);
-        b.include(restock.batch(nonzero!(20usize)));
+        b.include(pick)
+            .max_attempts(nonzero!(5u32))
+            .include(log_pick)
+            .include(restock.batch(nonzero!(20usize)))
     })
 }
 

@@ -15,13 +15,13 @@ import TabItem from '@theme/TabItem';
 
 ```toml title="Cargo.toml"
 [dependencies]
-ruststream = { version = "0.7", features = ["macros", "json", "logging"] }
-ruststream-amqp = "0.7"
+ruststream = { version = "0.8", features = ["macros", "json", "logging"] }
+ruststream-amqp = "0.8"
 serde = { version = "1", features = ["derive"] }
 tracing = "0.1"
 
 [dev-dependencies]
-ruststream-amqp = { version = "0.7", features = ["testing"] }
+ruststream-amqp = { version = "0.8", features = ["testing"] }
 tokio = { version = "1", features = ["macros", "rt"] }
 ```
 
@@ -129,7 +129,7 @@ cargo test
 | `Receiver::attach` 加一个 `recv` 循环 | 一个 `#[subscriber(AmqpAddress::..)]` 处理器 |
 | `CreditMode::Auto(n)` | [`AmqpAddress::credit`](../components/subscriptions/credit.md) |
 | `accept`、`modify`、`reject` | 处理器的结果：`ack`、`retry`、`drop`（[确认与投递保证](acknowledgement.md)） |
-| `auto_accept(true)` | [`Settle::AtMostOnce`](../components/settlement/settle.md) |
+| `auto_accept(true)` | [`SettleMode::AtMostOnce`](../components/settlement/settle.md) |
 | `Sender::attach` 和 `send` | 回复或 `Out` 参数，经由 [`Publish`](../components/publishing/index.md) 策略发送 |
 | 用于接收回复的动态接收者 | [`request`](../components/request-reply/index.md)（[请求与回复](request-reply.md)） |
 | `Controller` 和 `Transaction::declare` | [`TransactionalPublish`](../components/transactions/index.md)（[全有或全无的发布](transactions.md)） |

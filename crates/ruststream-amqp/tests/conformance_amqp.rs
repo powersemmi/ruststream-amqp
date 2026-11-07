@@ -21,6 +21,7 @@ use std::time::Duration;
 use ruststream::conformance::harness::InProcessBroker;
 use ruststream::conformance::helpers::unique_subject;
 use ruststream::conformance::in_process::{self as in_process_checks, Refusal};
+use ruststream::conformance::lifecycle::Unsent;
 use ruststream::conformance::{capabilities, harness, lifecycle, message_shape, retry, settlement};
 use ruststream::testing::Backlog;
 use ruststream::{Bytes, HeaderMap, Name};
@@ -77,6 +78,25 @@ async fn in_process_passes_lifecycle() {
         in_process,
         |name| AmqpAddress::queue(name),
         |connected| connected.publisher(),
+    )
+    .await;
+}
+
+/// A publish refused before the client takes the message hands it back whole: here the
+/// publisher outlived its connection. Both publishers refuse the same way.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn in_process_returns_a_refused_message() {
+    lifecycle::refused_publish_returns_message(
+        in_process,
+        |connected| connected.publisher(),
+        Unsent::Returned,
+    )
+    .await;
+    #[cfg(feature = "transaction")]
+    lifecycle::refused_publish_returns_message(
+        in_process,
+        |connected| connected.transactional_publisher(),
+        Unsent::Returned,
     )
     .await;
 }
@@ -209,6 +229,26 @@ async fn amqp_broker_passes_lifecycle() {
         move || AmqpBroker::new(url.clone()),
         |name| AmqpAddress::queue(name),
         |connected| connected.publisher(),
+    )
+    .await;
+}
+
+/// The same refusal against a server: a publisher that outlived the connection hands the message
+/// back.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn amqp_broker_returns_a_refused_message() {
+    let Some(url) = test_url() else { return };
+    lifecycle::refused_publish_returns_message(
+        || AmqpBroker::new(url.clone()),
+        |connected| connected.publisher(),
+        Unsent::Returned,
+    )
+    .await;
+    #[cfg(feature = "transaction")]
+    lifecycle::refused_publish_returns_message(
+        || AmqpBroker::new(url.clone()),
+        |connected| connected.transactional_publisher(),
+        Unsent::Returned,
     )
     .await;
 }

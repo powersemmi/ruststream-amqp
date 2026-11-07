@@ -14,6 +14,7 @@ use std::thread;
 use std::time::Duration;
 
 use futures::StreamExt;
+use ruststream::Settle;
 use ruststream::{
     Broker, ConnectedBroker, IncomingMessage, OutgoingMessage, Publisher, Subscriber,
 };

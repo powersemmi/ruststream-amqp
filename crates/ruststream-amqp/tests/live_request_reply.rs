@@ -14,6 +14,7 @@ use std::pin::pin;
 use std::time::{Duration, Instant};
 
 use futures::StreamExt;
+use ruststream::Settle;
 use ruststream::{
     Broker, ConnectedBroker, HeaderMap, IncomingMessage, OutgoingMessage, Publisher, RequestReply,
     Subscriber,

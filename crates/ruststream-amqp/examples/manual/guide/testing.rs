@@ -103,7 +103,7 @@ fn service(broker: AmqpBroker) -> RustStream {
         )
         .max_attempts(nonzero!(3u32))
         .dead_letter("card-payments.review")
-        .out_reply(Publish);
+        .out_reply(Publish)
     })
 }
 
@@ -144,6 +144,10 @@ mod tests {
         a_charged_payment_gets_its_receipt(tb, 1).await
     }
 
+    // Start and shutdown are cold steps whose futures carry no `Send`; the test awaits them on
+
+    // its own runtime.
+    #[allow(clippy::future_not_send)]
     async fn a_charged_payment_gets_its_receipt(
         tb: TestApp<()>,
         id: u64,
