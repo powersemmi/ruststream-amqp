@@ -8,7 +8,12 @@ all-features = true
 [advisories]
 yanked = "deny"
 
-ignore = []
+ignore = [
+    # pin-utils is unmaintained and has no successor release. It comes only through wasmtimer,
+    # which fe2o3-amqp names for `target_arch = "wasm32"` alone: no build of this crate targets
+    # wasm32, so wasmtimer and pin-utils are never compiled.
+    { id = "RUSTSEC-2026-0441", reason = "pin-utils comes only through wasmtimer, a wasm32-only dependency of fe2o3-amqp that no build compiles" },
+]
 
 [licenses]
 # Apache-2.0/MIT-compatible permissive licenses only.
