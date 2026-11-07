@@ -13,6 +13,7 @@ use std::pin::pin;
 use std::time::Duration;
 
 use futures::StreamExt;
+use ruststream::Settle;
 #[cfg(feature = "testing")]
 use ruststream::testing::InProcess;
 use ruststream::{

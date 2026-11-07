@@ -93,7 +93,7 @@ ActiveMQ Artemis 用一个临时队列支撑动态链路。
 
 两个槽位都使用普通的 `Publish` 策略：一个发布答复，另一个提出问题。
 发起对话的请求没有要回复的投递。
-它从启动钩子 `b.after_startup(Publish, ..)` 中运行，在交给钩子的发布者上调用 `request`。
+它从启动钩子中运行，钩子是挂载链上写在 `include` 之前的一步：`b.after_startup(Publish, ..).include(..)`，在交给钩子的发布者上调用 `request`。
 
 示例文件中的测试在一个进程内应用中运行这两半。
 进程内 Broker 把请求路由到应用自己的应答方，按关联 id 匹配答复，并让沉默的应答方超时。

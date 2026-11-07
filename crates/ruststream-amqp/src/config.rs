@@ -36,9 +36,7 @@ use crate::error::AmqpError;
 /// fn app() -> impl App {
 ///     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
 ///         AmqpBroker::new("amqp://broker.internal:5672").sasl(Sasl::plain("svc", "secret")),
-///         |b| {
-///             b.include(handle);
-///         },
+///         |b| b.include(handle),
 ///     )
 /// }
 /// # }
@@ -76,9 +74,7 @@ impl Sasl {
     ///     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
     ///         // The broker admits unauthenticated connections.
     ///         AmqpBroker::new("amqp://broker.internal:5672").sasl(Sasl::anonymous()),
-    ///         |b| {
-    ///             b.include(handle);
-    ///         },
+    ///         |b| b.include(handle),
     ///     )
     /// }
     /// # }
@@ -114,9 +110,7 @@ impl Sasl {
     /// fn app() -> impl App {
     ///     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
     ///         AmqpBroker::new("amqp://broker.internal:5672").sasl(Sasl::plain("svc", "secret")),
-    ///         |b| {
-    ///             b.include(handle);
-    ///         },
+    ///         |b| b.include(handle),
     ///     )
     /// }
     /// # }
@@ -168,9 +162,7 @@ impl Sasl {
     ///         AmqpBroker::new("amqps://broker.internal:5671")
     ///             .tls(tls)
     ///             .sasl(Sasl::external()),
-    ///         |b| {
-    ///             b.include(handle);
-    ///         },
+    ///         |b| b.include(handle),
     ///     )
     /// }
     /// # }

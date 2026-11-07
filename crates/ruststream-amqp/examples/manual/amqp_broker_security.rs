@@ -54,7 +54,7 @@ fn broker(url: &str, user: &str, password: &str) -> AmqpBroker {
 fn service(broker: AmqpBroker) -> impl App<State = ()> {
     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(broker, |b| {
         let place = subscriber(AmqpAddress::queue(orders()), Place);
-        b.include(place.build());
+        b.include(place.build())
     })
 }
 
@@ -118,6 +118,9 @@ mod tests {
     }
 
     /// The body both modes run: an order reaches the handler on an authenticated connection.
+    // Start and shutdown are cold steps whose futures carry no `Send`; the test awaits them on
+    // its own runtime.
+    #[allow(clippy::future_not_send)]
     async fn places_an_order(tb: TestApp<()>) -> Result<(), Box<dyn Error>> {
         tb.broker::<AmqpBroker>()
             .message(&Order { id: 7 })

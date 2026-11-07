@@ -39,9 +39,7 @@ async fn place(order: &Order) -> HandlerOutcome {
 /// finish before the broker closes.
 fn service(broker: AmqpBroker) -> impl App<State = ()> {
     RustStream::new(AppInfo::new("orders", "0.1.0"))
-        .with_broker(broker, |b| {
-            b.include(place);
-        })
+        .with_broker(broker, |b| b.include(place))
         .shutdown_timeout(Duration::from_secs(10))
 }
 
@@ -67,6 +65,9 @@ mod tests {
 
     /// The body both modes run: an order is placed, and the shutdown that follows, with the
     /// subscription still open, reports no error.
+    // Start and shutdown are cold steps whose futures carry no `Send`; the test awaits them on
+    // its own runtime.
+    #[allow(clippy::future_not_send)]
     async fn places_then_shuts_down(tb: TestApp<()>) -> Result<(), Box<dyn Error>> {
         tb.broker::<AmqpBroker>()
             .message(&Order { id: 7 })

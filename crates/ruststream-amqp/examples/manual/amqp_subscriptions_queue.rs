@@ -53,9 +53,8 @@ fn orders() -> AmqpAddress {
 
 fn app() -> impl App {
     let broker = AmqpBroker::new("amqp://artemis:artemis@localhost:5672");
-    RustStream::new(AppInfo::new("fulfillment", "0.1.0")).with_broker(broker, |b| {
-        b.include(subscriber(orders(), Fulfil).build());
-    })
+    RustStream::new(AppInfo::new("fulfillment", "0.1.0"))
+        .with_broker(broker, |b| b.include(subscriber(orders(), Fulfil).build()))
 }
 // --8<-- [end:queue]
 
@@ -96,9 +95,8 @@ mod tests {
         let replicas = RustStream::new(AppInfo::new("fulfillment", "0.1.0")).with_broker(
             AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
             |b| {
-                for _ in 0..2 {
-                    b.include(subscriber(orders(), Fulfil).build());
-                }
+                b.include(subscriber(orders(), Fulfil).build())
+                    .include(subscriber(orders(), Fulfil).build())
             },
         );
         let tb = TestApp::start(replicas).await?;

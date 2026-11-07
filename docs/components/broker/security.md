@@ -57,7 +57,7 @@ The generated [AsyncAPI document](../asyncapi/server.md) reports the host and po
 The dependency line:
 
 ```toml
-ruststream-amqp = { version = "0.7", features = ["rustls"] }
+ruststream-amqp = { version = "0.8", features = ["rustls"] }
 ```
 
 The service logs in as `orders-svc` over TLS.

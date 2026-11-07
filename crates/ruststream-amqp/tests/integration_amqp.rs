@@ -9,12 +9,13 @@ use std::time::Duration;
 use fe2o3_amqp::{Connection, Sender, Session};
 use fe2o3_amqp_types::messaging::Message;
 use futures::StreamExt;
+use ruststream::Settle;
 use ruststream::{
     AckError, Broker, ConnectedBroker, HeaderMap, IncomingMessage, OutgoingMessage, Publisher,
     Subscriber,
 };
 use ruststream_amqp::{
-    AmqpAddress, AmqpBroker, AmqpError, ConnectedAmqpBroker, PARTITION_KEY_HEADER, Sasl, Settle,
+    AmqpAddress, AmqpBroker, AmqpError, ConnectedAmqpBroker, PARTITION_KEY_HEADER, Sasl, SettleMode,
 };
 
 use crate::live;
@@ -214,7 +215,7 @@ async fn at_most_once_reports_ack_unsupported() {
 
     let address = unique("amo");
     let mut subscriber = connected
-        .subscribe_address(AmqpAddress::queue(&address).settle(Settle::AtMostOnce))
+        .subscribe_address(AmqpAddress::queue(&address).settle(SettleMode::AtMostOnce))
         .await
         .expect("subscription opens");
     let publisher = connected.publisher();
@@ -308,7 +309,7 @@ async fn a_rejected_delivery_is_carried_to_the_dead_letter_address() {
     // watcher settles on receipt: a reject issued from here would carry the message back to the
     // same address and the search would circle on it.
     let mut dead_letters = connected
-        .subscribe_address(AmqpAddress::queue(DEAD_LETTER_QUEUE).settle(Settle::AtMostOnce))
+        .subscribe_address(AmqpAddress::queue(DEAD_LETTER_QUEUE).settle(SettleMode::AtMostOnce))
         .await
         .expect("the dead-letter subscription opens");
 

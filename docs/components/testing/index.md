@@ -37,7 +37,7 @@ The dependency line:
 
 ```toml
 [dev-dependencies]
-ruststream-amqp = { version = "0.7", features = ["testing"] }
+ruststream-amqp = { version = "0.8", features = ["testing"] }
 ```
 
 The first test publishes a payment and reads how the handler settled it.

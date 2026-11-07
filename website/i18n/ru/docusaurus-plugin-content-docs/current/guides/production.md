@@ -19,7 +19,7 @@ import TabItem from '@theme/TabItem';
 
 ```toml title="Cargo.toml"
 [dependencies]
-ruststream-amqp = { version = "0.7", features = ["rustls"] }
+ruststream-amqp = { version = "0.8", features = ["rustls"] }
 ```
 
 Адрес и учётные данные развёртывание передаёт в переменных окружения.

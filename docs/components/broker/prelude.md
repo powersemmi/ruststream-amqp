@@ -13,7 +13,7 @@ One glob, [`ruststream_amqp::prelude`](api:ruststream_amqp::prelude), brings the
 
 `use ruststream_amqp::prelude::*;` is the one import an AMQP 1.0 service writes.
 It carries the core's own prelude, so `#[subscriber]`, `RustStream`, `HandlerOutcome`, `Out` and `nonzero!` come with it.
-It adds [`AmqpBroker`](./index.md) with its authentication [`Sasl`](./security.md), the address descriptor [`AmqpAddress`](../subscriptions/index.md) with its delivery guarantee [`Settle`](../settlement/settle.md), the crate's error [`AmqpError`](./errors.md), and the capability trait `RequestReply`.
+It adds [`AmqpBroker`](./index.md) with its authentication [`Sasl`](./security.md), the address descriptor [`AmqpAddress`](../subscriptions/index.md) with its delivery guarantee [`SettleMode`](../settlement/settle.md), the crate's error [`AmqpError`](./errors.md), and the capability trait `RequestReply`.
 
 The publish policies come under the names every broker crate uses: `Publish` is [`AmqpPublish`](../publishing/index.md), and with the `transaction` feature `TransactionalPublish` is [`AmqpTransactionalPublish`](../transactions/index.md), next to the capability trait `TransactionalPublisher`.
 So a mount site reads the same on every broker.

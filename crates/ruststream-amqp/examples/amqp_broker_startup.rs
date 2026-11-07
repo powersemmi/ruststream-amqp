@@ -30,9 +30,8 @@ async fn place(order: &Order) -> HandlerOutcome {
 // --8<-- [start:app]
 /// The service on the broker at `url`.
 fn service(url: &str) -> impl App<State = ()> + use<> {
-    RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(AmqpBroker::new(url), |b| {
-        b.include(place);
-    })
+    RustStream::new(AppInfo::new("orders", "0.1.0"))
+        .with_broker(AmqpBroker::new(url), |b| b.include(place))
 }
 
 #[ruststream::app]

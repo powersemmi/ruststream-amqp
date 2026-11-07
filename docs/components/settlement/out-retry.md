@@ -9,7 +9,7 @@ import TabItem from '@theme/TabItem';
 
 # out_retry
 
-[`out_retry(Publish)`](api:ruststream::runtime::Mounting::out_retry) replaces the registration's retry publisher, and the steps after it, such as a transform, apply to every deferred copy.
+[`out_retry(Publish)`](api:ruststream::runtime::RouterWith::out_retry) replaces the registration's retry publisher, and the steps after it, such as a transform, apply to every deferred copy.
 
 The copies of a registration leave through its [`Retry`](api:ruststream::runtime::Retry) slot.
 Every registration has a publisher there already, so a [`retry_after`](./retry-after.md) works with no `out_retry` at the mount site.

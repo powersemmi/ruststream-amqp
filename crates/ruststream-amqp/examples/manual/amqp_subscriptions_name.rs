@@ -48,9 +48,8 @@ impl Handle<Order> for Place {
 
 fn app() -> impl App {
     let broker = AmqpBroker::new("amqp://artemis:artemis@localhost:5672");
-    RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(broker, |b| {
-        b.include(subscriber("orders", Place).build());
-    })
+    RustStream::new(AppInfo::new("orders", "0.1.0"))
+        .with_broker(broker, |b| b.include(subscriber("orders", Place).build()))
 }
 // --8<-- [end:name]
 
@@ -88,9 +87,7 @@ mod tests {
     async fn an_empty_name_stops_the_service_at_startup() {
         let unaddressed = RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
             AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
-            |b| {
-                b.include(subscriber("", Place).build());
-            },
+            |b| b.include(subscriber("", Place).build()),
         );
 
         let refused = TestApp::start(unaddressed)

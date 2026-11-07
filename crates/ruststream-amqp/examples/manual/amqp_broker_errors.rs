@@ -65,7 +65,7 @@ fn app() -> impl App<State = ()> {
         AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
         |b| {
             let ship = subscriber(AmqpAddress::queue("orders"), Ship);
-            b.include(ship.build()).out(DefaultSlot, Publish).build();
+            b.include(ship.build()).out(DefaultSlot, Publish)
         },
     )
 }
@@ -175,7 +175,7 @@ mod tests {
             AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
             |b| {
                 let nowhere = subscriber(AmqpAddress::queue(""), Nowhere);
-                b.include(nowhere.build());
+                b.include(nowhere.build())
             },
         );
 

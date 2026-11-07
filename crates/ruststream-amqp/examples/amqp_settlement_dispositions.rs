@@ -77,9 +77,7 @@ fn app() -> impl App<State = AppState> {
                 gateway: PaymentGateway::default(),
             })
         })
-        .with_broker(broker, |b| {
-            b.include(charge);
-        })
+        .with_broker(broker, |b| b.include(charge))
 }
 
 #[cfg(test)]

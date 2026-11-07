@@ -92,7 +92,7 @@ The order then waits 30 seconds on its queue and asks again.
 
 Both slots take the plain `Publish` policy: one publishes answers, the other asks questions.
 A request that starts a conversation has no delivery to answer.
-It runs from a startup hook, `b.after_startup(Publish, ..)`, with `request` on the publisher the hook is handed.
+It runs from a startup hook, a step of the mount chain before the `include`s: `b.after_startup(Publish, ..).include(..)`, with `request` on the publisher the hook is handed.
 
 The tests in the example file run both halves in one app in process.
 The in-process broker routes a request to the app's own responder, matches the answer by its correlation id, and times a silent responder out.

@@ -9,7 +9,7 @@ import TabItem from '@theme/TabItem';
 
 # Retries
 
-[`max_attempts(n)`](api:ruststream::runtime::Mounting::max_attempts) caps deliveries; the count is the broker's `delivery-count`, or the framework's header on a copy this crate published.
+[`max_attempts(n)`](api:ruststream::runtime::RouterWith::max_attempts) caps deliveries; the count is the broker's `delivery-count`, or the framework's header on a copy this crate published.
 
 The cap counts the deliveries of one message at the mount site, the first one included.
 A delivery whose message carries the AMQP `header` section reports the broker's `delivery-count`, which every `retry` increments.

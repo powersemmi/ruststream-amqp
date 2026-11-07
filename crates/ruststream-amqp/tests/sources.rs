@@ -15,6 +15,7 @@ use std::pin::pin;
 use std::time::Duration;
 
 use futures::{FutureExt, Stream, StreamExt};
+use ruststream::Settle;
 use ruststream::schemars::JsonSchema;
 use ruststream::testing::{InProcess, TestApp, TestableBroker};
 use ruststream::{AckError, ConnectedBroker, IncomingMessage, OutgoingMessage, Subscriber};
@@ -66,10 +67,10 @@ async fn in_batches(orders: &[Order]) -> HandlerOutcome {
 /// The service's app, on the broker it is handed.
 fn app_on(broker: AmqpBroker) -> RustStream {
     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(broker, |b| {
-        b.include(from_a_queue);
-        b.include(from_a_topic);
-        b.include(from_a_raw_address);
-        b.include(in_batches.batch(nonzero!(2usize)));
+        b.include(from_a_queue)
+            .include(from_a_topic)
+            .include(from_a_raw_address)
+            .include(in_batches.batch(nonzero!(2usize)))
     })
 }
 
@@ -148,7 +149,7 @@ async fn in_process() -> ConnectedAmqpBroker {
 async fn an_at_most_once_descriptor_settles_on_receipt() {
     let broker = in_process().await;
     let mut subscriber = broker
-        .subscribe_address(AmqpAddress::queue("fire").settle(Settle::AtMostOnce))
+        .subscribe_address(AmqpAddress::queue("fire").settle(SettleMode::AtMostOnce))
         .await
         .expect("subscription opens");
     broker
@@ -495,8 +496,8 @@ impl Handle<Notice> for Audit {
 async fn a_handler_written_without_the_macros_mounts_on_a_descriptor() {
     let app =
         RustStream::new(AppInfo::new("audit", "0.1.0")).with_broker(AmqpBroker::new(URL), |b| {
-            b.include(subscriber(AmqpAddress::topic("notices"), Audit).build());
-            b.include(subscriber(AmqpAddress::topic("notices"), Audit).build());
+            b.include(subscriber(AmqpAddress::topic("notices"), Audit).build())
+                .include(subscriber(AmqpAddress::topic("notices"), Audit).build())
         });
     let tb = TestApp::start(app).await.expect("startup failed");
 

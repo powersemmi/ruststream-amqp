@@ -51,7 +51,7 @@ async fn confirm(order: &Order) -> Receipt {
     Receipt { order_id: order.id }
 }
 
-#[subscriber(AmqpAddress::topic("events").settle(Settle::AtMostOnce))]
+#[subscriber(AmqpAddress::topic("events").settle(SettleMode::AtMostOnce))]
 async fn watch(order: &Order) -> HandlerOutcome {
     let _ = order.id;
     HandlerOutcome::ack()
@@ -70,11 +70,13 @@ fn document() -> Value {
         "amqp",
         AmqpBroker::new("amqp://svc:hunter2@broker.example.com:5672").container_id("billing-svc"),
         |b| {
-            b.include(confirm).out_reply(Publish).transform(ToReplyTo);
-            b.include(watch)
+            b.include(confirm)
+                .out_reply(Publish)
+                .transform(ToReplyTo)
+                .include(watch)
                 .max_attempts(nonzero!(3u32))
-                .dead_letter("orders.dead");
-            b.include(audit);
+                .dead_letter("orders.dead")
+                .include(audit)
         },
     );
     let json = build_spec(&app)

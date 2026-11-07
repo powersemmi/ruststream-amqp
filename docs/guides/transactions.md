@@ -15,7 +15,7 @@ The `transaction` feature turns this on:
 
 ```toml title="Cargo.toml"
 [dependencies]
-ruststream-amqp = { version = "0.7", features = ["transaction"] }
+ruststream-amqp = { version = "0.8", features = ["transaction"] }
 ```
 
 The example is a billing service.
@@ -69,9 +69,9 @@ Its publisher holds one transaction at a time.
 A second `begin_transaction` while one is open returns an error and leaves the open one untouched.
 Each registration gets a publisher of its own, so two handlers can each hold a transaction at the same time.
 A publish on this publisher outside a transaction goes out at once.
-A handler with `workers(n)` shares one publisher among its workers, so each delivery opens a transaction of its own with `owned_transaction()`, as [Transactions](../components/transactions/index.md#a-transaction-per-delivery) shows.
+A handler with `workers(n)` shares one publisher among its workers, so each delivery opens a transaction of its own with `transaction()`, as [Transactions](../components/transactions/index.md#a-transaction-per-delivery) shows.
 
-A transaction that starts the service, with no delivery to handle, runs from a startup hook: `b.after_startup(TransactionalPublish, ..)` hands the hook the same publisher.
+A transaction that starts the service, with no delivery to handle, runs from a startup hook. The hook is a step of the mount chain written before the `include`s: `b.after_startup(TransactionalPublish, ..).include(..)` hands it the same publisher.
 
 ## The order's own delivery
 

@@ -105,16 +105,16 @@ impl Handle<[Restock]> for Restocking {
 fn service(broker: AmqpBroker) -> RustStream {
     RustStream::new(AppInfo::new("warehouse", "0.1.0")).with_broker(broker, |b| {
         let shipments = AmqpAddress::queue("shipments").credit(nonzero!(32));
-        b.include(subscriber(shipments, Pick).build())
-            .max_attempts(nonzero!(5u32));
-        let pick_log = AmqpAddress::queue("pick-log").settle(Settle::AtMostOnce);
-        b.include(subscriber(pick_log, LogPick).build());
+        let pick_log = AmqpAddress::queue("pick-log").settle(SettleMode::AtMostOnce);
         let restock = AmqpAddress::queue("restock").batch_wait(Duration::from_millis(50));
-        b.include(
-            subscriber(restock, Restocking)
-                .batch(nonzero!(20usize))
-                .build(),
-        );
+        b.include(subscriber(shipments, Pick).build())
+            .max_attempts(nonzero!(5u32))
+            .include(subscriber(pick_log, LogPick).build())
+            .include(
+                subscriber(restock, Restocking)
+                    .batch(nonzero!(20usize))
+                    .build(),
+            )
     })
 }
 

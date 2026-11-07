@@ -98,9 +98,10 @@ fn app() -> impl App<State = ()> {
         AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
         |b| {
             let accept = subscriber(AmqpAddress::queue("payments"), Accept);
-            b.include(accept.build());
             let receipts = subscriber(AmqpAddress::queue("orders"), IssueReceipt);
-            b.include(receipts.reply().build()).out_reply(Publish);
+            b.include(accept.build())
+                .include(receipts.reply().build())
+                .out_reply(Publish)
         },
     )
 }

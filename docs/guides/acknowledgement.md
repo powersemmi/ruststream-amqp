@@ -92,7 +92,7 @@ So a handler may see one message twice, and its work has to tolerate that.
 </TabItem>
 </Tabs>
 
-[`Settle::AtMostOnce`](../components/settlement/settle.md) settles each delivery on receipt.
+[`SettleMode::AtMostOnce`](../components/settlement/settle.md) settles each delivery on receipt.
 The broker forgets the message the moment it hands it over, so a crash before the handler finishes loses it.
 That suits the pick log, where a missing line costs less than a second pass over the broker.
 The handler's outcome has nothing left to settle: `ack` and `nack` report `AckError::Unsupported`, and the runtime logs a warning for each.

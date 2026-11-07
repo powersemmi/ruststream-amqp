@@ -32,9 +32,7 @@ async fn handle(order: &Order) -> HandlerOutcome {
 fn app() -> impl App {
     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
         AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
-        |b| {
-            b.include(handle);
-        },
+        |b| b.include(handle),
     )
 }
 # }
@@ -85,7 +83,7 @@ item's own documentation keeps the detail.
 ## Dispositions
 
 - [Dispositions][c-settlement]: what `ack`, `retry` and `drop` send for an [`AmqpMessage`].
-- [Settle][c-settle]: [`Settle`], at least once or at most once.
+- [Settle][c-settle]: [`SettleMode`], at least once or at most once.
 - [Retries][c-retries]: `max_attempts`, counted by the broker's `delivery-count`.
 - [Dead letters][c-dead-letters]: `dead_letter`, the address a spent delivery goes to.
 - [`retry_after`][c-retry-after]: a copy published to the subscription's own address after the

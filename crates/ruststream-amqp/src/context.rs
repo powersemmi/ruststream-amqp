@@ -143,7 +143,7 @@ impl ContextField for ReplyCorrelation {
 /// fn app() -> impl App {
 ///     RustStream::new(AppInfo::new("orders", "0.1.0"))
 ///         .with_broker(AmqpBroker::new("amqp://localhost:5672"), |b| {
-///             b.include(receipt).out_reply(Publish).transform(Correlate);
+///             b.include(receipt).out_reply(Publish).transform(Correlate)
 ///         })
 /// }
 /// # }

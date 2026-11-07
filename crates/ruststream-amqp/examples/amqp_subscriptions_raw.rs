@@ -26,9 +26,7 @@ async fn fulfil(order: &Order) -> HandlerOutcome {
 #[ruststream::app]
 fn app() -> impl App {
     let broker = AmqpBroker::new("amqp://guest:guest@localhost:5672");
-    RustStream::new(AppInfo::new("fulfillment", "0.1.0")).with_broker(broker, |b| {
-        b.include(fulfil);
-    })
+    RustStream::new(AppInfo::new("fulfillment", "0.1.0")).with_broker(broker, |b| b.include(fulfil))
 }
 // --8<-- [end:raw]
 

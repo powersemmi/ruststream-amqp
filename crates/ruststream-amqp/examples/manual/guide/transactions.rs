@@ -155,7 +155,6 @@ fn app() -> impl App {
         |b| {
             b.include(subscriber(AmqpAddress::queue("billing.orders"), Bill).build())
                 .out(Billing, TransactionalPublish)
-                .build();
         },
     )
 }

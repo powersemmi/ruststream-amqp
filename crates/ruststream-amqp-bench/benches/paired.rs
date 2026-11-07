@@ -86,7 +86,7 @@ use fe2o3_amqp::{Receiver, Sender};
 use fe2o3_amqp_types::messaging::{Body, Data, Message, Outcome, Source};
 use fe2o3_amqp_types::primitives::{Array, Binary, Symbol, Value};
 use futures::StreamExt;
-use ruststream::{ConnectedBroker, Subscriber, SubscriptionSource};
+use ruststream::{ConnectedBroker, Settle, Subscriber, SubscriptionSource};
 use ruststream_amqp::prelude::*;
 use ruststream_amqp::{AmqpSubscriber, ConnectedAmqpBroker};
 use serde::Deserialize;
@@ -617,12 +617,13 @@ async fn consume(order: &Order, ctx: &mut Context<'_, (), Run>) -> HandlerOutcom
     HandlerOutcome::ack()
 }
 
+// The app's start and shutdown are cold steps whose futures carry no `Send`; the benchmark
+// awaits them on its own runtime and never moves them to another thread.
+#[allow(clippy::future_not_send)]
 async fn start_consume(url: &str, run: Run) -> RunningApp {
     RustStream::new(AppInfo::new("amqp-bench", "0.0.0"))
         .on_startup(async move |()| Ok::<_, Infallible>(run))
-        .with_broker(AmqpBroker::new(url), |b| {
-            b.include(consume);
-        })
+        .with_broker(AmqpBroker::new(url), |b| b.include(consume))
         .start()
         .await
         .expect("the service starts")
@@ -632,6 +633,9 @@ async fn start_consume(url: &str, run: Run) -> RunningApp {
 ///
 /// The measured window closed with the last delivery's work, so nothing that happens here can
 /// reach a number, and a run is not thrown away over its goodbye.
+// The app's start and shutdown are cold steps whose futures carry no `Send`; the benchmark
+// awaits them on its own runtime and never moves them to another thread.
+#[allow(clippy::future_not_send)]
 async fn report_app_shutdown(app: RunningApp) {
     if let Err(err) = app.shutdown().await {
         eprintln!("the service reported a teardown fault: {err}");
@@ -693,6 +697,9 @@ async fn adapter_run(url: &str, address: &str, messages: usize) -> Sample {
     }
 }
 
+// The app's start and shutdown are cold steps whose futures carry no `Send`; the benchmark
+// awaits them on its own runtime and never moves them to another thread.
+#[allow(clippy::future_not_send)]
 async fn framework_run(url: &str, address: &str, messages: usize) -> Sample {
     let run = Run::new(messages);
     install(address);
@@ -718,6 +725,9 @@ enum Carrier {
 }
 
 impl Carrier {
+    // The app's start and shutdown are cold steps whose futures carry no `Send`; the benchmark
+    // awaits them on its own runtime and never moves them to another thread.
+    #[allow(clippy::future_not_send)]
     async fn run(self, url: &str, address: &str, messages: usize) -> Sample {
         match self {
             Self::Raw => raw_run(url, address, messages).await,
@@ -780,6 +790,9 @@ struct Measured {
     broker_bound: bool,
 }
 
+// The app's start and shutdown are cold steps whose futures carry no `Send`; the benchmark
+// awaits them on its own runtime and never moves them to another thread.
+#[allow(clippy::future_not_send)]
 async fn measure(url: &str, rounds: usize, seconds: f64, round_trip: Duration) -> Measured {
     // The probe is the warm-up as well: its result is thrown away, and the rate it measured sets
     // a count that makes every run below last at least `seconds`.

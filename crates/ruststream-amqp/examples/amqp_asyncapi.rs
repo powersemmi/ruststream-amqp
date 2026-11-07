@@ -75,7 +75,7 @@ async fn confirm(order: &Order) -> Receipt {
     Receipt { order_id: order.id }
 }
 
-#[subscriber(AmqpAddress::topic("events").settle(Settle::AtMostOnce))]
+#[subscriber(AmqpAddress::topic("events").settle(SettleMode::AtMostOnce))]
 async fn watch(order: &Order) -> HandlerOutcome {
     tracing::info!(order.id, "event seen");
     HandlerOutcome::ack()
@@ -121,12 +121,15 @@ fn broker(password: &str) -> AmqpBroker {
 // --8<-- [start:operations]
 fn service(broker: AmqpBroker) -> impl App<State = ()> {
     RustStream::new(AppInfo::new("billing", "1.0.0")).with_broker_labeled("amqp", broker, |b| {
-        b.include(confirm).out_reply(Publish).transform(ToReplyTo);
-        b.include(watch)
+        b.include(confirm)
+            .out_reply(Publish)
+            .transform(ToReplyTo)
+            .include(watch)
             .max_attempts(nonzero!(3u32))
-            .dead_letter("orders.dead");
-        b.include(audit);
-        b.include(book).out(Ledger, TransactionalPublish).build();
+            .dead_letter("orders.dead")
+            .include(audit)
+            .include(book)
+            .out(Ledger, TransactionalPublish)
     })
 }
 // --8<-- [end:operations]

@@ -18,7 +18,7 @@ A production broker asks for TLS and credentials, and its operators look for a s
 
 ```toml title="Cargo.toml"
 [dependencies]
-ruststream-amqp = { version = "0.7", features = ["rustls"] }
+ruststream-amqp = { version = "0.8", features = ["rustls"] }
 ```
 
 The deployment provides the address and the credentials in environment variables.

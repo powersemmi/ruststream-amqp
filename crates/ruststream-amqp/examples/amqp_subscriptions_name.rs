@@ -26,9 +26,7 @@ async fn place(order: &Order) -> HandlerOutcome {
 #[ruststream::app]
 fn app() -> impl App {
     let broker = AmqpBroker::new("amqp://artemis:artemis@localhost:5672");
-    RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(broker, |b| {
-        b.include(place);
-    })
+    RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(broker, |b| b.include(place))
 }
 // --8<-- [end:name]
 
@@ -69,9 +67,7 @@ mod tests {
     async fn an_empty_name_stops_the_service_at_startup() {
         let unaddressed = RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
             AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
-            |b| {
-                b.include(nameless);
-            },
+            |b| b.include(nameless),
         );
 
         let refused = TestApp::start(unaddressed)

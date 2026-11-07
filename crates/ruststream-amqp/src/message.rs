@@ -14,7 +14,11 @@ use fe2o3_amqp_types::messaging::{
     ApplicationProperties, Body, Data, Message, MessageId, Properties,
 };
 use fe2o3_amqp_types::primitives::{Binary, SimpleValue, Symbol, Value};
-use ruststream::{AckError, HeaderMap, IncomingMessage, OutgoingFor, Partitioned, Str, Take};
+use ruststream::runtime::RETRY_COUNT_HEADER;
+use ruststream::{
+    AckError, HeaderMap, IncomingMessage, OutgoingFor, Partitioned, PublishMessageError, Settle,
+    Str, Take,
+};
 
 use crate::error::AmqpError;
 #[cfg(feature = "testing")]
@@ -216,6 +220,34 @@ impl IncomingMessage for AmqpMessage {
         &self.headers
     }
 
+    /// How many times this message has been delivered, counting this delivery: the broker's own
+    /// count from the `delivery-count` field of the `AMQP` `header` section, continued from the
+    /// framework's retry-count header on a deferred `retry_after` copy.
+    ///
+    /// A delivery with no `header` section answers `None`, which is what a message this crate
+    /// published looks like: nothing has counted an attempt for it, and the framework's
+    /// retry-count header carries the attempt instead. Once the broker counts a copy, by a
+    /// requeue, its `delivery-count` has started over while the header holds the attempts made
+    /// before the copy, so the count goes on from the header and a registration's `max_attempts`
+    /// is spent against every delivery of the message.
+    fn redelivery_count(&self) -> Option<u64> {
+        let counted = u64::from(self.delivery_count?);
+        // Read only when the runtime asks, which is when a delivery failed: a delivery that is
+        // handled pays nothing for it.
+        let retried = self
+            .headers
+            .get_str(RETRY_COUNT_HEADER)
+            .and_then(|count| count.parse::<u64>().ok())
+            .unwrap_or(0);
+        Some(1_u64.saturating_add(retried).saturating_add(counted))
+    }
+
+    fn partition_key(&self) -> Option<&[u8]> {
+        Partitioned::partition_key(self)
+    }
+}
+
+impl Settle for AmqpMessage {
     async fn ack(self) -> Result<(), AckError> {
         self.settle(SettleKind::Accept).await
     }
@@ -228,21 +260,24 @@ impl IncomingMessage for AmqpMessage {
         };
         self.settle(kind).await
     }
+}
 
-    /// The broker's own count of deliveries of this message, from the `delivery-count` field of
-    /// the `AMQP` `header` section, counting this delivery.
-    ///
-    /// A delivery with no `header` section answers `None`, which is what a message this crate
-    /// published looks like: nothing has counted an attempt for it, and the framework's
-    /// retry-count header carries the attempt instead. That is the answer a deferred `retry_after`
-    /// copy needs, because the copy is a new message to the broker and its `delivery-count` starts
-    /// over while the framework's header does not.
-    fn redelivery_count(&self) -> Option<u64> {
-        self.delivery_count.map(|count| u64::from(count) + 1)
-    }
+/// A publish this crate refused before the client took the message, with the message handed back.
+pub(crate) type Refused<'msg> = PublishMessageError<AmqpError, OutgoingFor<'msg, Take>>;
 
-    fn partition_key(&self) -> Option<&[u8]> {
-        Partitioned::partition_key(self)
+/// Hands `msg` on with the value of `step`, or back inside the refusal when `step` failed: what a
+/// publish does with every step that runs before the client takes the message.
+///
+/// # Errors
+///
+/// The error of `step`, carrying `msg`.
+pub(crate) fn keep<T>(
+    step: Result<T, AmqpError>,
+    msg: OutgoingFor<'_, Take>,
+) -> Result<(T, OutgoingFor<'_, Take>), Refused<'_>> {
+    match step {
+        Ok(value) => Ok((value, msg)),
+        Err(error) => Err(PublishMessageError::with_message(error, msg)),
     }
 }
 
@@ -251,13 +286,34 @@ impl IncomingMessage for AmqpMessage {
 /// # Errors
 ///
 /// [`AmqpError::UnsupportedHeader`] when a header the `properties` section carries has a value
-/// its property cannot hold.
-pub(crate) fn to_amqp_message(
-    msg: OutgoingFor<'_, Take>,
+/// its property cannot hold, with `msg` handed back.
+pub(crate) fn to_amqp_message<'msg>(
+    msg: OutgoingFor<'msg, Take>,
+    correlation: Option<&AmqpId>,
+) -> Result<Message<Data>, Refused<'msg>> {
+    let (mut message, msg) = keep(framed(&msg, correlation), msg)?;
+    fill(&mut message, msg);
+    Ok(message)
+}
+
+/// The `AMQP` message for an outgoing publish with its body still empty, so a publish that fails
+/// before the client takes the message still holds it.
+///
+/// # Errors
+///
+/// [`AmqpError::UnsupportedHeader`] as for [`to_amqp_message`].
+pub(crate) fn framed(
+    msg: &OutgoingFor<'_, Take>,
     correlation: Option<&AmqpId>,
 ) -> Result<Message<Data>, AmqpError> {
-    let (address, payload, headers) = msg.into_parts();
-    build_message(address, &headers, Vec::from(payload), correlation)
+    // An empty vector holds no allocation, so the body the message is built with costs nothing.
+    build_message(msg.name(), msg.headers(), Vec::new(), correlation)
+}
+
+/// Moves the payload of `msg` into the body of `message`, which [`framed`] built for it.
+pub(crate) fn fill(message: &mut Message<Data>, msg: OutgoingFor<'_, Take>) {
+    let (_, payload, _) = msg.into_parts();
+    message.body = Data(Binary::from(Vec::from(payload)));
 }
 
 /// Builds the `AMQP` message carrying `body` with `headers` spread over its sections: the
@@ -576,6 +632,59 @@ mod tests {
             OutgoingMessage::new("orders", b"{}".as_slice()).with_headers(headers),
             None,
         )
+        .map_err(Refused::into_error)
+    }
+
+    fn delivered_with(retried: Option<&'static str>, delivery_count: Option<u32>) -> AmqpMessage {
+        let mut headers = HeaderMap::new();
+        if let Some(retried) = retried {
+            headers.insert(RETRY_COUNT_HEADER, retried);
+        }
+        let read = Read {
+            payload: Bytes::new(),
+            headers,
+            reply_id: ReplyId::of(None),
+        };
+        AmqpMessage::settled(read, delivery_count)
+    }
+
+    /// A deferred copy is a new message to the broker, whose own count starts over: once the
+    /// broker counts it, the count goes on from the retry-count header the copy carries.
+    #[test]
+    fn a_retry_copy_continues_the_count_its_header_holds() {
+        // Uncounted by the broker, the copy leaves the count to its header.
+        assert_eq!(delivered_with(Some("1"), None).redelivery_count(), None);
+        assert_eq!(
+            delivered_with(Some("1"), Some(1)).redelivery_count(),
+            Some(3)
+        );
+    }
+
+    #[test]
+    fn a_message_counts_its_own_deliveries() {
+        assert_eq!(delivered_with(None, None).redelivery_count(), None);
+        assert_eq!(delivered_with(None, Some(2)).redelivery_count(), Some(3));
+        // A header that is not a count is not an attempt.
+        assert_eq!(
+            delivered_with(Some("soon"), Some(1)).redelivery_count(),
+            Some(2)
+        );
+    }
+
+    /// A header the message cannot carry is refused before the payload moves into the body, so
+    /// the refusal hands the whole message back.
+    #[test]
+    fn a_refused_header_hands_the_message_back() {
+        let mut headers = HeaderMap::new();
+        headers.insert("reply-to", Bytes::from_static(NOT_UTF8));
+        let outgoing =
+            OutgoingMessage::new("orders", b"{}".as_slice()).with_headers(headers.clone());
+
+        let refused = to_amqp_message(outgoing, None).expect_err("the header cannot travel");
+        let unsent = refused.into_message().expect("nothing took the message");
+        assert_eq!(unsent.name(), "orders");
+        assert_eq!(unsent.payload(), b"{}");
+        assert_eq!(unsent.headers(), &headers);
     }
 
     #[test]

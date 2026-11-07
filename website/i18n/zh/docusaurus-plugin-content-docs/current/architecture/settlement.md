@@ -33,7 +33,7 @@ export const table = {
 export const retries = {
   "title": "AMQP 1.0 上的一次重试：尝试上限决定把消息送回、发往死信地址，还是拒绝",
   "text": "以文字阅读本图",
-  "delivery": ["一次投递：它的尝试次数是 delivery-count + 1，", "副本上则是 x-ruststream-retry-count"],
+  "delivery": ["一次投递：它的尝试次数是 delivery-count + 1，", "副本上再加上 x-ruststream-retry-count"],
   "outcome": ["处理器返回", "retry() 或 retry_after(delay)"],
   "cap": ["max_attempts：这次尝试是否低于上限？"],
   "requeue": ["retry()：", "modified，", "回到", "队列"],
@@ -58,7 +58,7 @@ export const retries = {
 
 `retry()` 发送带 `delivery-failed` 的 `modified`，从不发送 `released`。release 告诉 Broker 这次投递没有被处理，`delivery-count` 保持不变。要求重试的处理器确实处理了它，只是失败了，而尝试上限读取的正是这个计数：计数不增加，一条总是失败的消息就会永远回来。`undeliverable-here` 保持为 false，因此消息可以再次回到同一个订阅。
 
-[`Settle::AtMostOnce`](../components/settlement/settle.md) 在每次投递到达时就结算它。
+[`SettleMode::AtMostOnce`](../components/settlement/settle.md) 在每次投递到达时就结算它。
 
 | 结果 | 至多一次 |
 |---|---|
@@ -67,7 +67,7 @@ export const retries = {
 | `retry_after(d)` | 在 `d` 之后把一份副本发布到该地址 |
 | 没有结果 | 什么也不做：Broker 已经放走了这条消息 |
 
-一条消息被投递了多少次，等于 `delivery-count` + 1，由 [`redelivery_count`](api:ruststream_amqp::AmqpMessage) 报告。本 crate 发布的消息没有 `header` 段，因此不带计数，此时由框架的重试计数消息头来计数。
+一条消息被投递了多少次，等于 `delivery-count` + 1，由 [`redelivery_count`](api:ruststream_amqp::AmqpMessage) 报告。本 crate 发布的消息没有 `header` 段，因此不带计数，此时由框架的重试计数消息头来计数。框架发布的副本从这个消息头接着计数：它的计数是消息头的值加上 `delivery-count` + 1，因此被重新入队的副本会在它之前的尝试次数上继续累加。
 
 ## 重试 {/* #retries */}
 

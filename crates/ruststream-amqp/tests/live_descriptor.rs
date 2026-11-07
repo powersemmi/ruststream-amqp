@@ -14,12 +14,13 @@ use std::pin::pin;
 use std::time::Duration;
 
 use futures::{Stream, StreamExt};
+use ruststream::Settle;
 use ruststream::{
     Broker, ConnectedBroker, IncomingMessage, OutgoingMessage, Publisher, Subscribe, Subscriber,
     nonzero,
 };
 use ruststream_amqp::{
-    AmqpAddress, AmqpBroker, AmqpError, AmqpMessage, ConnectedAmqpBroker, Settle,
+    AmqpAddress, AmqpBroker, AmqpError, AmqpMessage, ConnectedAmqpBroker, SettleMode,
 };
 
 use crate::live;
@@ -270,7 +271,7 @@ async fn an_at_most_once_delivery_leaves_the_broker_on_receipt() {
     let address = unique("amo-drain");
     {
         let mut subscriber = connected
-            .subscribe_address(AmqpAddress::queue(&address).settle(Settle::AtMostOnce))
+            .subscribe_address(AmqpAddress::queue(&address).settle(SettleMode::AtMostOnce))
             .await
             .expect("the subscription opens");
         publish(&connected, &address, &[b"fire"]).await;

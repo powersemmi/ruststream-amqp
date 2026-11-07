@@ -41,7 +41,7 @@ use url::Url;
 
 #[cfg(feature = "testing")]
 use crate::address::Routing;
-use crate::address::{AmqpAddress, Settle};
+use crate::address::{AmqpAddress, SettleMode};
 #[cfg(feature = "asyncapi")]
 use crate::bindings;
 use crate::config::{Sasl, sasl_profile};
@@ -375,9 +375,7 @@ const DEFAULT_CONTAINER_ID: &str = "ruststream";
 ///         AmqpBroker::new("amqp://localhost:5672")
 ///             .sasl(Sasl::plain("svc", "secret"))
 ///             .container_id("orders-svc"),
-///         |b| {
-///             b.include(fulfil);
-///         },
+///         |b| b.include(fulfil),
 ///     )
 /// }
 /// # }
@@ -414,9 +412,7 @@ const DEFAULT_CONTAINER_ID: &str = "ruststream";
 /// /// The app `main` runs.
 /// pub fn app() -> RustStream {
 ///     RustStream::new(AppInfo::new("orders", "0.1.0"))
-///         .with_broker(AmqpBroker::new("amqp://broker:5672"), |b| {
-///             b.include(accept);
-///         })
+///         .with_broker(AmqpBroker::new("amqp://broker:5672"), |b| b.include(accept))
 /// }
 ///
 /// pub async fn accepts_an_order() -> Result<(), Box<dyn Error>> {
@@ -517,9 +513,7 @@ impl AmqpBroker {
     ///         AmqpBroker::new("amqps://broker.internal:5671")
     ///             .tls(tls)
     ///             .sasl(Sasl::external()),
-    ///         |b| {
-    ///             b.include(handle);
-    ///         },
+    ///         |b| b.include(handle),
     ///     )
     /// }
     /// # }
@@ -651,9 +645,7 @@ impl Broker for AmqpBroker {
 /// over the connection once `connect` has run.
 #[cfg(feature = "testing")]
 impl InProcess for AmqpBroker {
-    fn connect_in_process(
-        self,
-    ) -> impl Future<Output = Result<Self::Connected, Self::Error>> + Send {
+    fn connect_in_process(self) -> impl Future<Output = Result<Self::Connected, Self::Error>> {
         let connected = in_process::check_url(&self.url).and_then(|()| {
             // The URL's half of the TLS settings is checked as `connect` checks it. The
             // certificates are not read: a test runs the service's logic, and the deployment's
@@ -980,9 +972,9 @@ impl ConnectedAmqpBroker {
     }
 }
 
-// Re-exported for the subscriber module without making Settle a broker concern.
-pub(crate) fn is_at_most_once(settle: Settle) -> bool {
-    matches!(settle, Settle::AtMostOnce)
+// Re-exported for the subscriber module without making SettleMode a broker concern.
+pub(crate) fn is_at_most_once(settle: SettleMode) -> bool {
+    matches!(settle, SettleMode::AtMostOnce)
 }
 
 #[cfg(test)]

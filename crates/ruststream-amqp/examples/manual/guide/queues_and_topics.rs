@@ -113,16 +113,16 @@ fn app() -> impl App {
     RustStream::new(AppInfo::new("orders", "0.1.0")).with_broker(
         AmqpBroker::new("amqp://artemis:artemis@localhost:5672"),
         |b| {
+            let ledger = AmqpAddress::raw("order-events::ledger");
             b.include(
                 subscriber(AmqpAddress::queue("orders"), TakeOrder)
                     .reply()
                     .build(),
             )
-            .out_reply(Publish);
-            b.include(subscriber(AmqpAddress::topic("order-events"), Bill).build());
-            b.include(subscriber(AmqpAddress::topic("order-events"), Audit).build());
-            let ledger = AmqpAddress::raw("order-events::ledger");
-            b.include(subscriber(ledger, PostToLedger).build());
+            .out_reply(Publish)
+            .include(subscriber(AmqpAddress::topic("order-events"), Bill).build())
+            .include(subscriber(AmqpAddress::topic("order-events"), Audit).build())
+            .include(subscriber(ledger, PostToLedger).build())
         },
     )
 }

@@ -111,6 +111,7 @@ impl Handle<Refund> for Review {
 
 // --8<-- [start:stamp]
 /// Marks every copy with the address its delivery came from.
+#[derive(Clone)]
 struct Retried;
 
 impl<C, Options> PublishTransform<ForReply<C>, Options> for Retried {
@@ -138,8 +139,8 @@ fn app() -> impl App {
                 .max_attempts(nonzero!(5u32))
                 .dead_letter("refunds.dead")
                 .out_retry(Publish)
-                .transform(Retried);
-            b.include(subscriber(AmqpAddress::queue("refunds.dead"), Review).build());
+                .transform(Retried)
+                .include(subscriber(AmqpAddress::queue("refunds.dead"), Review).build())
         },
     )
 }

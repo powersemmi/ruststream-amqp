@@ -203,15 +203,13 @@ fn app() -> impl App {
         |b| {
             b.include(subscriber(AmqpAddress::queue("prices.quote"), Quote).build())
                 .out(Answers, Publish)
-                .build();
-            b.include(
-                subscriber(AmqpAddress::queue("orders"), PriceOrder)
-                    .reply()
-                    .build(),
-            )
-            .out_reply(Publish)
-            .out(Pricing, Publish)
-            .build();
+                .include(
+                    subscriber(AmqpAddress::queue("orders"), PriceOrder)
+                        .reply()
+                        .build(),
+                )
+                .out_reply(Publish)
+                .out(Pricing, Publish)
         },
     )
 }
